@@ -1,0 +1,310 @@
+import {
+  CommandName,
+  PresetPositionType,
+  PropertyName,
+  Schedule,
+  PanTiltDirection,
+} from "eufy-security-client";
+
+import { IncomingCommandBase } from "../incoming_message_base.js";
+import { DeviceCommand } from "./command.js";
+
+export interface IncomingCommandDeviceBase extends IncomingCommandBase {
+  serialNumber: string;
+}
+
+export interface IncomingCommandDeviceSetStatusLed extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setStatusLed;
+  value: boolean;
+}
+
+export interface IncomingCommandDeviceSetAutoNightVision extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setAutoNightVision;
+  value: boolean;
+}
+
+export interface IncomingCommandDeviceSetMotionDetection extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setMotionDetection;
+  value: boolean;
+}
+
+export interface IncomingCommandDeviceSetSoundDetection extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setSoundDetection;
+  value: boolean;
+}
+
+export interface IncomingCommandDeviceSetPetDetection extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setPetDetection;
+  value: boolean;
+}
+
+export interface IncomingCommandDeviceSetRTSPStream extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setRTSPStream;
+  value: boolean;
+}
+
+export interface IncomingCommandDeviceSetAntiTheftDetection extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setAntiTheftDetection;
+  value: boolean;
+}
+
+export interface IncomingCommandDeviceSetWatermark extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setWatermark;
+  value: number;
+}
+
+export interface IncomingCommandDeviceEnableDevice extends IncomingCommandDeviceBase {
+  command: DeviceCommand.enableDevice;
+  value: boolean;
+}
+
+export interface IncomingCommandDeviceLockDevice extends IncomingCommandDeviceBase {
+  command: DeviceCommand.lockDevice;
+  value: boolean;
+}
+
+export interface IncomingCommandDeviceGetPropertiesMetadata extends IncomingCommandDeviceBase {
+  command: DeviceCommand.getPropertiesMetadata;
+}
+
+export interface IncomingCommandDeviceGetProperties extends IncomingCommandDeviceBase {
+  command: DeviceCommand.getProperties;
+}
+
+export interface IncomingCommandDeviceSetProperty extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setProperty;
+  name: string;
+  value: unknown;
+}
+
+export interface IncomingCommandDeviceStartLivestream extends IncomingCommandDeviceBase {
+  command: DeviceCommand.startLivestream;
+}
+
+export interface IncomingCommandDeviceStopLivestream extends IncomingCommandDeviceBase {
+  command: DeviceCommand.stopLivestream;
+}
+
+export interface IncomingCommandDeviceIsLiveStreaming extends IncomingCommandDeviceBase {
+  command: DeviceCommand.isLiveStreaming;
+}
+
+export interface IncomingCommandDeviceTriggerAlarm extends IncomingCommandDeviceBase {
+  command: DeviceCommand.triggerAlarm;
+  seconds: number;
+}
+
+export interface IncomingCommandDeviceResetAlarm extends IncomingCommandDeviceBase {
+  command: DeviceCommand.resetAlarm;
+}
+
+export interface IncomingCommandDevicePanAndTilt extends IncomingCommandDeviceBase {
+  command: DeviceCommand.panAndTilt;
+  direction: PanTiltDirection;
+}
+
+export interface IncomingCommandDeviceQuickResponse extends IncomingCommandDeviceBase {
+  command: DeviceCommand.quickResponse;
+  voiceId: number;
+}
+
+export interface IncomingCommandDeviceStartDownload extends IncomingCommandDeviceBase {
+  command: DeviceCommand.startDownload;
+  path: string;
+  cipherId?: number;
+}
+
+export interface IncomingCommandDeviceCancelDownload extends IncomingCommandDeviceBase {
+  command: DeviceCommand.cancelDownload;
+  voiceId: number;
+}
+
+export interface IncomingCommandDeviceIsDownloading extends IncomingCommandDeviceBase {
+  command: DeviceCommand.isDownloading;
+}
+
+export interface IncomingCommandDeviceGetVoices extends IncomingCommandDeviceBase {
+  command: DeviceCommand.getVoices;
+}
+
+export interface IncomingCommandDeviceHasProperty extends IncomingCommandDeviceBase {
+  command: DeviceCommand.hasProperty;
+  propertyName: PropertyName;
+}
+
+export interface IncomingCommandDeviceHasCommand extends IncomingCommandDeviceBase {
+  command: DeviceCommand.hasCommand;
+  commandName: CommandName;
+}
+
+export interface IncomingCommandDeviceGetCommands extends IncomingCommandDeviceBase {
+  command: DeviceCommand.getCommands;
+}
+
+export interface IncomingCommandDeviceStartRTSPLivestream extends IncomingCommandDeviceBase {
+  command: DeviceCommand.startRTSPLivestream;
+}
+
+export interface IncomingCommandDeviceStopRTSPLivestream extends IncomingCommandDeviceBase {
+  command: DeviceCommand.stopRTSPLivestream;
+}
+
+export interface IncomingCommandDeviceIsRTSPLiveStreaming extends IncomingCommandDeviceBase {
+  command: DeviceCommand.isRTSPLiveStreaming;
+}
+
+export interface IncomingCommandDeviceCalibrateLock extends IncomingCommandDeviceBase {
+  command: DeviceCommand.calibrateLock;
+}
+
+export interface IncomingCommandDeviceCalibrate extends IncomingCommandDeviceBase {
+  command: DeviceCommand.calibrate;
+}
+
+export interface IncomingCommandDeviceSetDefaultAngle extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setDefaultAngle;
+}
+
+export interface IncomingCommandDeviceSetPrivacyAngle extends IncomingCommandDeviceBase {
+  command: DeviceCommand.setPrivacyAngle;
+}
+
+export interface IncomingCommandDeviceUnlock extends IncomingCommandDeviceBase {
+  command: DeviceCommand.unlock;
+}
+
+export interface IncomingCommandDeviceStartTalkback extends IncomingCommandDeviceBase {
+  command: DeviceCommand.startTalkback;
+}
+
+export interface IncomingCommandDeviceStopTalkback extends IncomingCommandDeviceBase {
+  command: DeviceCommand.stopTalkback;
+}
+
+export interface IncomingCommandDeviceIsTalkbackOngoing extends IncomingCommandDeviceBase {
+  command: DeviceCommand.isTalkbackOngoing;
+}
+
+export interface IncomingCommandDeviceTalkbackAudioData extends IncomingCommandDeviceBase {
+  command: DeviceCommand.talkbackAudioData;
+  buffer: Buffer;
+}
+
+export interface IncomingCommandDeviceSnooze extends IncomingCommandDeviceBase {
+  command: DeviceCommand.snooze;
+  snoozeTime: number;
+  snoozeChime?: boolean;
+  snoozeMotion?: boolean;
+  snoozeHomebase?: boolean;
+}
+
+export interface IncomingCommandDeviceAddUser extends IncomingCommandDeviceBase {
+  command: DeviceCommand.addUser;
+  username: string;
+  passcode: string;
+  schedule?: Schedule;
+}
+
+export interface IncomingCommandDeviceDeleteUser extends IncomingCommandDeviceBase {
+  command: DeviceCommand.deleteUser;
+  username: string;
+}
+
+export interface IncomingCommandDeviceGetUsers extends IncomingCommandDeviceBase {
+  command: DeviceCommand.getUsers;
+}
+
+export interface IncomingCommandDeviceUpdateUserPasscode extends IncomingCommandDeviceBase {
+  command: DeviceCommand.updateUserPasscode;
+  username: string;
+  passcode: string;
+}
+
+export interface IncomingCommandDeviceUpdateUserSchedule extends IncomingCommandDeviceBase {
+  command: DeviceCommand.updateUserSchedule;
+  username: string;
+  schedule: Schedule;
+}
+
+export interface IncomingCommandDeviceUpdateUser extends IncomingCommandDeviceBase {
+  command: DeviceCommand.updateUser;
+  username: string;
+  newUsername: string;
+}
+
+export interface IncomingCommandDeviceVerifyPIN extends IncomingCommandDeviceBase {
+  command: DeviceCommand.verifyPIN;
+  pin: string;
+}
+
+export interface IncomingCommandDevicePresetPosition extends IncomingCommandDeviceBase {
+  command: DeviceCommand.presetPosition;
+  position: PresetPositionType;
+}
+
+export interface IncomingCommandDeviceSavePresetPosition extends IncomingCommandDeviceBase {
+  command: DeviceCommand.savePresetPosition;
+  position: PresetPositionType;
+}
+
+export interface IncomingCommandDeviceDeletePresetPosition extends IncomingCommandDeviceBase {
+  command: DeviceCommand.deletePresetPosition;
+  position: PresetPositionType;
+}
+
+export interface IncomingCommandDeviceOpen extends IncomingCommandDeviceBase {
+  command: DeviceCommand.open;
+}
+
+export type IncomingMessageDevice =
+  | IncomingCommandDeviceSetStatusLed
+  | IncomingCommandDeviceSetAutoNightVision
+  | IncomingCommandDeviceSetMotionDetection
+  | IncomingCommandDeviceSetSoundDetection
+  | IncomingCommandDeviceSetPetDetection
+  | IncomingCommandDeviceSetRTSPStream
+  | IncomingCommandDeviceSetAntiTheftDetection
+  | IncomingCommandDeviceSetWatermark
+  | IncomingCommandDeviceEnableDevice
+  | IncomingCommandDeviceLockDevice
+  | IncomingCommandDeviceGetPropertiesMetadata
+  | IncomingCommandDeviceGetProperties
+  | IncomingCommandDeviceSetProperty
+  | IncomingCommandDeviceStartLivestream
+  | IncomingCommandDeviceStopLivestream
+  | IncomingCommandDeviceIsLiveStreaming
+  | IncomingCommandDeviceTriggerAlarm
+  | IncomingCommandDeviceResetAlarm
+  | IncomingCommandDevicePanAndTilt
+  | IncomingCommandDeviceQuickResponse
+  | IncomingCommandDeviceStartDownload
+  | IncomingCommandDeviceCancelDownload
+  | IncomingCommandDeviceIsDownloading
+  | IncomingCommandDeviceGetVoices
+  | IncomingCommandDeviceHasProperty
+  | IncomingCommandDeviceHasCommand
+  | IncomingCommandDeviceGetCommands
+  | IncomingCommandDeviceStartRTSPLivestream
+  | IncomingCommandDeviceStopRTSPLivestream
+  | IncomingCommandDeviceIsRTSPLiveStreaming
+  | IncomingCommandDeviceCalibrateLock
+  | IncomingCommandDeviceCalibrate
+  | IncomingCommandDeviceSetDefaultAngle
+  | IncomingCommandDeviceSetPrivacyAngle
+  | IncomingCommandDeviceUnlock
+  | IncomingCommandDeviceStartTalkback
+  | IncomingCommandDeviceStopTalkback
+  | IncomingCommandDeviceIsTalkbackOngoing
+  | IncomingCommandDeviceTalkbackAudioData
+  | IncomingCommandDeviceSnooze
+  | IncomingCommandDeviceAddUser
+  | IncomingCommandDeviceDeleteUser
+  | IncomingCommandDeviceGetUsers
+  | IncomingCommandDeviceUpdateUserPasscode
+  | IncomingCommandDeviceUpdateUserSchedule
+  | IncomingCommandDeviceUpdateUser
+  | IncomingCommandDeviceVerifyPIN
+  | IncomingCommandDevicePresetPosition
+  | IncomingCommandDeviceSavePresetPosition
+  | IncomingCommandDeviceDeletePresetPosition
+  | IncomingCommandDeviceOpen;

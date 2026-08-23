@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    name: Patched client
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: eufy-mega-ws/vendor/eufy-security-client
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: eufy-mega-ws/vendor/eufy-security-client/package-lock.json
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test -- --runInBand
+
+      - name: Compile distributable
+        run: npm run build
+
+  addon:
+    name: Home Assistant add-on
+    needs: client
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Use Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install YAML validator
+        run: python -m pip install "PyYAML==6.0.3"
+
+      - name: Validate shell and YAML
+        shell: bash
+        run: |
+          bash -n eufy-mega-ws/run.sh
+          bash -n tests/test-run-config.sh
+          bash tests/test-run-config.sh
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          paths = [
+              Path("repository.yaml"),
+              Path("eufy-mega-ws/config.yaml"),
+              *Path("eufy-mega-ws/translations").glob("*.yaml"),
+          ]
+          for path in paths:
+              with path.open(encoding="utf-8") as stream:
+                  yaml.safe_load(stream)
+
+          with Path("eufy-mega-ws/config.yaml").open(encoding="utf-8") as stream:
+              expected = set(yaml.safe_load(stream)["schema"])
+          for path in Path("eufy-mega-ws/translations").glob("*.yaml"):
+              with path.open(encoding="utf-8") as stream:
+                  actual = set(yaml.safe_load(stream)["configuration"])
+              if actual != expected:
+                  raise SystemExit(
+                      f"{path}: missing={sorted(expected - actual)} extra={sorted(actual - expected)}"
+                  )
+          PY
+
+      - name: Build amd64 add-on image
+        run: |
+          version="$(python -c 'import yaml; print(yaml.safe_load(open("eufy-mega-ws/config.yaml", encoding="utf-8"))["version"])')"
+          docker build \
+            --build-arg BUILD_ARCH=amd64 \
+            --build-arg BUILD_VERSION="${version}" \
+            --tag eufy-mega-ws:test \
+            eufy-mega-ws
+
+      - name: Verify runtime client
+        run: |
+          docker run --rm --entrypoint node eufy-mega-ws:test --input-type=module -e \
+            "import client from '/usr/src/app/node_modules/eufy-security-ws/node_modules/eufy-security-client/package.json' with { type: 'json' }; const contract = await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/const.js'); if (client.version !== '4.1.1-mega.1' || contract.maxSchemaVersion !== 21) process.exit(1); await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/index.js')"

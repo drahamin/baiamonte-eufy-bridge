@@ -1,0 +1,6 @@
+eufy-mega-ws/vendor/eufy-security-client/build/
+eufy-mega-ws/vendor/eufy-security-client/node_modules/
+eufy-mega-ws/vendor/eufy-security-client/*.tgz
+eufy-mega-ws/vendor/eufy-security-ws/dist/
+eufy-mega-ws/vendor/eufy-security-ws/node_modules/
+.DS_Store

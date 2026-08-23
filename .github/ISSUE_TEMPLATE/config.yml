@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Upstream eufy-security-client issues
+    url: https://github.com/bropat/eufy-security-client/issues
+    about: Report device or protocol behavior reproducible with the unmodified upstream client.
