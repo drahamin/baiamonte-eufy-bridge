@@ -6,6 +6,8 @@
 - Add a machine-readable Mega/legacy/P2P capability map and startup policy log.
 - Add a migration contract for replacing legacy capabilities one at a time.
 - Add CI enforcement keeping the legacy cloud domain inside the legacy HTTP adapter.
+- Validate and default malformed/empty numeric, boolean, and station-list options before generating
+  runtime JSON, preventing the observed `jq --argjson` startup crash.
 
 ## 3.1.0-mega.1 — 2026-08-22
 

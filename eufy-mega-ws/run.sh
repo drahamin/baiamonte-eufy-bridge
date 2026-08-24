@@ -7,12 +7,54 @@ CONFIG_PATH=/data/eufy-security-ws-config.json
 USERNAME="$(bashio::config 'username')"
 PASSWORD="$(bashio::config 'password')"
 COUNTRY="$(bashio::config 'country')"
-EVENT_DURATION_SECONDS="$(bashio::config 'event_duration')"
-POLLING_INTERVAL_MINUTES="$(bashio::config 'polling_interval')"
-ACCEPT_INVITATIONS="$(bashio::config 'accept_invitations')"
 TRUSTED_DEVICE_NAME="$(bashio::config 'trusted_device_name')"
-SNAPSHOT_CACHE="$(bashio::config 'snapshot_cache')"
-STATIONS_JSON="$(bashio::config 'stations')"
+
+read_integer_option() {
+    local option="$1"
+    local fallback="$2"
+    local value
+    value="$(bashio::config "$option")"
+    if [[ "$value" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$value"
+    else
+        bashio::log.warning "Invalid or missing ${option}; using ${fallback}"
+        printf '%s' "$fallback"
+    fi
+}
+
+read_boolean_option() {
+    local option="$1"
+    local fallback="$2"
+    local value
+    value="$(bashio::config "$option")"
+    value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+    case "$value" in
+        true | 1 | yes | on) printf 'true' ;;
+        false | 0 | no | off) printf 'false' ;;
+        *)
+            bashio::log.warning "Invalid or missing ${option}; using ${fallback}"
+            printf '%s' "$fallback"
+            ;;
+    esac
+}
+
+read_array_option() {
+    local option="$1"
+    local value
+    value="$(bashio::config "$option")"
+    if jq -e 'type == "array"' >/dev/null 2>&1 <<<"$value"; then
+        printf '%s' "$value"
+    else
+        bashio::log.warning "Invalid or missing ${option}; using an empty list"
+        printf '[]'
+    fi
+}
+
+EVENT_DURATION_SECONDS="$(read_integer_option 'event_duration' '10')"
+POLLING_INTERVAL_MINUTES="$(read_integer_option 'polling_interval' '10')"
+ACCEPT_INVITATIONS="$(read_boolean_option 'accept_invitations' 'true')"
+SNAPSHOT_CACHE="$(read_boolean_option 'snapshot_cache' 'true')"
+STATIONS_JSON="$(read_array_option 'stations')"
 
 PORT_OPTION=""
 if bashio::config.has_value 'port'; then

@@ -10,7 +10,7 @@ function bashio::config() {
         username) printf %s "test@example.com" ;;
         password) printf %s "secret" ;;
         country) printf %s "US" ;;
-        event_duration) printf %s "10" ;;
+        event_duration) printf %s "" ;;
         polling_interval) printf %s "5" ;;
         accept_invitations) printf %s "true" ;;
         trusted_device_name) printf %s "HA Mega" ;;
@@ -34,6 +34,10 @@ function bashio::config.true() {
 function bashio::log.fatal() {
     printf 'fatal: %s\n' "$*" >&2
     return 1
+}
+
+function bashio::log.warning() {
+    printf 'warning: %s\n' "$*" >&2
 }
 
 # Capture the final server invocation instead of replacing this test process.
