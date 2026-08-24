@@ -1,5 +1,8 @@
 # Architecture and patch notes
 
+Provider ownership is normative in [MIGRATION.md](MIGRATION.md) and machine-readable in
+`eufy-mega-ws/vendor/eufy-security-client/src/http/cloudCapabilities.ts`.
+
 ## Data flow
 
 ```mermaid
@@ -57,3 +60,10 @@ unknown formats are ignored.
 - Accounts already returning an empty legacy inventory cannot expose devices through schema 21.
 - Push delivery remains dependent on Eufy's registration service and Google's FCM transport.
 - Device-specific event mappings remain those supported by client 4.1.1.
+
+## Baiamonte migration safeguard
+
+CI verifies that the known legacy cloud domain remains isolated to the legacy HTTP adapter. The
+startup log prints the current provider for every capability group. This makes hybrid operation
+explicit today and lets native Mega adapters replace capabilities behind the unchanged schema-21
+WebSocket contract later.

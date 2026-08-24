@@ -1,6 +1,6 @@
-# Eufy Security WS Mega Bridge for Home Assistant
+# Baiamonte Eufy Hybrid Bridge for Home Assistant
 
-This repository provides a drop-in Home Assistant add-on for the existing
+This Baiamonte-owned fork provides a migration-ready Home Assistant add-on for the existing
 [`fuatakgun/eufy_security`](https://github.com/fuatakgun/eufy_security) integration. It keeps the
 WebSocket schema at **21**, uses `eufy-security-ws` **3.1.0**, and adds focused fixes around the
 published Eufy Mega v6 transition code.
@@ -34,9 +34,9 @@ library for that eventual replacement.
 1. Stop the official `eufy-security-ws` add-on; both use port `3000` by default.
 2. In **Settings → Apps → App store → ⋮ → Repositories**, add:
 
-   `https://github.com/jpark40/hassio-eufy-mega-ws`
+   `https://github.com/drahamin/hassio-eufy-mega-ws`
 
-3. Install **Eufy Security WS Mega Bridge**.
+3. Install **Baiamonte Eufy Hybrid Bridge**.
 4. Enter the same Eufy account, password, country, and station-IP overrides you use now.
 5. Start the add-on and complete any requested Mega and legacy email verification steps.
 6. Keep the Home Assistant Eufy Security integration pointed at `127.0.0.1:3000`. Reload it after
@@ -64,7 +64,9 @@ Trigger motion or ring a doorbell and verify that the matching
 | Home Assistant architectures | amd64, aarch64 |
 | Runtime | Node.js 24 on HA base 3.23 |
 
-See [architecture and patch notes](ARCHITECTURE.md) and the add-on's [configuration guide](eufy-mega-ws/DOCS.md).
+See [architecture and patch notes](ARCHITECTURE.md), the add-on's
+[configuration guide](eufy-mega-ws/DOCS.md), and the provider-by-provider
+[migration contract](MIGRATION.md).
 
 ## Upstream and license
 

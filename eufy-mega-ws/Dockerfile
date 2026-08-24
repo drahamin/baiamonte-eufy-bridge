@@ -42,10 +42,10 @@ LABEL \
     io.hass.version="${BUILD_VERSION}" \
     io.hass.type="app" \
     io.hass.arch="${BUILD_ARCH}" \
-    org.opencontainers.image.title="Eufy Security WS Mega Bridge" \
-    org.opencontainers.image.description="Home Assistant WebSocket bridge with Eufy Mega v6 push support" \
+    org.opencontainers.image.title="Baiamonte Eufy Hybrid Bridge" \
+    org.opencontainers.image.description="Migration-ready Home Assistant bridge for Eufy Mega, legacy inventory, and P2P" \
     org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.source="https://github.com/jpark40/hassio-eufy-mega-ws" \
+    org.opencontainers.image.source="https://github.com/drahamin/hassio-eufy-mega-ws" \
     org.opencontainers.image.version="${BUILD_VERSION}"
 
 RUN apk add --no-cache jq nodejs

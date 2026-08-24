@@ -1,10 +1,10 @@
-name: Eufy Security WS Mega Bridge
+name: Baiamonte Eufy Hybrid Bridge
 description: >-
-  Schema-21 WebSocket bridge for the Home Assistant Eufy Security integration,
-  with Eufy Mega v6 login/push support and resilient push-event snapshots.
-version: "3.1.0-mega.1"
-slug: eufy_mega_ws
-url: https://github.com/jpark40/hassio-eufy-mega-ws
+  Migration-ready Schema-21 bridge using Eufy Mega for authentication and push,
+  legacy cloud only for unavailable capabilities, and P2P for device communication.
+version: "3.1.0-baiamonte.1"
+slug: baiamonte_eufy_hybrid
+url: https://github.com/drahamin/hassio-eufy-mega-ws
 init: false
 arch:
   - aarch64

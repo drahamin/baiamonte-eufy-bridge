@@ -56,7 +56,9 @@ jobs:
         run: |
           bash -n eufy-mega-ws/run.sh
           bash -n tests/test-run-config.sh
+          bash -n tests/test-cloud-boundary.sh
           bash tests/test-run-config.sh
+          bash tests/test-cloud-boundary.sh
           python - <<'PY'
           from pathlib import Path
           import yaml

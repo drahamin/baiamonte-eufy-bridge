@@ -1,5 +1,9 @@
 # Configuration
 
+This release operates in explicit hybrid mode: Mega v6 owns authentication and push registration,
+legacy cloud owns inventory and cloud properties that have no published Mega replacement, and P2P
+owns streams/direct device communication. The active boundary is printed in the startup log.
+
 | Option | Description |
 | --- | --- |
 | `username` | Dedicated Eufy account email. Required. |
@@ -66,6 +70,8 @@ want event images stored on disk.
   complete a new Mega login prompt if offered.
 - `No houses/stations/devices found`: the account no longer has legacy inventory access. The public
   v6 bridge cannot restore unpublished inventory endpoints.
+- `Baiamonte cloud policy: hybrid ...`: informational capability ownership; use it to verify that a
+  future release has moved specific features to Mega rather than silently falling back.
 - Push connects but no event arrives: confirm the dedicated account receives that camera's
   notifications in Eufy's app and try `ipv4first: true` if FCM connection errors appear.
 - Snapshot retries exhaust: enable debug temporarily, trigger a fresh event, and verify the push

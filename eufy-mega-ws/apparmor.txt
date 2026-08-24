@@ -1,7 +1,7 @@
 #include <tunables/global>
 
-#profile eufy_mega_ws flags=(audit,complain,attach_disconnected,mediate_deleted) {
-profile eufy_mega_ws flags=(attach_disconnected,mediate_deleted) {
+#profile baiamonte_eufy_hybrid flags=(audit,complain,attach_disconnected,mediate_deleted) {
+profile baiamonte_eufy_hybrid flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
   # Capabilities
@@ -41,7 +41,7 @@ profile eufy_mega_ws flags=(attach_disconnected,mediate_deleted) {
     #include <abstractions/base>
 
     # Receive signals from S6-Overlay
-    signal (receive) peer=*_eufy_mega_ws,
+    signal (receive) peer=*_baiamonte_eufy_hybrid,
 
     # Access to options.json and other files within your addon
     /data/** rw,

@@ -6,6 +6,7 @@ import type { EufySecurityConfig, EufySecurityPersistentData } from "../interfac
 import { ResponseErrorCode } from "./types";
 import { ensureError } from "../error";
 import { getError } from "../utils";
+import { formatCapabilitySummary } from "./cloudCapabilities";
 
 /**
  * Everything specific to the transitional v6 "eufy_mega" backend lives in this single file so it can
@@ -76,6 +77,10 @@ export class MegaTransition {
 
   constructor(host: MegaTransitionHost) {
     this.host = host;
+    rootMainLogger.info(`Baiamonte cloud policy: hybrid ${formatCapabilitySummary()}`);
+    rootMainLogger.warn(
+      "Baiamonte migration status: legacy cloud remains required for inventory/properties/commands until native Mega endpoints ship"
+    );
   }
 
   /** Record that the LEGACY login asked for a code/captcha (called from the host's api-event hooks). */
