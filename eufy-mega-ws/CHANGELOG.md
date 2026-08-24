@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.0-baiamonte.2 — 2026-08-24
+
+- Ignore null picture values during initial device hydration instead of trying
+  to cache them as snapshots.
+- Skip RTSP URL synchronization for devices that do not expose the
+  `rtspStreamUrl` property.
+
 ## 3.1.0-baiamonte.1 — 2026-08-24
 
 - Give the fork a distinct Baiamonte add-on identity and slug.

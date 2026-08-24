@@ -81,4 +81,24 @@ describe("EufySecurity snapshot cache", () => {
 
     expect(existsSync(join(cacheRoot, "snapshots", "T8210.img"))).toBe(false);
   });
+
+  it("ignores a null picture during device initialization", () => {
+    const sourceDevice = { getSerial: () => "T8210" };
+
+    expect(() => (security as any).cacheSnapshot(sourceDevice, null)).not.toThrow();
+    expect(existsSync(join(cacheRoot, "snapshots", "T8210.img"))).toBe(false);
+  });
+
+  it("does not write an RTSP URL when the device does not expose that property", () => {
+    const device = {
+      getSerial: () => "T86P2",
+      hasProperty: jest.fn().mockReturnValue(false),
+      setCustomPropertyValue: jest.fn(),
+    };
+
+    expect(() =>
+      (security as any).onDevicePropertyChanged(device, PropertyName.DeviceRTSPStream, false, false)
+    ).not.toThrow();
+    expect(device.setCustomPropertyValue).not.toHaveBeenCalled();
+  });
 });

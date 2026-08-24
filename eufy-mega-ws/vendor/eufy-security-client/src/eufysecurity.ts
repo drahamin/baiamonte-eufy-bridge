@@ -1392,7 +1392,11 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
       return { ext: "jpg", mime: "image/jpeg" };
     if (data.length >= 8 && data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
       return { ext: "png", mime: "image/png" };
-    if (data.length >= 12 && data.subarray(0, 4).toString("ascii") === "RIFF" && data.subarray(8, 12).toString("ascii") === "WEBP")
+    if (
+      data.length >= 12 &&
+      data.subarray(0, 4).toString("ascii") === "RIFF" &&
+      data.subarray(8, 12).toString("ascii") === "WEBP"
+    )
       return { ext: "webp", mime: "image/webp" };
     return undefined;
   }
@@ -1423,9 +1427,13 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
   }
 
   private cacheSnapshot(device: Device, value: PropertyValue): void {
-    if (!this.config.snapshotCache || value === undefined || typeof value !== "object") return;
+    if (!this.config.snapshotCache || value === undefined || value === null || typeof value !== "object") return;
     const picture = value as Picture;
-    if (!Buffer.isBuffer(picture.data) || picture.data.length <= 0 || picture.data.length > this.SNAPSHOT_CACHE_MAX_BYTES)
+    if (
+      !Buffer.isBuffer(picture.data) ||
+      picture.data.length <= 0 ||
+      picture.data.length > this.SNAPSHOT_CACHE_MAX_BYTES
+    )
       return;
     if (!this.getCachedSnapshotType(picture.data)) {
       rootMainLogger.warn("Snapshot cache ignored unsupported image bytes", { deviceSN: device.getSerial() });
@@ -2855,6 +2863,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
       }
       if (
         name === PropertyName.DeviceRTSPStream &&
+        device.hasProperty(PropertyName.DeviceRTSPStreamUrl) &&
         (value as boolean) === true &&
         (device.getPropertyValue(PropertyName.DeviceRTSPStreamUrl) === undefined ||
           (device.getPropertyValue(PropertyName.DeviceRTSPStreamUrl) !== undefined &&
@@ -2875,7 +2884,11 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
               ready: ready,
             });
           });
-      } else if (name === PropertyName.DeviceRTSPStream && (value as boolean) === false) {
+      } else if (
+        name === PropertyName.DeviceRTSPStream &&
+        device.hasProperty(PropertyName.DeviceRTSPStreamUrl) &&
+        (value as boolean) === false
+      ) {
         device.setCustomPropertyValue(PropertyName.DeviceRTSPStreamUrl, "");
       } else if (name === PropertyName.DevicePictureUrl && value !== "") {
         if (!isValidUrl(value as string)) {
