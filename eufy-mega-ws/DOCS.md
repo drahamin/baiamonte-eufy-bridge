@@ -22,7 +22,8 @@ the startup log.
 | `stations` | Optional station serial/IP pairs to speed local P2P discovery. |
 
 The Smart Display E10 (`T87A0`) is exposed as a generic read-only device. Its official product
-catalog is currently empty, so this release intentionally advertises no E10 controls.
+catalog is currently empty, so this release intentionally advertises no E10 controls. A disabled-by-
+default `Present in Mega inventory` diagnostic is provided so Home Assistant can register the device.
 
 ## Suggested configuration
 

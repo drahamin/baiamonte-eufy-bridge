@@ -8,7 +8,7 @@ Provider ownership is normative in [MIGRATION.md](MIGRATION.md) and machine-read
 ```mermaid
 flowchart TD
     HA["Home Assistant eufy_security 8.2.4"] -->|"WebSocket schema 21"| WS["eufy-security-ws 3.1.0"]
-    WS --> Client["eufy-security-client 4.1.1-mega.2"]
+    WS --> Client["eufy-security-client 4.1.1-mega.3"]
     Client --> Mega["Mega v6 login and FCM registration"]
     Client --> Push["FCM events and thumbnail URLs"]
     Client --> Legacy["Legacy inventory and cloud properties"]

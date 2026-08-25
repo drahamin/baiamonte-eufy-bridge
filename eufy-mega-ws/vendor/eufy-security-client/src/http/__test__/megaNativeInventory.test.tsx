@@ -39,6 +39,7 @@ describe("native Mega inventory augmentation", () => {
     expect(translated!.params).toEqual([]);
     expect(translated!.station_sn).toBe("");
     expect(translated!.baiamonte_native_source).toBe("mega");
+    expect(translated!.baiamonte_connected).toBe(true);
     expect(JSON.stringify(translated)).not.toContain("broker");
     expect(JSON.stringify(translated)).not.toContain("private@example.com");
     expect(JSON.stringify(translated)).not.toContain("secret");

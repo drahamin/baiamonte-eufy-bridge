@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.0-baiamonte.5 — 2026-08-25
+
+- Add a read-only `Present in Mega inventory` diagnostic for native-only devices so Home Assistant
+  creates an E10 device-registry entry without advertising an unverified control.
+
 ## 3.1.0-baiamonte.4 — 2026-08-25
 
 - Add the native-only Smart Display E10 (`T87A0`) to schema-21 inventory as a safe read-only

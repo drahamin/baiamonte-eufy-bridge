@@ -612,6 +612,7 @@ export enum PropertyName {
   SoftwareVersion = "softwareVersion",
   Type = "type",
   DeviceStationSN = "stationSerialNumber",
+  DeviceConnected = "connected",
   DeviceBattery = "battery",
   DeviceBatteryTemp = "batteryTemperature",
   DeviceBatteryLow = "batteryLow",
@@ -1108,6 +1109,16 @@ export const GenericDeviceProperties: IndexedProperty = {
     writeable: false,
     type: "string",
   },
+};
+
+export const NativeMegaConnectedProperty: PropertyMetadataBoolean = {
+  key: "baiamonte_connected",
+  name: PropertyName.DeviceConnected,
+  label: "Present in Mega inventory",
+  readable: true,
+  writeable: false,
+  type: "boolean",
+  default: false,
 };
 
 export const DeviceBatteryProperty: PropertyMetadataNumeric = {
@@ -5510,6 +5521,7 @@ export const LockT85V0DeviceProperties: IndexedProperty = {
 export const DeviceProperties: Properties = {
   [DeviceType.SMART_DISPLAY_E10]: {
     ...GenericDeviceProperties,
+    [PropertyName.DeviceConnected]: NativeMegaConnectedProperty,
   },
   [DeviceType.CAMERA2]: {
     ...GenericDeviceProperties,

@@ -13,7 +13,7 @@ RUN \
     && npm ci \
     && npm run build \
     && npm pack --ignore-scripts --pack-destination /tmp \
-    && test -s /tmp/eufy-security-client-4.1.1-mega.2.tgz
+    && test -s /tmp/eufy-security-client-4.1.1-mega.3.tgz
 
 FROM ghcr.io/home-assistant/base:3.23 AS server-builder
 
@@ -56,28 +56,28 @@ COPY --from=server-builder /build/eufy-security-ws/node_modules ./node_modules
 COPY --from=server-builder /build/eufy-security-ws/package.json ./package.json
 COPY --from=server-builder /build/eufy-security-ws/LICENSE ./LICENSE
 
-COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.2.tgz /tmp/eufy-security-client-4.1.1-mega.2.tgz
+COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.3.tgz /tmp/eufy-security-client-4.1.1-mega.3.tgz
 
 # eufy-security-ws 3.1.0 pins client 4.1.0 exactly. Replace that package with the compatible
-# 4.1.1-mega.2 source build carrying this add-on's native inventory/catalog and snapshot fixes.
+# 4.1.1-mega.3 source build carrying this add-on's native inventory/catalog and snapshot fixes.
 RUN \
     set -eux \
     && node --version \
     && case "$(node --version)" in v24.*) ;; *) echo "Expected Node 24" >&2; exit 1 ;; esac \
     && rm -rf node_modules/eufy-security-client \
     && mkdir -p node_modules/eufy-security-client \
-    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.2.tgz \
+    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.3.tgz \
         --strip-components=1 \
         -C node_modules/eufy-security-client \
     && package_tmp="$(mktemp)" \
-    && jq '.dependencies["eufy-security-client"] = "4.1.1-mega.2"' \
+    && jq '.dependencies["eufy-security-client"] = "4.1.1-mega.3"' \
         package.json > "${package_tmp}" \
     && mv "${package_tmp}" package.json \
-    && test "$(node -p "require('./node_modules/eufy-security-client/package.json').version")" = "4.1.1-mega.2" \
+    && test "$(node -p "require('./node_modules/eufy-security-client/package.json').version")" = "4.1.1-mega.3" \
     && grep -q "retrying request after fresh key exchange" \
         node_modules/eufy-security-client/build/http/megaApi.js \
     && grep -q "snapshotCache" node_modules/eufy-security-client/build/eufysecurity.js \
-    && rm /tmp/eufy-security-client-4.1.1-mega.2.tgz
+    && rm /tmp/eufy-security-client-4.1.1-mega.3.tgz
 
 COPY run.sh /
 RUN chmod 0755 /run.sh

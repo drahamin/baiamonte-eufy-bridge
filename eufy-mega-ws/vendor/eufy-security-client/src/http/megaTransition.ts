@@ -150,6 +150,7 @@ export const translateNativeMegaDevice = (device: NativeMegaDevice): DeviceListR
     relate_devices: [],
     baiamonte_native_source: "mega",
     baiamonte_read_only: true,
+    baiamonte_connected: true,
   };
 };
 
