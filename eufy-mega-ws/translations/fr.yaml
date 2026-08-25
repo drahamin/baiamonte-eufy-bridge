@@ -26,9 +26,6 @@ configuration:
   firmware_research:
     name: Télécharger le firmware E10 de recherche
     description: Enregistrer un paquet OTA E10 proposé par le serveur sans lancer de mise à niveau
-  control_audit_target:
-    name: Temporary local control audit target
-    description: Optional exact device name for an explicit one-shot local control audit
   trusted_device_name:
     name: Nom de l'appareil approuvé
     description: Nom facultatif de ce service dans la liste des appareils approuvés Eufy

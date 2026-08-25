@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.6 — 2026-08-25
+
+- Remove the temporary one-shot Dock audit trigger and option after live validation, leaving the
+  production dashboard and launcher free of test-only control paths.
+- Retain idempotent livestream-stop handling for safe independent bridge and companion restarts.
+
 ## 1.5.5 — 2026-08-25
 
 - Read the explicitly configured audit target directly in the launcher so optional-value

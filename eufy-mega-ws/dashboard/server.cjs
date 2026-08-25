@@ -11,14 +11,8 @@ const bridgeHost = process.env.BAIAMONTE_BRIDGE_HOST || "127.0.0.1";
 const html = fs.readFileSync(path.join(__dirname, "index.html"));
 const aiPattern = /(^ai[A-Z_]|person|human|face|familiar|vehicle|pet|animal|dog|cat|package|cry|sound|motion|detection|recognition|loiter|leaving|radar)/i;
 const ptzPropertyPattern = /(pan|tilt|zoom|track|privacy|preset|calibrat|patrol|cruise|rotation|angle)/i;
-const controlAuditRequestPath = "/share/baiamonte-eufy-control-audit.json";
-const controlAuditResultPath = "/share/baiamonte-eufy-control-audit-result.json";
-let controlAuditRunning = false;
-const completedConfiguredAudits = new Set();
 let cache;
 let cacheTime = 0;
-
-const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 // Return structure only: no names, IDs, coordinates, URLs, recognition results, or other values.
 function safeValueShape(value) {
@@ -323,141 +317,6 @@ async function currentStatus() {
   return cache;
 }
 
-async function runRequestedControlAudit() {
-  let request;
-  let requestFromShare = false;
-  if (fs.existsSync(controlAuditRequestPath)) {
-    try {
-      request = JSON.parse(fs.readFileSync(controlAuditRequestPath, "utf8"));
-      requestFromShare = true;
-    } catch {
-      return;
-    }
-  } else {
-    try {
-      const options = JSON.parse(fs.readFileSync("/data/options.json", "utf8"));
-      const configuredTarget = String(process.env.BAIAMONTE_CONTROL_AUDIT_TARGET || options.control_audit_target || "").trim();
-      if (!configuredTarget || completedConfiguredAudits.has(configuredTarget)) return;
-      request = { targetName: configuredTarget, active: true };
-    } catch {
-      const configuredTarget = String(process.env.BAIAMONTE_CONTROL_AUDIT_TARGET || "").trim();
-      if (!configuredTarget || completedConfiguredAudits.has(configuredTarget)) return;
-      request = { targetName: configuredTarget, active: true };
-    }
-  }
-  const targetName = typeof request.targetName === "string" ? request.targetName.trim() : "";
-  if (!targetName || request.active !== true) return;
-
-  const result = await bridgeSession(21, async (state, send) => {
-    let target;
-    for (const item of state.devices || []) {
-      const serialNumber = typeof item === "string" ? item : item.serialNumber;
-      const propertyResult = await send("device.get_properties", { serialNumber });
-      const properties = propertyResult.properties || {};
-      if (String(properties.name || "").localeCompare(targetName, undefined, { sensitivity: "accent" }) === 0) {
-        target = { serialNumber, properties };
-        break;
-      }
-    }
-    if (!target) return { targetFound: false, requestedName: targetName };
-
-    const [metadataResult, commandsResult] = await Promise.all([
-      send("device.get_properties_metadata", { serialNumber: target.serialNumber }),
-      send("device.get_commands", { serialNumber: target.serialNumber }),
-    ]);
-    const metadata = metadataResult.properties || {};
-    const commands = commandsResult.commands || [];
-    const properties = target.properties;
-    const propertyTests = [];
-
-    for (const [name, descriptor] of Object.entries(metadata)) {
-      if (!descriptor?.writeable) continue;
-      const present = Object.prototype.hasOwnProperty.call(properties, name) && properties[name] !== undefined;
-      const states = descriptor.states && typeof descriptor.states === "object" ? descriptor.states : null;
-      const stateRecognized = !states || !present || Object.prototype.hasOwnProperty.call(states, String(properties[name]));
-      let writeTest = present ? "pending" : "not_reported";
-      if (present) {
-        try {
-          await send("device.set_property", { serialNumber: target.serialNumber, name, value: properties[name] });
-          writeTest = "passed";
-        } catch {
-          writeTest = "failed";
-        }
-        await delay(125);
-      }
-      propertyTests.push({
-        name,
-        type: descriptor.type || "unknown",
-        hasOptions: Boolean(states),
-        optionCount: states ? Object.keys(states).length : 0,
-        stateRecognized,
-        writeTest,
-      });
-    }
-
-    const commandTests = [];
-    const has = (name) => commands.includes(name);
-    const testCommand = async (name, body = {}) => {
-      if (!has(name)) return;
-      try {
-        await send(`device.${name}`, { serialNumber: target.serialNumber, ...body });
-        commandTests.push({ name, test: "passed" });
-      } catch {
-        commandTests.push({ name, test: "failed" });
-      }
-    };
-
-    if (has("start_livestream") && has("stop_livestream")) {
-      await testCommand("start_livestream");
-      await delay(8000);
-      await testCommand("stop_livestream");
-    }
-    if (has("pan_and_tilt")) {
-      for (const direction of [1, 2, 3, 4]) {
-        try {
-          await send("device.pan_and_tilt", { serialNumber: target.serialNumber, direction });
-          commandTests.push({ name: `pan_and_tilt_${direction}`, test: "passed" });
-        } catch {
-          commandTests.push({ name: `pan_and_tilt_${direction}`, test: "failed" });
-        }
-        await delay(500);
-      }
-    }
-    await testCommand("calibrate");
-    if (has("trigger_alarm") && has("reset_alarm")) {
-      await testCommand("trigger_alarm", { seconds: 1 });
-      await delay(1500);
-      await testCommand("reset_alarm");
-    }
-
-    const testedCommandNames = new Set(commandTests.map((item) => item.name.replace(/_[1-4]$/, "")));
-    const untestedCommands = commands.filter((name) => !testedCommandNames.has(name));
-    return {
-      targetFound: true,
-      requestedName: targetName,
-      model: properties.model || "Unknown",
-      writableProperties: propertyTests,
-      commandsAdvertised: commands.length,
-      commandTests,
-      untestedCommands,
-      summary: {
-        propertiesPassed: propertyTests.filter((item) => item.writeTest === "passed").length,
-        propertiesFailed: propertyTests.filter((item) => item.writeTest === "failed").length,
-        propertiesNotReported: propertyTests.filter((item) => item.writeTest === "not_reported").length,
-        unrecognizedSelectStates: propertyTests.filter((item) => item.hasOptions && !item.stateRecognized).length,
-        commandsPassed: commandTests.filter((item) => item.test === "passed").length,
-        commandsFailed: commandTests.filter((item) => item.test === "failed").length,
-      },
-    };
-  });
-
-  fs.writeFileSync(controlAuditResultPath, JSON.stringify({ generatedAt: new Date().toISOString(), ...result }, null, 2), { mode: 0o600 });
-  if (requestFromShare) fs.unlinkSync(controlAuditRequestPath);
-  else completedConfiguredAudits.add(targetName);
-  console.log(`BAIAMONTE_CONTROL_AUDIT_RESULT ${JSON.stringify(result)}`);
-  console.log("Baiamonte eufy local control audit completed (identifiers and values omitted)");
-}
-
 http.createServer(async (request, response) => {
   const pathname = new URL(request.url, "http://localhost").pathname;
   if (pathname.endsWith("/api/status")) {
@@ -478,16 +337,4 @@ http.createServer(async (request, response) => {
   response.end(html);
 }).listen(dashboardPort, "0.0.0.0", () => {
   console.log(`Baiamonte eufy Bridge dashboard listening on ${dashboardPort}`);
-  const pollControlAudit = () => {
-    if (controlAuditRunning) return;
-    controlAuditRunning = true;
-    runRequestedControlAudit().catch(() => {
-      console.error("Baiamonte eufy local control audit failed (details omitted)");
-    }).finally(() => {
-      controlAuditRunning = false;
-    });
-  };
-  console.log("Baiamonte eufy local control audit watcher ready");
-  setTimeout(pollControlAudit, 5000);
-  setInterval(pollControlAudit, 15000).unref();
 });
