@@ -2,7 +2,7 @@ name: Baiamonte Eufy Hybrid Bridge
 description: >-
   Migration-ready Schema-21 bridge using Eufy Mega for authentication and push,
   legacy cloud only for unavailable capabilities, and P2P for device communication.
-version: "3.1.0-baiamonte.2"
+version: "3.1.0-baiamonte.3"
 slug: baiamonte_eufy_hybrid
 url: https://github.com/drahamin/hassio-eufy-mega-ws
 init: false
@@ -25,6 +25,7 @@ options:
   ipv4first: false
   event_duration: 10
   snapshot_cache: true
+  mega_inventory_diagnostics: true
   stations: []
 schema:
   username: email
@@ -37,6 +38,7 @@ schema:
   ipv4first: bool
   event_duration: int(1,3600)
   snapshot_cache: bool
+  mega_inventory_diagnostics: bool
   trusted_device_name: str?
   stations:
     - serial_number: str

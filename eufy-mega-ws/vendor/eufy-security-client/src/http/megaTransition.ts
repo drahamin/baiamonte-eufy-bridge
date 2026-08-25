@@ -72,6 +72,8 @@ export class MegaTransition {
   private pendingChallenge?: ChallengeSource;
   /** Whether the v6 login succeeded this sequence (gates signalling the app as connected). */
   private megaLoggedIn = false;
+  /** A native inventory diagnostic is bounded to one attempt per process. */
+  private inventoryDiagnosticAttempted = false;
   /** Serialises connect(): concurrent calls await the in-flight one instead of racing the sequence. */
   private connectInProgress?: Promise<void>;
 
@@ -100,6 +102,19 @@ export class MegaTransition {
       this.host.config.password!,
       persistentHttpApi
     );
+  }
+
+  private async runInventoryDiagnostic(): Promise<void> {
+    if (!this.host.config.megaInventoryDiagnostics || this.inventoryDiagnosticAttempted) return;
+    this.inventoryDiagnosticAttempted = true;
+    try {
+      const summary = await (await this.getMegaApi()).getHouseInventorySummary();
+      rootMainLogger.info("v6 inventory diagnostic (identifiers redacted)", summary);
+    } catch (err) {
+      rootMainLogger.warn("v6 inventory diagnostic unavailable; legacy inventory remains active", {
+        error: getError(ensureError(err)),
+      });
+    }
   }
 
   /**
@@ -254,6 +269,7 @@ export class MegaTransition {
       }
       this.megaLoggedIn = megaResult === "ok";
       this.pendingChallenge = undefined;
+      if (this.megaLoggedIn) await this.runInventoryDiagnostic();
     }
 
     // PHASE 2 — legacy afterwards, best-effort. A code/captcha just used by mega is not valid here;

@@ -43,6 +43,8 @@ export interface EufySecurityConfig {
   /** Persist the last successfully decoded push-event image per camera. Defaults to false upstream;
    *  the Home Assistant Mega bridge enables it explicitly so image entities survive restarts. */
   snapshotCache?: boolean;
+  /** Run one identifier-free native Mega inventory summary after v6 login. */
+  megaInventoryDiagnostics?: boolean;
   stationIPAddresses?: StationIPAddresses;
   enableEmbeddedPKCS1Support?: boolean;
   deviceConfig?: {

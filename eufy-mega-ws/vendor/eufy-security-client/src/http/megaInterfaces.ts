@@ -64,6 +64,27 @@ export interface MegaApiOptions {
   minRequestIntervalMs?: number;
 }
 
+/** Exact request shape used by the official v6 app for `house/get_devs_list`. */
+export interface MegaHouseInventoryRequest {
+  house_id?: string;
+  categories?: string[];
+  add_pns?: string[];
+}
+
+/** Identifier-free aggregate suitable for diagnostics and logs. */
+export interface MegaHouseInventorySummary {
+  deviceCount: number;
+  groupCount: number;
+  models: Record<string, number>;
+  categories: Record<string, number>;
+  parameters: {
+    total: number;
+    minPerDevice: number;
+    maxPerDevice: number;
+    types: string[];
+  };
+}
+
 /**
  * Serializable session for resume-without-relogin (see {@link MegaHTTPApi.exportSession}).
  *

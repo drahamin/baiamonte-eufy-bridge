@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.1.0-baiamonte.3 — 2026-08-25
+
+- Replace the legacy-shaped native inventory probe with the official Mega
+  `house_id` / `categories` / `add_pns` request schema.
+- Add a one-shot, identifier-free native inventory diagnostic while legacy inventory remains the
+  production provider.
+- Add redacted model/category/parameter aggregates and the official product data-point catalog
+  request for command-schema research.
+- Keep schema-21 entities and all device control on the proven legacy/P2P paths.
+
 ## 3.1.0-baiamonte.2 — 2026-08-24
 
 - Ignore null picture values during initial device hydration instead of trying

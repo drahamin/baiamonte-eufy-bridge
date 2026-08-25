@@ -365,6 +365,100 @@ describe("MegaHTTPApi", () => {
     });
   });
 
+  describe("native inventory schemas", () => {
+    beforeEach(() => {
+      jest.spyOn(MegaHTTPApi.prototype, "keyExchange").mockImplementation(async function (
+        this: MegaHTTPApi,
+        host: string
+      ) {
+        const id = fakeIdentity();
+        (this as any).identities.set(host, id);
+        return id;
+      });
+    });
+
+    it("uses the official house_id/categories/add_pns body and returns only redacted aggregates", async () => {
+      const response = megaEncryptBody(
+        JSON.stringify({
+          devices: [
+            {
+              device_model: "T87A0",
+              category: "smart_display",
+              device_name: "must not leak",
+              device_sn: "must not leak",
+              local_ip: "192.0.2.1",
+              params: [
+                { param_type: 101, param_value: "secret" },
+                { param_type: 102, param_value: "secret" },
+              ],
+            },
+            { device_model: "T9000", category: "eufy_security", params: [{ param_type: 101 }] },
+          ],
+          groups: [{}],
+        }),
+        sharedKeyToAesKey(fakeIdentity().sharedKey)
+      );
+      const { api, requests } = await makeApi([
+        { statusCode: 200, body: JSON.stringify({ code: 0, msg: "ok", data: response }) },
+      ]);
+      api.setAuth("t", "u");
+
+      const summary = await api.getHouseInventorySummary({
+        house_id: "house-1",
+        categories: ["eufy_security"],
+        add_pns: ["T87A0"],
+      });
+
+      const sent = JSON.parse(megaDecrypt(requests.at(-1)!.body!, fakeIdentity().sharedKey));
+      expect(sent).toEqual({ house_id: "house-1", categories: ["eufy_security"], add_pns: ["T87A0"] });
+      expect(requests.at(-1)!.url).toContain("/app/house/get_devs_list");
+      expect(summary).toEqual({
+        deviceCount: 2,
+        groupCount: 1,
+        models: { T87A0: 1, T9000: 1 },
+        categories: { smart_display: 1, eufy_security: 1 },
+        parameters: { total: 3, minPerDevice: 1, maxPerDevice: 2, types: ["101", "102"] },
+      });
+      expect(JSON.stringify(summary)).not.toContain("must not leak");
+      expect(JSON.stringify(summary)).not.toContain("192.0.2.1");
+      expect(JSON.stringify(summary)).not.toContain("secret");
+    });
+
+    it("defaults every official inventory filter instead of sending legacy pagination fields", async () => {
+      const response = megaEncryptBody(
+        JSON.stringify({ devices: [], groups: [] }),
+        sharedKeyToAesKey(fakeIdentity().sharedKey)
+      );
+      const { api, requests } = await makeApi([
+        { statusCode: 200, body: JSON.stringify({ code: 0, msg: "ok", data: response }) },
+      ]);
+
+      await api.getDevsListDecrypted();
+
+      const sent = JSON.parse(megaDecrypt(requests.at(-1)!.body!, fakeIdentity().sharedKey));
+      expect(sent).toEqual({ house_id: "", categories: [], add_pns: [] });
+      expect(sent).not.toHaveProperty("device_sn");
+      expect(sent).not.toHaveProperty("num");
+      expect(sent).not.toHaveProperty("orderby");
+    });
+
+    it("requests the product data-point catalog with the decompiled {code} body", async () => {
+      const response = megaEncryptBody(
+        JSON.stringify({ data_point_list: [] }),
+        sharedKeyToAesKey(fakeIdentity().sharedKey)
+      );
+      const { api, requests } = await makeApi([
+        { statusCode: 200, body: JSON.stringify({ code: 0, msg: "ok", data: response }) },
+      ]);
+
+      await api.getProductDataPointsDecrypted("T87A0");
+
+      const sent = JSON.parse(megaDecrypt(requests.at(-1)!.body!, fakeIdentity().sharedKey));
+      expect(sent).toEqual({ code: "T87A0" });
+      expect(requests.at(-1)!.url).toContain("/app/things/get_product_data_point");
+    });
+  });
+
   describe("generateCaptcha", () => {
     beforeEach(() => {
       jest.spyOn(MegaHTTPApi.prototype, "keyExchange").mockImplementation(async function (

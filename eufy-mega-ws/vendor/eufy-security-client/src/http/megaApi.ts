@@ -24,6 +24,8 @@ import {
   MegaMqttConnectConfig,
   MegaApiOptions,
   MegaSession,
+  MegaHouseInventoryRequest,
+  MegaHouseInventorySummary,
 } from "./megaInterfaces";
 
 export type {
@@ -34,6 +36,8 @@ export type {
   MegaMqttConnectConfig,
   MegaApiOptions,
   MegaSession,
+  MegaHouseInventoryRequest,
+  MegaHouseInventorySummary,
 } from "./megaInterfaces";
 
 /**
@@ -612,18 +616,80 @@ export class MegaHTTPApi {
     return JSON.parse(this.decryptForCluster(identity, result.data as string));
   }
 
-  /** Eufy-side device list (`house/get_devs_list`), decrypted. The non-Tuya inventory. */
-  public async getDevsListDecrypted(): Promise<unknown> {
-    const host = this.clusterHost("house");
-    const openapiHost = this.clusterHost("openapi");
-    const identity = await this.keyExchange(openapiHost);
-    const result = await this.signedPost(
-      host,
-      "/app/house/get_devs_list",
-      { device_sn: "", num: 100, orderby: "" },
-      identity
-    );
-    if (result.code !== 0) throw new Error(`get_devs_list failed: ${result.code} ${result.msg}`);
-    return JSON.parse(this.decryptForCluster(identity, result.data as string));
+  /**
+   * Eufy-side native inventory (`house/get_devs_list`), decrypted.
+   *
+   * The official 6.0.80 app sends `house_id`, `categories`, and `add_pns`. The previous probe used
+   * the legacy-shaped `{device_sn,num,orderby}` body, which is accepted inconsistently and cannot
+   * express v6 category/product filtering. Empty arrays return the account's generally supported
+   * security inventory; special accessories may require app-supplied category/PN allowlists.
+   */
+  public async getHouseInventoryDecrypted(request: MegaHouseInventoryRequest = {}): Promise<unknown> {
+    return this.callDecrypted("house", "/app/house/get_devs_list", {
+      house_id: request.house_id ?? "",
+      categories: request.categories ?? [],
+      add_pns: request.add_pns ?? [],
+    });
+  }
+
+  /** Backward-compatible name retained for downstream probes. */
+  public async getDevsListDecrypted(request: MegaHouseInventoryRequest = {}): Promise<unknown> {
+    return this.getHouseInventoryDecrypted(request);
+  }
+
+  /**
+   * Return only non-sensitive inventory aggregates. Never includes names, serials, network data,
+   * member/account fields, P2P credentials, device keys, or parameter values.
+   */
+  public async getHouseInventorySummary(
+    request: MegaHouseInventoryRequest = {}
+  ): Promise<MegaHouseInventorySummary> {
+    const inventory = (await this.getHouseInventoryDecrypted(request)) as {
+      devices?: Array<Record<string, unknown>>;
+      groups?: unknown[];
+    };
+    const devices = Array.isArray(inventory?.devices) ? inventory.devices : [];
+    const groups = Array.isArray(inventory?.groups) ? inventory.groups : [];
+    const models: Record<string, number> = {};
+    const categories: Record<string, number> = {};
+    const parameterCounts: number[] = [];
+    const parameterTypes = new Set<string>();
+
+    const addCount = (target: Record<string, number>, value: unknown): void => {
+      if (typeof value !== "string" || value.length === 0 || value.length > 64) return;
+      target[value] = (target[value] ?? 0) + 1;
+    };
+
+    for (const device of devices) {
+      addCount(models, device.device_model ?? device.device_new_pn);
+      addCount(categories, device.category);
+      const params = Array.isArray(device.params) ? (device.params as Array<Record<string, unknown>>) : [];
+      parameterCounts.push(params.length);
+      for (const param of params) {
+        const type = param?.param_type;
+        if ((typeof type === "number" && Number.isFinite(type)) || (typeof type === "string" && type.length <= 64)) {
+          parameterTypes.add(String(type));
+        }
+      }
+    }
+
+    return {
+      deviceCount: devices.length,
+      groupCount: groups.length,
+      models,
+      categories,
+      parameters: {
+        total: parameterCounts.reduce((sum, count) => sum + count, 0),
+        minPerDevice: parameterCounts.length > 0 ? Math.min(...parameterCounts) : 0,
+        maxPerDevice: parameterCounts.length > 0 ? Math.max(...parameterCounts) : 0,
+        types: Array.from(parameterTypes).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+      },
+    };
+  }
+
+  /** Official product data-point catalog request (`{code: productCode}`). */
+  public async getProductDataPointsDecrypted(productCode: string): Promise<unknown> {
+    if (!productCode || productCode.length > 64) throw new Error("productCode must be 1-64 characters");
+    return this.callDecrypted("things", "/app/things/get_product_data_point", { code: productCode });
   }
 }

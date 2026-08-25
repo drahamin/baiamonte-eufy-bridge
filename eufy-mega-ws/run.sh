@@ -54,6 +54,7 @@ EVENT_DURATION_SECONDS="$(read_integer_option 'event_duration' '10')"
 POLLING_INTERVAL_MINUTES="$(read_integer_option 'polling_interval' '10')"
 ACCEPT_INVITATIONS="$(read_boolean_option 'accept_invitations' 'true')"
 SNAPSHOT_CACHE="$(read_boolean_option 'snapshot_cache' 'true')"
+MEGA_INVENTORY_DIAGNOSTICS="$(read_boolean_option 'mega_inventory_diagnostics' 'true')"
 STATIONS_JSON="$(read_array_option 'stations')"
 
 PORT_OPTION=""
@@ -80,6 +81,7 @@ JSON_STRING="$(jq -n \
     --argjson polling_interval_minutes "$POLLING_INTERVAL_MINUTES" \
     --argjson accept_invitations "$ACCEPT_INVITATIONS" \
     --argjson snapshot_cache "$SNAPSHOT_CACHE" \
+    --argjson mega_inventory_diagnostics "$MEGA_INVENTORY_DIAGNOSTICS" \
     --argjson stations "$STATIONS_JSON" \
     '(
       {
@@ -91,6 +93,7 @@ JSON_STRING="$(jq -n \
         pollingIntervalMinutes: $polling_interval_minutes,
         acceptInvitations: $accept_invitations,
         snapshotCache: $snapshot_cache,
+        megaInventoryDiagnostics: $mega_inventory_diagnostics,
         enableEmbeddedPKCS1Support: true
       }
       + (if $trusted_device_name != "" then {trustedDeviceName: $trusted_device_name} else {} end)

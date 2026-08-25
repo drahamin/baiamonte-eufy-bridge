@@ -45,6 +45,17 @@ permissions under `/data/snapshots`. JPEG, PNG, and WebP files are recognized by
 restored to a camera's `picture` property during device creation. Files larger than 10 MiB and
 unknown formats are ignored.
 
+### Native inventory diagnostic
+
+After a successful Mega login, the add-on makes one read-only `house/get_devs_list` request using
+the official app body (`house_id`, `categories`, `add_pns`). Only counts, model families,
+categories, and parameter-type aggregates are logged. Names, serials, account/member fields,
+network addresses, device/P2P keys, and parameter values never enter the diagnostic result.
+
+This diagnostic does not hydrate schema-21 entities and does not change provider ownership:
+production inventory remains legacy until native records, special-accessory category discovery,
+and command semantics are fully mapped and tested.
+
 ## Reproducibility
 
 - Vendored base: `eufy-security-client` tag 4.1.1, commit `12c0933`.
