@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.6 — 2026-08-25
+
+- Replace the ambiguous cloud-migration dump with explicit semantic and research coverage metrics,
+  model-scoped catalog totals, unique-ID totals, and plain-language empty-catalog context.
+- Promote structured device power-source mode to a verified read-only schema.
+- Classify recurring camera, station, device-telemetry, HomeBase Pro, and wired-floodlight ID blocks
+  by feature family while keeping their exact semantics unresolved and non-writable.
+
 ## 1.2.5 — 2026-08-25
 
 - Correct the aggregate catalog counters so family-classified fields are reported separately and

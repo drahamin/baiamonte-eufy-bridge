@@ -164,15 +164,29 @@ const observedMegaMetadata = new Map<number, ObservedMegaMetadata>([
       classification: "camera_firmware",
     },
   ],
+  [
+    6445,
+    {
+      code: "DEVICE_POWER_SOURCE_MODE",
+      name: "Device power source mode",
+      confidence: "verified",
+      classification: "device_power",
+    },
+  ],
 ]);
 
 const crossProductPlatformIds = new Set([1418, 1419, 1420, 1509, 1510, 1511, 1512, 1513]);
+const commonCameraPlatformIds = new Set([1067, 1154, 1197, 1198, 1299, 1309, 3103]);
+const stationPlatformIds = new Set([1062, 1155, 1284, 1285, 1296, 6287]);
+const deviceTelemetryIds = new Set([6252, 6254, 6458, 6482]);
+const homeBaseProPlatformIds = new Set([1299, 1313, 1314, 1315, 1663]);
+const wiredCameraSettingIds = new Set([1416, 6036, 6037, 6082, 6084, 6110, 6111, 6112, 6113, 6114]);
 const megaCapabilityIds = new Set([9201, 9202, 9235, 9236, 9237, 9238, 9257, 9258, 9273]);
 const homeBaseProCellularReservedIds = new Set([5006, 5007, 5008, 5009, 5010, 5011, 5012, 6224, 6225]);
 
 const classifyObservedMegaParameter = (type: number, productCode?: string): ObservedMegaMetadata | undefined => {
   const exact = observedMegaMetadata.get(type);
-  if (exact && (type === 7013 || productCode === "T9000")) return exact;
+  if (exact && (type === 7013 || type === 6445 || productCode === "T9000")) return exact;
   if (crossProductPlatformIds.has(type))
     return {
       code: `MEGA_CROSS_PRODUCT_PLATFORM_${type}`,
@@ -186,6 +200,41 @@ const classifyObservedMegaParameter = (type: number, productCode?: string): Obse
       name: `Mega capability field ${type}`,
       confidence: "classified",
       classification: "mega_capability",
+    };
+  if (productCode !== "T9000" && commonCameraPlatformIds.has(type))
+    return {
+      code: `CAMERA_PLATFORM_${type}`,
+      name: `Camera platform field ${type}`,
+      confidence: "classified",
+      classification: "camera_platform",
+    };
+  if (stationPlatformIds.has(type))
+    return {
+      code: `STATION_PLATFORM_${type}`,
+      name: `Station platform field ${type}`,
+      confidence: "classified",
+      classification: "station_platform",
+    };
+  if (deviceTelemetryIds.has(type))
+    return {
+      code: `DEVICE_TELEMETRY_${type}`,
+      name: `Device telemetry field ${type}`,
+      confidence: "classified",
+      classification: "device_telemetry",
+    };
+  if (productCode === "T9000" && homeBaseProPlatformIds.has(type))
+    return {
+      code: `HOMEBASE_PRO_PLATFORM_${type}`,
+      name: `HomeBase Pro platform field ${type}`,
+      confidence: "classified",
+      classification: "homebase_pro_platform",
+    };
+  if (productCode === "T8423" && wiredCameraSettingIds.has(type))
+    return {
+      code: `WIRED_FLOODLIGHT_SETTING_${type}`,
+      name: `Wired floodlight setting field ${type}`,
+      confidence: "classified",
+      classification: "wired_floodlight_setting",
     };
   if (productCode === "T9000" && homeBaseProCellularReservedIds.has(type))
     return {

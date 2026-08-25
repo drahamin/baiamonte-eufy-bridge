@@ -105,7 +105,12 @@ describe("MegaHTTPApi", () => {
           classification: "homebase_pro_cellular_reserved",
           known: false,
         }),
-        expect.objectContaining({ dp_id: 6287, confidence: "unresolved", known: false }),
+        expect.objectContaining({
+          dp_id: 6287,
+          confidence: "classified",
+          classification: "station_platform",
+          known: false,
+        }),
       ])
     );
     expect(catalogs.T9999.data_point_list).toEqual([
@@ -122,18 +127,50 @@ describe("MegaHTTPApi", () => {
       devices: [
         {
           device_model: "T9000",
-          params: [{ param_type: 6221 }, { param_type: 5006 }, { param_type: 6287 }],
+          params: [{ param_type: 6221 }, { param_type: 5006 }, { param_type: 6287 }, { param_type: 7777 }],
         },
       ],
     });
     expect(summary.parameters).toEqual(
       expect.objectContaining({
-        types: ["5006", "6221", "6287"],
+        types: ["5006", "6221", "6287", "7777"],
         knownTypes: ["6221"],
-        classifiedTypes: ["5006"],
-        unknownTypes: ["6287"],
+        classifiedTypes: ["5006", "6287"],
+        unknownTypes: ["7777"],
       })
     );
+  });
+
+  it("promotes the structured power-source schema without exposing its value", () => {
+    const catalog = buildObservedMegaProductCatalogs({
+      devices: [
+        {
+          device_model: "T8173",
+          params: [
+            { param_type: 6445, param_value: JSON.stringify({ power_source: 5 }) },
+            { param_type: 1067, param_value: "0" },
+          ],
+        },
+      ],
+    }).T8173.data_point_list;
+    expect(catalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dp_id: 6445,
+          code: "DEVICE_POWER_SOURCE_MODE",
+          confidence: "verified",
+          known: true,
+          value_profiles: ["json_object"],
+        }),
+        expect.objectContaining({
+          dp_id: 1067,
+          confidence: "classified",
+          classification: "camera_platform",
+          known: false,
+        }),
+      ])
+    );
+    expect(JSON.stringify(catalog)).not.toContain('power_source":5');
   });
 
   afterEach(() => jest.clearAllMocks());
