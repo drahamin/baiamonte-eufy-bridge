@@ -17,12 +17,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import COORDINATOR, DOMAIN, Schema
 from .coordinator import EufySecurityDataUpdateCoordinator
 from .entity import EufySecurityEntity
-from .eufy_security_api.camera import (
-    STREAM_SLEEP_SECONDS,
-    STREAM_TIMEOUT_SECONDS,
-    StreamProvider,
-    StreamStatus,
-)
+from .eufy_security_api.camera import StreamProvider, StreamStatus
+from .eufy_security_api.const import STREAM_SLEEP_SECONDS, STREAM_TIMEOUT_SECONDS
 from .eufy_security_api.metadata import Metadata
 from .eufy_security_api.util import wait_for_value_to_equal
 
