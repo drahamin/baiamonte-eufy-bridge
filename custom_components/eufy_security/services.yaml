@@ -34,7 +34,7 @@ set_log_level:
 
 search_events:
   name: Search HomeBase recordings
-  description: Search the authenticated eufy account index and compatible local HomeBase databases. Returns privacy-safe AI categories and media availability without exposing storage paths, keys, face IDs, or URLs.
+  description: Search the authenticated eufy account index and compatible local HomeBase databases. Returns full useful AI analysis plus protected thumbnail/video URLs without exposing storage paths, cipher material, account IDs, or source URLs.
   fields:
     source:
       name: Source

@@ -103,6 +103,9 @@ class MessageField(Enum):
     STORAGE_TYPE = "storageType"
     DATA = "data"
     RETURN_CODE = "returnCode"
+    PATH = "path"
+    CIPHER_ID = "cipherId"
+    FILE = "file"
 
 
 # https://bropat.github.io/eufy-security-ws/#/api_events?id=device-level-events
@@ -126,6 +129,11 @@ class EventNameToHandler(Enum):
     database_query_local = "database query local"
     database_query_by_date = "database query by date"
     database_count_by_date = "database count by date"
+    image_downloaded = "image downloaded"
+    download_started = "download started"
+    download_finished = "download finished"
+    download_video_data = "download video data"
+    download_audio_data = "download audio data"
 
 
 class ProductType(Enum):

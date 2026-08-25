@@ -513,6 +513,29 @@ class ApiClient:
             )
         )
 
+    async def download_image(self, serial_no: str, file: str) -> None:
+        """Request a HomeBase-managed evidence image."""
+        await self._send_message_get_response(
+            OutgoingMessage(
+                OutgoingMessageType.download_image,
+                serial_no=serial_no,
+                file=file,
+            )
+        )
+
+    async def start_download(
+        self, serial_no: str, path: str, cipher_id: int | None = None
+    ) -> None:
+        """Start an encrypted recording download for a camera."""
+        await self._send_message_get_response(
+            OutgoingMessage(
+                OutgoingMessageType.start_download,
+                serial_no=serial_no,
+                path=path,
+                cipher_id=cipher_id,
+            )
+        )
+
     async def database_query_local(
         self,
         serial_no: str,

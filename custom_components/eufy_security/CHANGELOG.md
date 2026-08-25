@@ -1,5 +1,18 @@
 # Changelog
 
+## 9.5.0 — 2026-08-25
+
+- Add an authenticated Baiamonte Eufy Security application with a responsive DVR-style live
+  camera grid and a 1–31 day HomeBase/account evidence timeline.
+- Expose complete useful AI analysis in service responses and the Evidence UI: categories,
+  recognized/stranger results, confidence and box/tracking fields when supplied, HomeBase crop
+  quality and timestamps. Continue excluding account IDs, cipher material and transport paths.
+- Add protected thumbnail and saved-recording endpoints. Recordings use Eufy's encrypted P2P
+  download command and are remuxed to seekable MP4 inside Home Assistant; media is never copied
+  to `/config/www` or made anonymously accessible.
+- Correct the companion's camel-case capability checks for S380 local database and thumbnail
+  commands, and bound concurrent recording/image downloads and in-memory media caches.
+
 ## 9.4.1 — 2026-08-25
 
 - Expose the HomeBase Professional backup battery, LTE signal/band/registration and modem

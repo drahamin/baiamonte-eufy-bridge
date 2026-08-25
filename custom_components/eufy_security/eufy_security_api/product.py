@@ -193,6 +193,8 @@ class Station(Product):
         )
         self._database_query_local_future = None
         self._database_query_by_date_future = None
+        self._image_download_future = None
+        self._image_download_file = None
 
     async def chime(self, ringtone: int) -> None:
         """Quick response message to camera"""
@@ -212,7 +214,7 @@ class Station(Product):
         storage_type: int = 0,
     ) -> list[dict]:
         """Return detailed local recording metadata from this HomeBase."""
-        if "database_query_local" not in self.commands:
+        if not ({"database_query_local", "stationDatabaseQueryLocal"} & set(self.commands)):
             raise ValueError("This HomeBase does not advertise local record queries")
         if self._database_query_local_future is not None:
             raise RuntimeError("A local HomeBase record query is already running")
@@ -241,7 +243,7 @@ class Station(Product):
         storage_type: int = 0,
     ) -> list[dict]:
         """Return the compact local recording date index from this HomeBase."""
-        if "database_query_by_date" not in self.commands:
+        if not ({"database_query_by_date", "stationDatabaseQueryByDate"} & set(self.commands)):
             raise ValueError("This HomeBase does not advertise date-index queries")
         if self._database_query_by_date_future is not None:
             raise RuntimeError("A HomeBase date-index query is already running")
@@ -261,9 +263,38 @@ class Station(Product):
             self._database_query_by_date_future = None
 
     async def _handle_database_query_local(self, event: Event):
-        if self._database_query_local_future is not None and not self._database_query_local_future.done():
+        if (
+            self._database_query_local_future is not None
+            and not self._database_query_local_future.done()
+        ):
             self._database_query_local_future.set_result(event.data.get("data", []))
 
     async def _handle_database_query_by_date(self, event: Event):
-        if self._database_query_by_date_future is not None and not self._database_query_by_date_future.done():
+        if (
+            self._database_query_by_date_future is not None
+            and not self._database_query_by_date_future.done()
+        ):
             self._database_query_by_date_future.set_result(event.data.get("data", []))
+
+    async def download_image(self, file: str) -> dict:
+        """Download one local evidence image from the HomeBase."""
+        if not ({"download_image", "stationDownloadImage"} & set(self.commands)):
+            raise ValueError("This HomeBase does not advertise image downloads")
+        if self._image_download_future is not None:
+            raise RuntimeError("A HomeBase image download is already running")
+        self._image_download_file = file
+        self._image_download_future = asyncio.get_running_loop().create_future()
+        try:
+            await self.api.download_image(self.serial_no, file)
+            return await asyncio.wait_for(self._image_download_future, timeout=45)
+        finally:
+            self._image_download_future = None
+            self._image_download_file = None
+
+    async def _handle_image_downloaded(self, event: Event):
+        if (
+            self._image_download_future is not None
+            and not self._image_download_future.done()
+            and event.data.get("file") == self._image_download_file
+        ):
+            self._image_download_future.set_result(event.data.get("image", {}))

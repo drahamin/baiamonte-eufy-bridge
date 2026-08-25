@@ -26,12 +26,17 @@ port 8097 by default.
 
 ## HomeBase evidence
 
-The `eufy_security.search_events` action returns a privacy-safe recording index for dashboard and
-automation use. `source: hybrid` combines the authenticated account index with a local HomeBase
-database query only when that station advertises the required command. The response contains
-times, friendly device/station names, AI categories, favorite/viewed status, and whether a
-thumbnail or video exists. It deliberately omits storage paths, cipher keys, transport URLs,
-recognition identities, face images and coordinates.
+The **Baiamonte Eufy Security** sidebar application combines a DVR-style live camera grid with an
+authenticated evidence timeline. The `eufy_security.search_events` action backs the same UI and
+is also available to automations. `source: hybrid` combines the authenticated account index with
+a local HomeBase database query only when that station advertises the required command.
+
+Responses include times, friendly device/station names, favorite/viewed state, protected media
+URLs, and the complete useful structured AI result supplied by Eufy (including recognition state,
+confidence/box/tracking data and HomeBase crop quality when present). Account identifiers,
+encryption material, raw source URLs and HomeBase storage paths never leave the integration.
+Historical thumbnails and clips are fetched on demand; clips are remuxed to browser-compatible
+MP4 and remain behind Home Assistant authentication.
 
 The S380 currently advertises the local database family. HomeBase Professional S1 uses the
 account index until its separate local record protocol is directly observed and validated.

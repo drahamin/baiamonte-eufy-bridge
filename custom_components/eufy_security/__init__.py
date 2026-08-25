@@ -17,6 +17,8 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import COORDINATOR, DOMAIN, NAME, PLATFORMS
 from .coordinator import EufySecurityDataUpdateCoordinator
+from .http import register_evidence_views
+from .panel import register_panel
 
 _LOGGER = logging.getLogger(__package__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -33,6 +35,8 @@ def _coordinator(hass: HomeAssistant) -> EufySecurityDataUpdateCoordinator:
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register bridge-level services."""
     hass.data.setdefault(DOMAIN, {})
+    register_evidence_views(hass, _coordinator)
+    await register_panel(hass)
 
     async def handle_send_message(call: ServiceCall) -> None:
         message: Any = call.data["message"]

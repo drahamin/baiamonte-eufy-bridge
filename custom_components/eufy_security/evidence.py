@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -29,7 +30,19 @@ _DETECTION_BITS = {
     2048: "package",
 }
 _STORAGE_NAMES = {0: "unspecified", 1: "local", 2: "cloud", 3: "local_and_cloud"}
-_LOCAL_STORAGE_NAMES = {0: "unspecified", 1: "emmc", 2: "disk", 3: "sd_card", 4: "sensor", 5: "alarm"}
+_LOCAL_STORAGE_NAMES = {
+    0: "unspecified",
+    1: "emmc",
+    2: "disk",
+    3: "sd_card",
+    4: "sensor",
+    5: "alarm",
+}
+_PRIVATE_FIELD = re.compile(
+    r"(^|_)(account|cipher|credential|did|device_sn|email|imei|imsi|license|"
+    r"owner_id|password|path|private|serial|station_sn|token|udid|url|user_id|key)($|_)",
+    re.IGNORECASE,
+)
 
 
 def _iso(value: Any) -> str | None:
@@ -80,6 +93,95 @@ def _truthy_ai_keys(value: Any) -> set[str]:
     return found
 
 
+def _safe_ai_value(value: Any, *, depth: int = 0) -> Any:
+    """Retain useful AI output while removing transport and account internals."""
+    if depth > 6:
+        return None
+    if isinstance(value, str):
+        if len(value) > 65_536:
+            return None
+        try:
+            parsed = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return value[:1024]
+        return _safe_ai_value(parsed, depth=depth + 1)
+    if isinstance(value, dict):
+        result = {}
+        for key, child in list(value.items())[:256]:
+            name = str(key)[:128]
+            if _PRIVATE_FIELD.search(name):
+                continue
+            cleaned = _safe_ai_value(child, depth=depth + 1)
+            if cleaned is not None:
+                result[name] = cleaned
+        return result
+    if isinstance(value, list):
+        return [
+            cleaned
+            for child in value[:128]
+            if (cleaned := _safe_ai_value(child, depth=depth + 1)) is not None
+        ]
+    if isinstance(value, (bool, int, float)) or value is None:
+        return value
+    return str(value)[:1024]
+
+
+def cloud_ai_details(record: dict[str, Any]) -> dict[str, Any]:
+    """Return the complete useful cloud AI result, never its retrieval secrets."""
+    faces = record.get("ai_faces") if isinstance(record.get("ai_faces"), list) else []
+    return {
+        "categories": sorted(
+            _truthy_ai_keys(record.get("extra"))
+            | ({"person"} if record.get("has_human") else set())
+            | ({"face"} if faces else set())
+        ),
+        "has_human": bool(record.get("has_human")),
+        "faces": [
+            {
+                "position": index + 1,
+                "recognition": "stranger" if face.get("is_stranger") else "recognized",
+                "has_image": bool(face.get("face_url")),
+            }
+            for index, face in enumerate(faces[:64])
+            if isinstance(face, dict)
+        ],
+        "analysis": _safe_ai_value(record.get("extra")) or {},
+    }
+
+
+def local_ai_details(record: dict[str, Any]) -> dict[str, Any]:
+    """Return HomeBase crop/detection output without paths or numeric identities."""
+    pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
+    crops = []
+    categories: set[str] = set()
+    for picture in pictures[:128]:
+        if not isinstance(picture, dict):
+            continue
+        detection = int(picture.get("detection_type") or 0)
+        detected = sorted(
+            family for bit, family in _DETECTION_BITS.items() if detection & bit
+        )
+        categories.update(detected)
+        crops.append(
+            {
+                "categories": detected,
+                "recognized": bool(picture.get("person_recog_flag")),
+                "quality": picture.get("crop_pic_quality"),
+                "marked": bool(picture.get("pic_marking_flag")),
+                "event_time": _iso(picture.get("event_time")),
+                "has_image": bool(picture.get("crop_path")),
+            }
+        )
+    history = record.get("history") if isinstance(record.get("history"), dict) else record
+    return {
+        "categories": sorted(categories),
+        "trigger_type": history.get("trigger_type"),
+        "vision": history.get("vision"),
+        "self_learning": history.get("self_learning"),
+        "crops": crops,
+    }
+
+
 def normalize_cloud_event(record: dict[str, Any]) -> dict[str, Any]:
     """Normalize the cloud account index without exposing transport secrets."""
     faces = record.get("ai_faces") if isinstance(record.get("ai_faces"), list) else []
@@ -109,7 +211,11 @@ def normalize_cloud_event(record: dict[str, Any]) -> dict[str, Any]:
         "viewed": bool(record.get("viewed")),
         "favorite": bool(record.get("is_favorite")),
         "has_thumbnail": bool(record.get("thumb_path") or record.get("thumb_data")),
-        "has_video": bool(record.get("storage_path") or record.get("hevc_storage_path") or record.get("cloud_path")),
+        "has_video": bool(
+            record.get("storage_path")
+            or record.get("hevc_storage_path")
+            or record.get("cloud_path")
+        ),
         "ai_categories": sorted(categories),
         "recognized_faces": sum(1 for face in faces if not face.get("is_stranger")),
         "stranger_faces": sum(1 for face in faces if face.get("is_stranger")),

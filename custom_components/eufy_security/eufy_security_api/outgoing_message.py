@@ -38,6 +38,9 @@ class OutgoingMessageToParameter(Enum):
     eventType = "event_type"
     detectionType = "detection_type"
     storageType = "storage_type"
+    path = "path"
+    cipherId = "cipher_id"
+    file = "file"
 
 
 class OutgoingMessageType(Enum):
@@ -176,6 +179,12 @@ class OutgoingMessageType(Enum):
         MessageField.DUMMY: auto(),
         MessageField.DOMAIN: EventSourceType.device,
     }
+    start_download = {
+        MessageField.DUMMY: auto(),
+        MessageField.DOMAIN: EventSourceType.device,
+        MessageField.PATH: None,
+        MessageField.CIPHER_ID: None,
+    }
     quick_response = {
         MessageField.DUMMY: auto(),
         MessageField.DOMAIN: EventSourceType.device,
@@ -210,6 +219,11 @@ class OutgoingMessageType(Enum):
     get_storage_info = {
         MessageField.DUMMY: auto(),
         MessageField.DOMAIN: EventSourceType.station,
+    }
+    download_image = {
+        MessageField.DUMMY: auto(),
+        MessageField.DOMAIN: EventSourceType.station,
+        MessageField.FILE: None,
     }
     database_query_local = {
         MessageField.DUMMY: auto(),

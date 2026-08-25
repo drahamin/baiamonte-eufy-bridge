@@ -81,6 +81,10 @@ class Camera(Device):
         self.rtsp_started_event = asyncio.Event()
 
         self.stream_debug = None
+        self._download_future = None
+        self._download_video = bytearray()
+        self._download_audio = bytearray()
+        self._download_metadata = {}
 
     @property
     def is_streaming(self) -> bool:
@@ -115,6 +119,56 @@ class Camera(Device):
     async def _handle_livestream_audio_data_received(self, event: Event):
         pass
         # self.audio_queue.append(bytearray(event.data["buffer"]["data"]))
+
+    async def download_recording(self, path: str, cipher_id: int | None) -> dict:
+        """Download one HomeBase recording into bounded memory."""
+        if "start_download" not in self.commands:
+            raise ValueError("This camera does not advertise recording downloads")
+        if self._download_future is not None:
+            raise RuntimeError("A recording download is already running for this camera")
+        self._download_future = asyncio.get_running_loop().create_future()
+        self._download_video = bytearray()
+        self._download_audio = bytearray()
+        self._download_metadata = {}
+        try:
+            await self.api.start_download(self.serial_no, path, cipher_id)
+            return await asyncio.wait_for(self._download_future, timeout=180)
+        finally:
+            self._download_future = None
+            self._download_video = bytearray()
+            self._download_audio = bytearray()
+            self._download_metadata = {}
+
+    async def _handle_download_started(self, event: Event):
+        _LOGGER.debug("Recording download started for %s", self.serial_no)
+
+    async def _handle_download_video_data(self, event: Event):
+        if self._download_future is None or self._download_future.done():
+            return
+        chunk = event.data.get("buffer", {}).get("data", [])
+        if len(self._download_video) + len(chunk) > 250 * 1024 * 1024:
+            self._download_future.set_exception(ValueError("Recording exceeds 250 MB limit"))
+            return
+        self._download_video.extend(chunk)
+        self._download_metadata.update(event.data.get("metadata", {}))
+
+    async def _handle_download_audio_data(self, event: Event):
+        if self._download_future is None or self._download_future.done():
+            return
+        chunk = event.data.get("buffer", {}).get("data", [])
+        if len(self._download_audio) + len(chunk) <= 32 * 1024 * 1024:
+            self._download_audio.extend(chunk)
+        self._download_metadata.update(event.data.get("metadata", {}))
+
+    async def _handle_download_finished(self, event: Event):
+        if self._download_future is not None and not self._download_future.done():
+            self._download_future.set_result(
+                {
+                    "video": bytes(self._download_video),
+                    "audio": bytes(self._download_audio),
+                    "metadata": dict(self._download_metadata),
+                }
+            )
 
     async def _initiate_start_stream(self, stream_type) -> bool:
         self.set_stream_provider(stream_type)

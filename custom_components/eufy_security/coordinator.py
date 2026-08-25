@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
+import os
+import shutil
+import tempfile
+from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 
 import aiohttp
@@ -23,7 +28,13 @@ from .eufy_security_api.exceptions import (
     WebSocketConnectionException,
 )
 from .model import Config
-from .evidence import event_merge_key, normalize_cloud_event, normalize_local_event
+from .evidence import (
+    cloud_ai_details,
+    event_merge_key,
+    local_ai_details,
+    normalize_cloud_event,
+    normalize_local_event,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -46,6 +57,8 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self._api = ApiClient(self.config, self._session, self._on_error)
         self._reload_pending = False
         self.last_bridge_error: str | None = None
+        self._evidence_records: dict[str, dict] = {}
+        self._evidence_video_cache: dict[str, bytes] = {}
 
     async def initialize(self):
         """Initialize the integration"""
@@ -122,7 +135,12 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 },
                 max_results,
             )
-            events.extend(normalize_cloud_event(record) for record in raw)
+            for record in raw:
+                event = normalize_cloud_event(record)
+                event["ai"] = cloud_ai_details(record)
+                self._add_ai_image_urls(event)
+                self._remember_evidence(event["event_id"], "cloud", record)
+                events.append(event)
 
         if source in {"hybrid", "local"}:
             for station in self.stations.values():
@@ -147,7 +165,15 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         start.strftime("%Y%m%d"),
                         end.strftime("%Y%m%d"),
                     )
-                    events.extend(normalize_local_event(record) for record in raw)
+                    for record in raw:
+                        event = normalize_local_event(record)
+                        device = self.devices.get(record.get("device_sn"))
+                        event["device_name"] = device.name if device else "Camera"
+                        event["station_name"] = station.name
+                        event["ai"] = local_ai_details(record)
+                        self._add_ai_image_urls(event)
+                        self._remember_evidence(event["event_id"], "local", record)
+                        events.append(event)
                 except (RuntimeError, ValueError, asyncio.TimeoutError) as exc:
                     warnings.append(f"{station.model}: {type(exc).__name__}")
 
@@ -163,11 +189,27 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 )
                 current["has_thumbnail"] |= event.get("has_thumbnail", False)
                 current["has_video"] |= event.get("has_video", False)
+                current_ai = current.setdefault("ai", {})
+                incoming_ai = event.get("ai", {})
+                current_ai["categories"] = sorted(
+                    set(current_ai.get("categories", []))
+                    | set(incoming_ai.get("categories", []))
+                )
+                if incoming_ai.get("crops"):
+                    current_ai["crops"] = incoming_ai["crops"]
+                if incoming_ai.get("faces"):
+                    current_ai["faces"] = incoming_ai["faces"]
             else:
                 merged[key] = event
         result = sorted(
             merged.values(), key=lambda event: event.get("start") or "", reverse=True
         )[:max_results]
+        for event in result:
+            event_id = event["event_id"]
+            if event.get("has_thumbnail"):
+                event["thumbnail_url"] = f"/api/baiamonte_eufy/evidence/{event_id}/thumbnail"
+            if event.get("has_video"):
+                event["video_url"] = f"/api/baiamonte_eufy/evidence/{event_id}/video"
         return {
             "source": source,
             "window_days": days,
@@ -176,6 +218,200 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             "warnings": warnings,
             "events": result,
         }
+
+    def _remember_evidence(self, event_id: str, source: str, record: dict) -> None:
+        """Keep bounded raw lookup material in memory for protected media requests."""
+        self._evidence_records[event_id] = {"source": source, "record": record}
+        while len(self._evidence_records) > 500:
+            self._evidence_records.pop(next(iter(self._evidence_records)))
+
+    @staticmethod
+    def _add_ai_image_urls(event: dict) -> None:
+        """Add opaque protected image routes to AI face/crop descriptions."""
+        details = event.get("ai", {})
+        items = details.get("faces") or details.get("crops") or []
+        for index, item in enumerate(items):
+            if item.get("has_image"):
+                item["image_url"] = (
+                    f"/api/baiamonte_eufy/evidence/{event['event_id']}/ai/{index}"
+                )
+
+    def _evidence(self, event_id: str) -> tuple[str, dict]:
+        cached = self._evidence_records.get(event_id)
+        if cached is None:
+            raise KeyError(event_id)
+        return cached["source"], cached["record"]
+
+    @staticmethod
+    def _buffer_bytes(value) -> bytes:
+        """Decode base64 text or a Node Buffer JSON object."""
+        if isinstance(value, dict):
+            if isinstance(value.get("data"), dict):
+                value = value["data"]
+            if isinstance(value.get("data"), list):
+                return bytes(value["data"])
+        if isinstance(value, str):
+            try:
+                return base64.b64decode(value, validate=True)
+            except (ValueError, TypeError):
+                return b""
+        return b""
+
+    async def evidence_thumbnail(self, event_id: str) -> tuple[bytes, str]:
+        """Retrieve an event thumbnail through the authenticated bridge session."""
+        source, record = self._evidence(event_id)
+        if source == "cloud":
+            inline = self._buffer_bytes(record.get("thumb_data"))
+            if inline.startswith(b"\xff\xd8\xff"):
+                return inline, "image/jpeg"
+            if inline.startswith(b"\x89PNG\r\n\x1a\n"):
+                return inline, "image/png"
+            station_serial = record.get("station_sn")
+            file = record.get("thumb_path")
+        else:
+            history = record.get("history") if isinstance(record.get("history"), dict) else record
+            station_serial = record.get("station_sn") or history.get("station_sn")
+            file = history.get("thumb_path")
+        station = self.stations.get(station_serial)
+        if station is None or not file:
+            raise ValueError("This event has no retrievable HomeBase thumbnail")
+        picture = await station.download_image(file)
+        data = self._buffer_bytes(picture.get("data"))
+        if not data:
+            raise ValueError("HomeBase returned an empty thumbnail")
+        image_type = picture.get("type") if isinstance(picture.get("type"), dict) else {}
+        return data, image_type.get("mime") or "application/octet-stream"
+
+    async def evidence_ai_image(self, event_id: str, index: int) -> tuple[bytes, str]:
+        """Retrieve a face/crop image without disclosing its cloud or disk location."""
+        source, record = self._evidence(event_id)
+        if source == "local":
+            pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
+            if index < 0 or index >= len(pictures):
+                raise ValueError("AI crop does not exist")
+            station_serial = record.get("station_sn")
+            file = pictures[index].get("crop_path")
+            station = self.stations.get(station_serial)
+            if station is None or not file:
+                raise ValueError("AI crop is not retrievable from this HomeBase")
+            picture = await station.download_image(file)
+            data = self._buffer_bytes(picture.get("data"))
+            image_type = picture.get("type") if isinstance(picture.get("type"), dict) else {}
+            if not data:
+                raise ValueError("HomeBase returned an empty AI crop")
+            return data, image_type.get("mime") or "application/octet-stream"
+
+        faces = record.get("ai_faces") if isinstance(record.get("ai_faces"), list) else []
+        if index < 0 or index >= len(faces):
+            raise ValueError("AI face does not exist")
+        source_url = faces[index].get("face_url")
+        parsed = urlparse(source_url or "")
+        hostname = (parsed.hostname or "").lower()
+        trusted_suffixes = (".eufylife.com", ".eufy.com", ".anker.com", ".ankercs.com")
+        if parsed.scheme != "https" or not any(
+            hostname == suffix[1:] or hostname.endswith(suffix)
+            for suffix in trusted_suffixes
+        ):
+            raise ValueError("Eufy did not provide a trusted face-image host")
+        async with self._session.get(
+            source_url,
+            allow_redirects=False,
+            timeout=aiohttp.ClientTimeout(total=20),
+        ) as response:
+            response.raise_for_status()
+            if not response.content_type.startswith("image/"):
+                raise ValueError("Eufy face endpoint did not return an image")
+            if response.content_length and response.content_length > 10 * 1024 * 1024:
+                raise ValueError("AI face image exceeds 10 MB limit")
+            data = await response.read()
+            if len(data) > 10 * 1024 * 1024:
+                raise ValueError("AI face image exceeds 10 MB limit")
+            return data, response.content_type or "application/octet-stream"
+
+    async def evidence_video(self, event_id: str) -> bytes:
+        """Download and remux an encrypted HomeBase recording for browser playback."""
+        if event_id in self._evidence_video_cache:
+            return self._evidence_video_cache[event_id]
+        source, record = self._evidence(event_id)
+        if source == "local":
+            wrapper = record
+            history = record.get("history") if isinstance(record.get("history"), dict) else record
+            device_serial = wrapper.get("device_sn") or history.get("device_sn")
+            path = history.get("storage_path")
+            cipher_id = history.get("cipher_id")
+        else:
+            device_serial = record.get("device_sn")
+            path = record.get("hevc_storage_path") or record.get("storage_path")
+            cipher_id = record.get("cipher_id")
+        camera = self.devices.get(device_serial)
+        if camera is None or not path or not hasattr(camera, "download_recording"):
+            raise ValueError("This event has no downloadable HomeBase recording")
+        downloaded = await camera.download_recording(path, cipher_id)
+        video = downloaded.get("video", b"")
+        if not video:
+            raise ValueError("HomeBase returned an empty recording")
+        mp4 = await self._remux_recording(
+            video, downloaded.get("audio", b""), downloaded.get("metadata", {})
+        )
+        self._evidence_video_cache[event_id] = mp4
+        while len(self._evidence_video_cache) > 4:
+            self._evidence_video_cache.pop(next(iter(self._evidence_video_cache)))
+        return mp4
+
+    async def _remux_recording(self, video: bytes, audio: bytes, metadata: dict) -> bytes:
+        """Put the bridge's elementary streams into a browser-compatible MP4 container."""
+        ffmpeg = await asyncio.to_thread(shutil.which, "ffmpeg")
+        if ffmpeg is None:
+            raise RuntimeError("Home Assistant ffmpeg is unavailable")
+        codec = str(metadata.get("videoCodec") or "H264").upper()
+        video_format = "hevc" if codec in {"H265", "HEVC"} else "h264"
+        fps = str(max(1, min(int(metadata.get("videoFPS") or 15), 120)))
+        audio_codec = str(metadata.get("audioCodec") or "").upper()
+        directory = await asyncio.to_thread(
+            tempfile.mkdtemp, prefix="baiamonte-eufy-", dir=self.hass.config.path(".storage")
+        )
+        video_file = os.path.join(directory, f"video.{video_format}")
+        audio_file = os.path.join(directory, "audio.aac")
+        output_file = os.path.join(directory, "recording.mp4")
+        try:
+            await asyncio.to_thread(self._write_bytes, video_file, video)
+            command = [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                video_format,
+                "-r",
+                fps,
+                "-i",
+                video_file,
+            ]
+            if audio and audio_codec == "AAC":
+                await asyncio.to_thread(self._write_bytes, audio_file, audio)
+                command.extend(["-f", "aac", "-i", audio_file, "-c:a", "copy"])
+            command.extend(["-c:v", "copy", "-movflags", "+faststart", output_file])
+            process = await asyncio.create_subprocess_exec(
+                *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await process.communicate()
+            if process.returncode != 0:
+                detail = stderr.decode(errors="replace")[-300:]
+                raise RuntimeError(f"ffmpeg could not remux this recording: {detail}")
+            return await asyncio.to_thread(self._read_bytes, output_file)
+        finally:
+            await asyncio.to_thread(shutil.rmtree, directory, True)
+
+    @staticmethod
+    def _write_bytes(path: str, value: bytes) -> None:
+        with open(path, "wb") as stream:
+            stream.write(value)
+
+    @staticmethod
+    def _read_bytes(path: str) -> bytes:
+        with open(path, "rb") as stream:
+            return stream.read()
 
     async def refresh_homebase_storage(self, station_serial: str = "") -> dict:
         """Request fresh read-only storage telemetry from compatible HomeBases."""
