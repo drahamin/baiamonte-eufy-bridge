@@ -60,13 +60,15 @@ Trigger motion or ring a doorbell and verify that the matching
 | Home Assistant custom integration | `fuatakgun/eufy_security` 8.2.4 |
 | WebSocket schema | 21 |
 | WebSocket server | `eufy-security-ws` 3.1.0 |
-| Client build | `eufy-security-client` 4.1.1-mega.9 (upstream 4.1.1) |
+| Client build | `eufy-security-client` 4.1.1-mega.10 (upstream 4.1.1) |
 | Home Assistant architectures | amd64, aarch64 |
 | Runtime | Node.js 24 on HA base 3.23 |
 
 See [architecture and patch notes](ARCHITECTURE.md), the add-on's
 [configuration guide](eufy-mega-ws/DOCS.md), and the provider-by-provider
-[migration contract](MIGRATION.md).
+[migration contract](MIGRATION.md). A reversible recovery for the separate Home Assistant
+integration's 8.2.4 WebSocket initialization bug is documented in
+[home-assistant-patches](home-assistant-patches/README.md).
 
 ## Upstream and license
 

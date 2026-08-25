@@ -1,0 +1,59 @@
+--- a/custom_components/eufy_security/eufy_security_api/web_socket_client.py
++++ b/custom_components/eufy_security/eufy_security_api/web_socket_client.py
+@@ -1,12 +1,14 @@
+ import asyncio
+ from collections.abc import Callable, Coroutine
+ import logging
+ from typing import Any, Text
+-import traceback
+ 
+ import aiohttp
+ 
+-from .exceptions import WebSocketConnectionException
++from .exceptions import (
++    DeviceNotInitializedYetException,
++    WebSocketConnectionException,
++)
+ 
+ _LOGGER: logging.Logger = logging.getLogger(__package__)
+ 
+@@ -62,13 +64,19 @@
+     async def _process_messages(self):
+         async for msg in self.socket:
++            if msg.type != aiohttp.WSMsgType.TEXT:
++                raise WebSocketConnectionException(
++                    f"WebSocket received {msg.type.name} while waiting for JSON"
++                )
+             await self._on_message(msg)
+ 
+     async def _on_message(self, message):
+         try:
+             if self.message_callback is not None:
+                 await self.message_callback(message.json())
+-        except:
+-            traceback.print_exc()
++        except DeviceNotInitializedYetException:
++            _LOGGER.debug("Ignored device event received before inventory initialization")
++        except Exception as exc:
++            _LOGGER.error("Unable to process WebSocket message: %s", type(exc).__name__)
+ 
+     async def _on_error(self, error: Text = "Unspecified") -> None:
+         if self.error_callback is not None:
+--- a/custom_components/eufy_security/eufy_security_api/api_client.py
++++ b/custom_components/eufy_security/eufy_security_api/api_client.py
+@@ -342,9 +342,13 @@
+         self._result_futures[message.id] = future
+         await self.send_message(message.content)
+         try:
+-            return await future
++            return await asyncio.wait_for(future, timeout=30)
++        except asyncio.TimeoutError as exc:
++            raise WebSocketConnectionException(
++                "Timed out waiting for the eufy bridge response"
++            ) from exc
+         finally:
+-            self._result_futures.pop(message.id)
++            self._result_futures.pop(message.id, None)
+ 
+     async def send_message(self, message: dict) -> None:
+         """send message to websocket api"""

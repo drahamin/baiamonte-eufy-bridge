@@ -3,18 +3,20 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { WebSocket } = require("/usr/src/app/node_modules/eufy-security-ws/node_modules/ws");
+const { WebSocket } = require(process.env.BAIAMONTE_WS_MODULE || "/usr/src/app/node_modules/eufy-security-ws/node_modules/ws");
 
 const dashboardPort = Number(process.env.BAIAMONTE_DASHBOARD_PORT || 8099);
 const bridgePort = Number(process.env.BAIAMONTE_BRIDGE_PORT || 3000);
+const bridgeHost = process.env.BAIAMONTE_BRIDGE_HOST || "127.0.0.1";
 const html = fs.readFileSync(path.join(__dirname, "index.html"));
-const aiPattern = /(ai|person|human|face|familiar|vehicle|pet|animal|package|cry|sound|motion|detection|recognition)/i;
+const aiPattern = /(^ai[A-Z_]|person|human|face|familiar|vehicle|pet|animal|dog|cat|package|cry|sound|motion|detection|recognition|loiter|leaving|radar)/i;
+const ptzPropertyPattern = /(pan|tilt|zoom|track|privacy|preset|calibrat|patrol|cruise|rotation|angle)/i;
 let cache;
 let cacheTime = 0;
 
 function bridgeSession(schemaVersion, onState) {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(`ws://127.0.0.1:${bridgePort}`, { handshakeTimeout: 8000 });
+    const socket = new WebSocket(`ws://${bridgeHost}:${bridgePort}`, { handshakeTimeout: 8000 });
     const pending = new Map();
     let sequence = 0;
     const timer = setTimeout(() => { socket.terminate(); reject(new Error("Bridge query timed out")); }, 45000);
@@ -91,10 +93,31 @@ function megaStatus() {
 }
 
 async function buildStatus() {
-  const inventory = await bridgeSession(12, async (state) => ({
-    stations: (state.stations || []).map(({ serialNumber, model, type }) => ({ serialNumber, model, type })),
-    devices: (state.devices || []).map(({ serialNumber, model, type }) => ({ serialNumber, model, type })),
-  }));
+  const inventory = await bridgeSession(21, async (state, send) => {
+    const stations = [];
+    for (const station of state.stations || []) {
+      const serialNumber = typeof station === "string" ? station : station.serialNumber;
+      if (typeof station === "string") {
+        const result = await send("station.get_properties", { serialNumber });
+        const properties = result.properties || {};
+        stations.push({ serialNumber, model: properties.model, type: properties.type });
+      } else {
+        stations.push({ serialNumber, model: station.model, type: station.type });
+      }
+    }
+    const devices = [];
+    for (const device of state.devices || []) {
+      const serialNumber = typeof device === "string" ? device : device.serialNumber;
+      if (typeof device === "string") {
+        const result = await send("device.get_properties", { serialNumber });
+        const properties = result.properties || {};
+        devices.push({ serialNumber, model: properties.model, type: properties.type });
+      } else {
+        devices.push({ serialNumber, model: device.model, type: device.type });
+      }
+    }
+    return { stations, devices };
+  });
 
   const capabilities = await bridgeSession(21, async (_state, send) => {
     const deviceRows = [];
@@ -106,15 +129,27 @@ async function buildStatus() {
       ]);
       const properties = propertiesResult.properties || {};
       const metadata = metadataResult.properties || {};
+      const commands = commandsResult.commands || [];
       const aiNames = Object.keys(metadata).filter((name) => aiPattern.test(name));
+      const writableAiNames = aiNames.filter((name) => metadata[name] && metadata[name].writeable);
+      const ptzPropertyNames = Object.keys(metadata).filter((name) => ptzPropertyPattern.test(name));
+      const writablePtzPropertyNames = ptzPropertyNames.filter((name) => metadata[name] && metadata[name].writeable);
       deviceRows.push({
         model: device.model,
         type: device.type,
         snapshot: properties.picture !== undefined && properties.picture !== null && properties.picture !== "",
         aiProperties: aiNames.length,
         aiLiveValues: aiNames.filter((name) => properties[name] !== undefined && properties[name] !== null).length,
+        writableAiProperties: writableAiNames,
+        ptzProperties: writablePtzPropertyNames,
         writable: Object.values(metadata).filter((item) => item && item.writeable).length,
-        streaming: (commandsResult.commands || []).some((name) => /livestream/i.test(name)),
+        streaming: commands.some((name) => /livestream/i.test(name)),
+        panTilt: commands.includes("pan_and_tilt"),
+        presets: ["preset_position", "save_preset_position", "delete_preset_position"].every((name) => commands.includes(name)),
+        calibration: commands.includes("calibrate"),
+        privacyPosition: commands.includes("set_privacy_angle") || commands.includes("set_default_angle"),
+        zoom: commands.some((name) => /zoom/i.test(name)) || writablePtzPropertyNames.some((name) => /zoom/i.test(name)),
+        tracking: writablePtzPropertyNames.some((name) => /track|cruise/i.test(name)),
       });
     }
     const stationRows = [];
@@ -146,13 +181,29 @@ async function buildStatus() {
       snapshots: 0,
       streaming: 0,
       aiProperties: 0,
+      writableAiProperties: [],
       writable: 0,
+      panTilt: false,
+      presets: false,
+      calibration: false,
+      privacyPosition: false,
+      zoom: false,
+      tracking: false,
+      ptzProperties: [],
     };
     row.count++;
     if (item.snapshot) row.snapshots++;
     if (item.streaming) row.streaming++;
     row.aiProperties = Math.max(row.aiProperties, item.aiProperties);
+    row.writableAiProperties = [...new Set([...row.writableAiProperties, ...item.writableAiProperties])].sort();
     row.writable = Math.max(row.writable, item.writable);
+    row.panTilt ||= item.panTilt;
+    row.presets ||= item.presets;
+    row.calibration ||= item.calibration;
+    row.privacyPosition ||= item.privacyPosition;
+    row.zoom ||= item.zoom;
+    row.tracking ||= item.tracking;
+    row.ptzProperties = [...new Set([...row.ptzProperties, ...item.ptzProperties])].sort();
     modelCapabilities.set(key, row);
   }
 
@@ -166,6 +217,9 @@ async function buildStatus() {
       cameras: cameras.length,
       camerasWithSnapshots: cameras.filter((item) => item.snapshot).length,
       camerasWithAi: cameras.filter((item) => item.aiProperties > 0).length,
+      camerasWithWritableAi: cameras.filter((item) => item.writableAiProperties.length > 0).length,
+      panTiltCameras: cameras.filter((item) => item.panTilt).length,
+      presetCameras: cameras.filter((item) => item.presets).length,
       streamCapableCameras: cameras.filter((item) => item.streaming).length,
       writableDeviceProperties: capabilities.deviceRows.reduce((total, item) => total + item.writable, 0),
       writableStationProperties: capabilities.stationRows.reduce((total, item) => total + item.writable, 0),

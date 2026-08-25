@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.3 — 2026-08-25
+
+- Resolve schema-21 device and station identifiers into live product records before building the
+  dashboard, restoring accurate per-model totals and capabilities.
+- Audit every connected camera's advertised commands and writable metadata, and show verified PTZ,
+  presets, calibration, tracking, privacy-position, zoom, and writable AI controls in the UI.
+- Correct dual-role products such as `T8423` to display as camera and station endpoints.
+- Document the reversible Home Assistant Eufy Security 8.2.4 WebSocket recovery patch used for the
+  Home Assistant 2026.8 initialization timeout.
+
 ## 1.2.2 — 2026-08-25
 
 - Publish redacted per-model known and unknown native data-point ID lists without exposing values,
