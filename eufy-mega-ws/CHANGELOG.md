@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 — 2026-08-25
+
+- Permit the Node runtime to read the ingress dashboard and write only the dedicated opt-in E10
+  research directory under `/share` in the AppArmor profile.
+
 ## 1.0.1 — 2026-08-25
 
 - Move the ingress dashboard to port 8097 to avoid a host-network collision found during the
