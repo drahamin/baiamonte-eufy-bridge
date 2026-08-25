@@ -2,7 +2,7 @@ name: Baiamonte eufy Bridge
 description: >-
   Baiamonte-branded Schema-21 bridge and dashboard for eufy devices, using Mega
   authentication and discovery with safe legacy fallback and native P2P control.
-version: "1.0.0"
+version: "1.0.1"
 slug: baiamonte_eufy_bridge
 url: https://github.com/drahamin/baiamonte-eufy-bridge
 init: false
@@ -12,7 +12,7 @@ arch:
 stage: experimental
 host_network: true
 ingress: true
-ingress_port: 8099
+ingress_port: 8097
 panel_icon: mdi:cctv
 panel_title: Baiamonte eufy
 panel_admin: true

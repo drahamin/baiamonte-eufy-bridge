@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1 — 2026-08-25
+
+- Move the ingress dashboard to port 8097 to avoid a host-network collision found during the
+  parallel Baiamonte/Miami rollout.
+
 ## 1.0.0 — 2026-08-25
 
 - Establish the dedicated **Baiamonte eufy Bridge** product identity, add-on slug, repository URL,

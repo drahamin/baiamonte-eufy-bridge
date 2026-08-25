@@ -113,7 +113,7 @@ if bashio::config.has_value 'username' && bashio::config.has_value 'password'; t
     # pure-JS PKCS#1 v1.5 path and the P2P RSA handshake keeps working.
     # See bropat/eufy-security-ws#564.
     export BAIAMONTE_BRIDGE_PORT="$BRIDGE_PORT"
-    export BAIAMONTE_DASHBOARD_PORT="8099"
+    export BAIAMONTE_DASHBOARD_PORT="8097"
     if [[ "${BAIAMONTE_SKIP_DASHBOARD:-false}" != "true" ]]; then
         /usr/bin/node /opt/baiamonte-eufy-dashboard/server.cjs &
     fi
