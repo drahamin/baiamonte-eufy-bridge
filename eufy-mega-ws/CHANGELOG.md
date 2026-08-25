@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.3 — 2026-08-25
+
+- Allow an explicitly configured one-shot control audit to run through Home Assistant app options
+  when shared-folder namespaces are isolated, and emit only its privacy-safe result summary.
+
 ## 1.5.2 — 2026-08-25
 
 - Retry a pending, explicit local control audit after bridge startup so a slow camera inventory

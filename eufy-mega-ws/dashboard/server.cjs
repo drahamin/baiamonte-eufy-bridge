@@ -14,6 +14,7 @@ const ptzPropertyPattern = /(pan|tilt|zoom|track|privacy|preset|calibrat|patrol|
 const controlAuditRequestPath = "/share/baiamonte-eufy-control-audit.json";
 const controlAuditResultPath = "/share/baiamonte-eufy-control-audit-result.json";
 let controlAuditRunning = false;
+const completedConfiguredAudits = new Set();
 let cache;
 let cacheTime = 0;
 
@@ -323,12 +324,24 @@ async function currentStatus() {
 }
 
 async function runRequestedControlAudit() {
-  if (!fs.existsSync(controlAuditRequestPath)) return;
   let request;
-  try {
-    request = JSON.parse(fs.readFileSync(controlAuditRequestPath, "utf8"));
-  } catch {
-    return;
+  let requestFromShare = false;
+  if (fs.existsSync(controlAuditRequestPath)) {
+    try {
+      request = JSON.parse(fs.readFileSync(controlAuditRequestPath, "utf8"));
+      requestFromShare = true;
+    } catch {
+      return;
+    }
+  } else {
+    try {
+      const options = JSON.parse(fs.readFileSync("/data/options.json", "utf8"));
+      const configuredTarget = typeof options.control_audit_target === "string" ? options.control_audit_target.trim() : "";
+      if (!configuredTarget || completedConfiguredAudits.has(configuredTarget)) return;
+      request = { targetName: configuredTarget, active: true };
+    } catch {
+      return;
+    }
   }
   const targetName = typeof request.targetName === "string" ? request.targetName.trim() : "";
   if (!targetName || request.active !== true) return;
@@ -437,7 +450,9 @@ async function runRequestedControlAudit() {
   });
 
   fs.writeFileSync(controlAuditResultPath, JSON.stringify({ generatedAt: new Date().toISOString(), ...result }, null, 2), { mode: 0o600 });
-  fs.unlinkSync(controlAuditRequestPath);
+  if (requestFromShare) fs.unlinkSync(controlAuditRequestPath);
+  else completedConfiguredAudits.add(targetName);
+  console.log(`BAIAMONTE_CONTROL_AUDIT_RESULT ${JSON.stringify(result)}`);
   console.log("Baiamonte eufy local control audit completed (identifiers and values omitted)");
 }
 
