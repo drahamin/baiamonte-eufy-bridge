@@ -31,6 +31,8 @@ import {
   MegaProductDataPointRequest,
   MegaDataPointDescriptor,
   MegaProductDataPointCatalog,
+  MegaObservedDataPointDescriptor,
+  MegaObservedProductCatalog,
   MegaDeviceRelationRequest,
   MegaDeviceParameter,
   MegaDeviceRelation,
@@ -57,6 +59,8 @@ export type {
   MegaProductDataPointRequest,
   MegaDataPointDescriptor,
   MegaProductDataPointCatalog,
+  MegaObservedDataPointDescriptor,
+  MegaObservedProductCatalog,
   MegaDeviceRelationRequest,
   MegaDeviceParameter,
   MegaDeviceRelation,
@@ -107,6 +111,56 @@ const knownMegaParameterTypes = new Set(
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
     .map(String)
 );
+
+const megaParameterName = (type: number): string | undefined => {
+  const paramName = ParamType[type];
+  if (typeof paramName === "string") return paramName;
+  const commandName = CommandType[type];
+  return typeof commandName === "string" ? commandName : undefined;
+};
+
+/**
+ * Build identifier/value-free, read-only catalogs from the native parameters actually reported by
+ * each product. This is the fallback for accounts where Eufy's catalog endpoint succeeds but
+ * returns an empty list. Unknown IDs remain explicit and can never be mistaken for writable DPs.
+ */
+export const buildObservedMegaProductCatalogs = (value: unknown): Record<string, MegaObservedProductCatalog> => {
+  const inventory = value as { devices?: Array<Record<string, unknown>> };
+  const byProduct = new Map<string, Set<number>>();
+  for (const device of Array.isArray(inventory?.devices) ? inventory.devices : []) {
+    const product = device.device_model ?? device.device_new_pn;
+    if (typeof product !== "string" || !product || product.length > 64) continue;
+    const types = byProduct.get(product) ?? new Set<number>();
+    for (const param of Array.isArray(device.params) ? (device.params as Array<Record<string, unknown>>) : []) {
+      const candidate = typeof param.param_type === "string" ? Number(param.param_type) : param.param_type;
+      if (typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate >= 0) types.add(candidate);
+    }
+    byProduct.set(product, types);
+  }
+
+  return Object.fromEntries(
+    Array.from(byProduct.entries()).map(([productCode, types]) => [
+      productCode,
+      {
+        productCode,
+        data_point_list: Array.from(types)
+          .sort((a, b) => a - b)
+          .map((dp_id) => {
+            const knownName = megaParameterName(dp_id);
+            return {
+              code: knownName ?? `param_${dp_id}`,
+              dp_id,
+              name: knownName ?? `Unknown parameter ${dp_id}`,
+              mode: "ro" as const,
+              data_type: "observed" as const,
+              source: "native_inventory" as const,
+              known: knownName !== undefined,
+            };
+          }),
+      },
+    ])
+  );
+};
 
 /** Build an identifier-free summary from one already-decrypted native inventory response. */
 export const summarizeMegaHouseInventory = (value: unknown): MegaHouseInventorySummary => {

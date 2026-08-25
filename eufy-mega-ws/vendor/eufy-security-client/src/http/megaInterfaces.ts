@@ -102,6 +102,22 @@ export interface MegaProductDataPointCatalog {
   data_point_list: MegaDataPointDescriptor[];
 }
 
+/** Read-only descriptor synthesized from a parameter ID observed in native house inventory. */
+export interface MegaObservedDataPointDescriptor {
+  code: string;
+  dp_id: number;
+  name: string;
+  mode: "ro";
+  data_type: "observed";
+  source: "native_inventory";
+  known: boolean;
+}
+
+export interface MegaObservedProductCatalog {
+  productCode: string;
+  data_point_list: MegaObservedDataPointDescriptor[];
+}
+
 /** Request used by both native device-relation inventory endpoints. */
 export interface MegaDeviceRelationRequest {
   attribute: number;

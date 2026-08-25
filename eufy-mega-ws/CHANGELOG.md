@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 — 2026-08-25
+
+- Replace empty server catalogs with per-product observed catalogs synthesized from native house
+  inventory; known IDs receive enum names and unknown IDs receive stable `param_<id>` labels.
+- Force every synthesized point read-only and retain the distinction between server catalogs and
+  observed schemas so inferred inventory can never authorize a command.
+- Report observed product/data-point totals and per-model known/unknown coverage in Mega status and
+  on the Baiamonte dashboard.
+
 ## 1.1.1 — 2026-08-25
 
 - Compare every native Mega inventory parameter ID with the existing legacy enum catalogs and show

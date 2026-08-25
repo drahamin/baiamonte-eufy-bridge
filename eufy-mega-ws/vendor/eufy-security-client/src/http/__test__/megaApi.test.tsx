@@ -1,4 +1,4 @@
-import { MegaHTTPApi, megaLoginHash, type MegaSession } from "../megaApi";
+import { buildObservedMegaProductCatalogs, MegaHTTPApi, megaLoginHash, type MegaSession } from "../megaApi";
 import { megaEncryptBody, sharedKeyToAesKey, type MegaIdentity } from "../megaCrypto";
 
 jest.mock("../../logging", () => ({
@@ -37,6 +37,27 @@ function fakeIdentity(): MegaIdentity {
 }
 
 describe("MegaHTTPApi", () => {
+  it("synthesizes read-only per-product catalogs without values or identifiers", () => {
+    const catalogs = buildObservedMegaProductCatalogs({
+      devices: [
+        {
+          device_model: "T87A0",
+          device_sn: "private-serial",
+          params: [
+            { param_type: 1011, param_value: "private-value" },
+            { param_type: 60001, param_value: "other-private-value" },
+          ],
+        },
+      ],
+    });
+    expect(catalogs.T87A0.data_point_list).toEqual([
+      expect.objectContaining({ dp_id: 1011, code: "CAMERA_PIR", mode: "ro", known: true }),
+      expect.objectContaining({ dp_id: 60001, code: "param_60001", mode: "ro", known: false }),
+    ]);
+    expect(JSON.stringify(catalogs)).not.toContain("private-serial");
+    expect(JSON.stringify(catalogs)).not.toContain("private-value");
+  });
+
   afterEach(() => jest.clearAllMocks());
 
   describe("clusterHost", () => {

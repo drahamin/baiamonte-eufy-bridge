@@ -71,7 +71,7 @@ describe("native Mega inventory augmentation", () => {
       devices: [
         { device_model: "T87A0", device_type: 119, device_sn: "display", category: "eufy_mega" },
         { device_model: "T87A0" },
-        { device_new_pn: "T8600" },
+        { device_new_pn: "T8600", params: [{ param_type: 60001, param_value: "private" }] },
         { device_model: "T9999" },
       ],
     };
@@ -95,6 +95,10 @@ describe("native Mega inventory augmentation", () => {
       empty: 1,
       failed: 1,
       dataPoints: 2,
+      synthesized: 1,
+      observedDataPoints: 1,
+      knownDataPoints: 0,
+      unknownDataPoints: 1,
     });
   });
 });

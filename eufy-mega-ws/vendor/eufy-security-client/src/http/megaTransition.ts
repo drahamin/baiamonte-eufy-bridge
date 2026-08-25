@@ -5,7 +5,12 @@ import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
 
 import { HTTPApi } from "./api";
-import { MegaHTTPApi, megaLoginHash, summarizeMegaHouseInventory } from "./megaApi";
+import {
+  MegaHTTPApi,
+  buildObservedMegaProductCatalogs,
+  megaLoginHash,
+  summarizeMegaHouseInventory,
+} from "./megaApi";
 import { rootMainLogger } from "../logging";
 import type { HTTPApiPersistentData, LoginOptions } from "./interfaces";
 import type { EufySecurityConfig, EufySecurityPersistentData } from "../interfaces";
@@ -63,6 +68,10 @@ export interface MegaProductCatalogSummary {
   empty: number;
   failed: number;
   dataPoints: number;
+  synthesized: number;
+  observedDataPoints: number;
+  knownDataPoints: number;
+  unknownDataPoints: number;
 }
 
 const safeString = (value: unknown, fallback = ""): string =>
@@ -428,7 +437,17 @@ export class MegaTransition {
     if (!this.megaLoggedIn) return Promise.resolve();
     if (this.productCatalogRefresh) return this.productCatalogRefresh;
     this.productCatalogRefresh = (async () => {
-      const summary: MegaProductCatalogSummary = { attempted: 0, available: 0, empty: 0, failed: 0, dataPoints: 0 };
+      const summary: MegaProductCatalogSummary = {
+        attempted: 0,
+        available: 0,
+        empty: 0,
+        failed: 0,
+        dataPoints: 0,
+        synthesized: 0,
+        observedDataPoints: 0,
+        knownDataPoints: 0,
+        unknownDataPoints: 0,
+      };
       const discovery: Record<string, unknown> = {
         legacyFallbackRequired: true,
         descriptors: { available: false, devices: 0 },
@@ -438,6 +457,24 @@ export class MegaTransition {
       try {
         const inventory = await this.loadNativeInventory();
         discovery.inventory = summarizeMegaHouseInventory(inventory);
+        const observedCatalogs = buildObservedMegaProductCatalogs(inventory);
+        const observedPoints = Object.values(observedCatalogs).flatMap((catalog) => catalog.data_point_list);
+        discovery.observedSchemas = {
+          products: Object.keys(observedCatalogs).length,
+          dataPoints: observedPoints.length,
+          known: observedPoints.filter((point) => point.known).length,
+          unknown: observedPoints.filter((point) => !point.known).length,
+          models: Object.fromEntries(
+            Object.entries(observedCatalogs).map(([model, catalog]) => [
+              model,
+              {
+                dataPoints: catalog.data_point_list.length,
+                known: catalog.data_point_list.filter((point) => point.known).length,
+                unknown: catalog.data_point_list.filter((point) => !point.known).length,
+              },
+            ])
+          ),
+        };
         let relationDevices: unknown[] = [];
         try {
           this.nativeDeviceRelations ??= await (await this.getMegaApi()).getDeviceRelationsDecrypted("", 7);
@@ -531,8 +568,17 @@ export class MegaTransition {
             this.productDataPointCatalogs.set(productCode, catalog);
             const points = Array.isArray(catalog) ? catalog : findMegaArray(catalog, "data_point_list");
             summary.dataPoints += points.length;
-            if (points.length === 0) summary.empty++;
-            else summary.available++;
+            if (points.length === 0) {
+              summary.empty++;
+              const observed = observedCatalogs[productCode];
+              if (observed && observed.data_point_list.length > 0) {
+                this.productDataPointCatalogs.set(productCode, observed);
+                summary.synthesized++;
+                summary.observedDataPoints += observed.data_point_list.length;
+                summary.knownDataPoints += observed.data_point_list.filter((point) => point.known).length;
+                summary.unknownDataPoints += observed.data_point_list.filter((point) => !point.known).length;
+              }
+            } else summary.available++;
           } catch {
             summary.failed++;
           }

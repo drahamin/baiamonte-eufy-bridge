@@ -61,3 +61,9 @@ unavailable. Native house inventory was not empty: the larger account exposed 30
 parameter IDs, 207 already present in the legacy command/parameter enums and 98 unmapped; the
 second exposed 217 IDs, 146 mapped and 71 unmapped. The dashboard calculates these sets on every
 scan so later server-side catalog rollouts are visible without recording parameter values.
+
+When a server catalog is empty, the bridge now synthesizes a per-product catalog from the native
+inventory: known numeric IDs receive their existing enum names, unknown IDs receive stable
+`param_<id>` names, and every synthesized point is forced to `ro`/`observed`. These catalogs make
+native state coverage usable immediately but cannot authorize a write. A real server descriptor or
+separately verified device protocol is still required before changing a point.
