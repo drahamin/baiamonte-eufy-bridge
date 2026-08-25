@@ -67,4 +67,4 @@ jq -e '
     and .enableEmbeddedPKCS1Support == true
 ' "$CONFIG_PATH" >/dev/null
 
-test "$(stat -f '%Lp' "$CONFIG_PATH" 2>/dev/null || stat -c '%a' "$CONFIG_PATH")" = "600"
+test "$(stat -c '%a' "$CONFIG_PATH" 2>/dev/null || stat -f '%Lp' "$CONFIG_PATH")" = "600"
