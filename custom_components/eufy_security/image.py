@@ -59,3 +59,11 @@ class EufySecurityImage(ImageEntity, EufySecurityEntity):
         if self.product.picture_base64 is not None:
             self._last_image = self.product.picture_bytes
         return self._last_image
+
+    @property
+    def extra_state_attributes(self):
+        """Advertise cached evidence without exposing its source URL or device ID."""
+        return {
+            **EufySecurityEntity.extra_state_attributes.fget(self),
+            "event_image_available": self.product.picture_base64 is not None,
+        }

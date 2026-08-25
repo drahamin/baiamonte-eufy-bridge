@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0 — 2026-08-25
+
+- Adds a privacy-safe stable device relationship key to camera, image, sensor, binary-sensor and control entities so downstream applications no longer depend on editable Home Assistant entity IDs.
+- Marks whether a persistent Eufy event image is actually present, allowing cached push evidence to return after an integration or Home Assistant restart even when the image timestamp state is initially unknown.
+- Removes the unused malformed device-tracker platform stub; the integration continues to expose only platforms with implemented entity semantics.
+
 ## 1.4.1 — 2026-08-25
 
 - Redact Firebase installation identifiers and credential fields from push registration logs.

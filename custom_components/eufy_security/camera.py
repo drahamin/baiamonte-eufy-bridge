@@ -186,7 +186,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         """
         commands = set(self.product.commands or [])
         return {
-            "baiamonte_eufy": True,
+            **super().extra_state_attributes,
             "model": self.product.model,
             "capabilities": {
                 "streaming": bool(

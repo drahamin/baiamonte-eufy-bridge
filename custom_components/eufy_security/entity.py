@@ -1,3 +1,4 @@
+import hashlib
 import logging
 
 from homeassistant.helpers.entity import EntityCategory
@@ -52,3 +53,22 @@ class EufySecurityEntity(CoordinatorEntity):
     @property
     def available(self) -> bool:
         return self.coordinator.available
+
+    @property
+    def baiamonte_device_key(self) -> str:
+        """Return a stable, non-reversible key for joining this device's entities.
+
+        Home Assistant entity IDs are user-editable, so downstream dashboards must
+        not infer relationships from an entity name.  The bridge serial remains
+        private; only a domain-scoped digest is exposed.
+        """
+        identity = f"{DOMAIN}:{self.product.product_type.value}:{self.product.serial_no}"
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "baiamonte_eufy": True,
+            "baiamonte_device_key": self.baiamonte_device_key,
+            "baiamonte_property": self.metadata.name,
+        }

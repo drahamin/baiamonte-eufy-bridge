@@ -1,5 +1,11 @@
 # Changelog
 
+## 9.3.0 — 2026-08-25
+
+- Adds a privacy-safe stable device key and property identifier to normal Eufy entities so trusted local dashboards can join related state without serial numbers or editable entity-name assumptions.
+- Publishes cached event-image availability independently of its timestamp state, restoring persistent evidence cleanly after restarts.
+- Removes the unused malformed device-tracker stub; no configured platform or entity is removed.
+
 ## 9.2.1 — 2026-08-25
 
 - Keep readable/writable catalog properties available as disabled-by-default diagnostic sensors
