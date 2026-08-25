@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.2 — 2026-08-25
+
+- Retry a pending, explicit local control audit after bridge startup so a slow camera inventory
+  cannot prevent the requested one-shot validation from running.
+
 ## 1.5.1 — 2026-08-25
 
 - Make duplicate livestream-stop requests idempotent so device-page cleanup no longer produces

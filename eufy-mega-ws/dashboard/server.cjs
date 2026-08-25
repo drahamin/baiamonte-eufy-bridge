@@ -13,6 +13,7 @@ const aiPattern = /(^ai[A-Z_]|person|human|face|familiar|vehicle|pet|animal|dog|
 const ptzPropertyPattern = /(pan|tilt|zoom|track|privacy|preset|calibrat|patrol|cruise|rotation|angle)/i;
 const controlAuditRequestPath = "/share/baiamonte-eufy-control-audit.json";
 const controlAuditResultPath = "/share/baiamonte-eufy-control-audit-result.json";
+let controlAuditRunning = false;
 let cache;
 let cacheTime = 0;
 
@@ -460,9 +461,16 @@ http.createServer(async (request, response) => {
   response.end(html);
 }).listen(dashboardPort, "0.0.0.0", () => {
   console.log(`Baiamonte eufy Bridge dashboard listening on ${dashboardPort}`);
-  setTimeout(() => {
+  const pollControlAudit = () => {
+    if (controlAuditRunning) return;
+    controlAuditRunning = true;
     runRequestedControlAudit().catch(() => {
       console.error("Baiamonte eufy local control audit failed (details omitted)");
+    }).finally(() => {
+      controlAuditRunning = false;
     });
-  }, 5000);
+  };
+  console.log("Baiamonte eufy local control audit watcher ready");
+  setTimeout(pollControlAudit, 5000);
+  setInterval(pollControlAudit, 15000).unref();
 });
