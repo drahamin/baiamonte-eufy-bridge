@@ -1,5 +1,10 @@
 # Changelog
 
+## 9.0.3 — 2026-08-25
+
+- Declare the integration as config-entry-only for current Home Assistant configuration-schema
+  validation.
+
 ## 9.0.2 — 2026-08-25
 
 - Treat normal WebSocket close frames as shutdown instead of transport failures.

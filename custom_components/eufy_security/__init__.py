@@ -11,6 +11,7 @@ from homeassistant.components.persistent_notification import async_create
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.typing import ConfigType
 
@@ -18,6 +19,7 @@ from .const import COORDINATOR, DOMAIN, NAME, PLATFORMS
 from .coordinator import EufySecurityDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__package__)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 def _coordinator(hass: HomeAssistant) -> EufySecurityDataUpdateCoordinator:
