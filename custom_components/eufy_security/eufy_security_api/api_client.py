@@ -504,6 +504,15 @@ class ApiClient:
 
     # station level commands
 
+    async def get_storage_info(self, serial_no: str) -> None:
+        """Request current HomeBase storage information."""
+        await self._send_message_get_response(
+            OutgoingMessage(
+                OutgoingMessageType.get_storage_info,
+                serial_no=serial_no,
+            )
+        )
+
     async def database_query_local(
         self,
         serial_no: str,

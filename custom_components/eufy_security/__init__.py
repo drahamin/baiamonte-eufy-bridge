@@ -56,6 +56,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def handle_search_events(call: ServiceCall) -> dict:
         return await _coordinator(hass).search_evidence(**call.data)
 
+    async def handle_refresh_storage(call: ServiceCall) -> dict:
+        return await _coordinator(hass).refresh_homebase_storage(
+            call.data.get("station_serial", "")
+        )
+
     hass.services.async_register(DOMAIN, "force_sync", handle_force_sync)
     hass.services.async_register(
         DOMAIN,
@@ -78,6 +83,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 vol.Optional("device_serial", default=""): cv.string,
             }
         ),
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "refresh_homebase_storage",
+        handle_refresh_storage,
+        schema=vol.Schema({vol.Optional("station_serial", default=""): cv.string}),
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

@@ -1,5 +1,14 @@
 # Changelog
 
+## 9.4.1 — 2026-08-25
+
+- Expose the HomeBase Professional backup battery, LTE signal/band/registration and modem
+  firmware as normal read-only diagnostics.
+- Add disabled-by-default, values-redacted structure sensors for SIM-slot and eMMC/HDD status,
+  plus a response-producing storage refresh action that never formats or mutates a disk.
+- Accept both the bridge's historical camel-case and normalized station command capability names,
+  and send the exact date format required by local S380 record queries.
+
 ## 9.4.0 — 2026-08-25
 
 - Add a response-producing `search_events` service for the authenticated recording index and

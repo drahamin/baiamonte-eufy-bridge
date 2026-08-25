@@ -9,6 +9,10 @@ const stationLteSignalPropertyName = "lteSignal" as PropertyName;
 const stationLteBandPropertyName = "lteBand" as PropertyName;
 const stationLteRegistrationStatePropertyName =
   "lteRegistrationState" as PropertyName;
+const stationCellularModemFirmwarePropertyName =
+  "cellularModemFirmware" as PropertyName;
+const stationSimSlot1StatusPropertyName = "simSlot1Status" as PropertyName;
+const stationSimSlot2StatusPropertyName = "simSlot2Status" as PropertyName;
 
 export interface StationPropertiesSchema0 {
   name: string;
@@ -62,6 +66,9 @@ type StationPropertiesSchema2 = Modify<
     lteSignal: string;
     lteBand: string;
     lteRegistrationState: string;
+    cellularModemFirmware: string;
+    simSlot1Status: object;
+    simSlot2Status: object;
     crossCameraTracking: boolean;
     continuousTrackingTime: number;
     trackingAssistance: boolean;
@@ -206,6 +213,15 @@ export const dumpStationProperties = (
   stationProperties2.lteRegistrationState = station.getPropertyValue(
     stationLteRegistrationStatePropertyName,
   ) as string;
+  stationProperties2.cellularModemFirmware = station.getPropertyValue(
+    stationCellularModemFirmwarePropertyName,
+  ) as string;
+  stationProperties2.simSlot1Status = station.getPropertyValue(
+    stationSimSlot1StatusPropertyName,
+  ) as object;
+  stationProperties2.simSlot2Status = station.getPropertyValue(
+    stationSimSlot2StatusPropertyName,
+  ) as object;
   stationProperties2.crossCameraTracking = station.getPropertyValue(
     PropertyName.StationCrossCameraTracking,
   ) as boolean;
@@ -294,6 +310,10 @@ export const dumpStationPropertiesMetadata = (
   result["lteBand"] = metadata[stationLteBandPropertyName];
   result["lteRegistrationState"] =
     metadata[stationLteRegistrationStatePropertyName];
+  result["cellularModemFirmware"] =
+    metadata[stationCellularModemFirmwarePropertyName];
+  result["simSlot1Status"] = metadata[stationSimSlot1StatusPropertyName];
+  result["simSlot2Status"] = metadata[stationSimSlot2StatusPropertyName];
   result["crossCameraTracking"] =
     metadata[PropertyName.StationCrossCameraTracking];
   result["continuousTrackingTime"] =

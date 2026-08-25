@@ -27,7 +27,7 @@ DISCONNECTED = "eufy-security-ws-disconnected"
 BRIDGE_DEVICE_ID = "baiamonte_eufy_bridge"
 DEFAULT_DASHBOARD_PORT = 8097
 CAPABILITY_PROPERTY_PATTERN = re.compile(
-    r"(^ai[A-Z_]|person|human|face|familiar|vehicle|pet|animal|dog|cat|package|cry|sound|motion|detection|recognition|loiter|leaving|radar|pan|tilt|zoom|track|privacy|preset|calibrat|patrol|cruise|rotation|angle)",
+    r"(^ai[A-Z_]|person|human|face|familiar|vehicle|pet|animal|dog|cat|package|cry|sound|motion|detection|recognition|loiter|leaving|radar|pan|tilt|zoom|track|privacy|preset|calibrat|patrol|cruise|rotation|angle|storageInfo|simSlot)",
     re.IGNORECASE,
 )
 
@@ -393,6 +393,29 @@ class PropertyToEntityDescription(Enum):
     # station sensor
     currentMode = EntityDescription(id=auto(), icon="mdi:security")
     guardMode = EntityDescription(id=auto(), icon="mdi:security")
+    stationBattery = EntityDescription(
+        id=auto(),
+        icon="mdi:battery-heart-variant",
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        category=EntityCategory.DIAGNOSTIC,
+    )
+    lteSignal = EntityDescription(
+        id=auto(), icon="mdi:signal-4g", category=EntityCategory.DIAGNOSTIC
+    )
+    lteBand = EntityDescription(
+        id=auto(), icon="mdi:radio-tower", category=EntityCategory.DIAGNOSTIC
+    )
+    lteRegistrationState = EntityDescription(
+        id=auto(), icon="mdi:sim", category=EntityCategory.DIAGNOSTIC
+    )
+    cellularModemFirmware = EntityDescription(
+        id=auto(), icon="mdi:chip", category=EntityCategory.DIAGNOSTIC
+    )
+    storageInfoEmmc = EntityDescription(id=auto(), category=EntityCategory.DIAGNOSTIC)
+    storageInfoHdd = EntityDescription(id=auto(), category=EntityCategory.DIAGNOSTIC)
+    simSlot1Status = EntityDescription(id=auto(), category=EntityCategory.DIAGNOSTIC)
+    simSlot2Status = EntityDescription(id=auto(), category=EntityCategory.DIAGNOSTIC)
 
     # station select
     promptVolume = EntityDescription(

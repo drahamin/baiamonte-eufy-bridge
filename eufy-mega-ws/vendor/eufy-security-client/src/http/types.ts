@@ -935,6 +935,9 @@ export enum PropertyName {
   StationLteSignal = "lteSignal",
   StationLteBand = "lteBand",
   StationLteRegistrationState = "lteRegistrationState",
+  StationCellularModemFirmware = "cellularModemFirmware",
+  StationSimSlot1Status = "simSlot1Status",
+  StationSimSlot2Status = "simSlot2Status",
   StationCrossCameraTracking = "crossCameraTracking",
   StationContinuousTrackingTime = "continuousTrackingTime",
   StationTrackingAssistance = "trackingAssistance",
@@ -9282,6 +9285,9 @@ export const StationStorageInfoSdCardProperty: PropertyMetadataObject = {
 // HomeBase Professional S1 publishes a base64-encoded LTE status object under this parameter.
 // Only non-identifier fields are exposed; IMEI/ICCID/IMSI values remain internal.
 export const HOMEBASE_PRO_LTE_STATUS_PARAM = 6221;
+export const HOMEBASE_PRO_CELLULAR_MODEM_FIRMWARE_PARAM = 6226;
+export const HOMEBASE_PRO_SIM_SLOT_1_STATUS_PARAM = 61400;
+export const HOMEBASE_PRO_SIM_SLOT_2_STATUS_PARAM = 61401;
 
 export const StationBatteryProperty: PropertyMetadataNumeric = {
   key: CommandType.CMD_GET_BATTERY,
@@ -9320,6 +9326,33 @@ export const StationLteRegistrationStateProperty: PropertyMetadataString = {
   readable: true,
   writeable: false,
   type: "string",
+};
+
+export const StationCellularModemFirmwareProperty: PropertyMetadataString = {
+  key: HOMEBASE_PRO_CELLULAR_MODEM_FIRMWARE_PARAM,
+  name: PropertyName.StationCellularModemFirmware,
+  label: "Cellular Modem Firmware",
+  readable: true,
+  writeable: false,
+  type: "string",
+};
+
+export const StationSimSlot1StatusProperty: PropertyMetadataObject = {
+  key: HOMEBASE_PRO_SIM_SLOT_1_STATUS_PARAM,
+  name: PropertyName.StationSimSlot1Status,
+  label: "SIM Slot 1 Status",
+  readable: true,
+  writeable: false,
+  type: "object",
+};
+
+export const StationSimSlot2StatusProperty: PropertyMetadataObject = {
+  key: HOMEBASE_PRO_SIM_SLOT_2_STATUS_PARAM,
+  name: PropertyName.StationSimSlot2Status,
+  label: "SIM Slot 2 Status",
+  readable: true,
+  writeable: false,
+  type: "object",
 };
 
 export const StationContinuousTrackingTimeProperty: PropertyMetadataNumeric = {
@@ -9509,6 +9542,11 @@ export const StationProperties: Properties = {
     [PropertyName.StationLteSignal]: StationLteSignalProperty,
     [PropertyName.StationLteBand]: StationLteBandProperty,
     [PropertyName.StationLteRegistrationState]: StationLteRegistrationStateProperty,
+    [PropertyName.StationCellularModemFirmware]: StationCellularModemFirmwareProperty,
+    [PropertyName.StationSimSlot1Status]: StationSimSlot1StatusProperty,
+    [PropertyName.StationSimSlot2Status]: StationSimSlot2StatusProperty,
+    [PropertyName.StationStorageInfoEmmc]: StationStorageInfoEmmcProperty,
+    [PropertyName.StationStorageInfoHdd]: StationStorageInfoHddProperty,
     [PropertyName.StationContinuousTrackingTime]: StationContinuousTrackingTimeProperty,
     [PropertyName.StationTrackingAssistance]: StationTrackingAssistanceProperty,
   },

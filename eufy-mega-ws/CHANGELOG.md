@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.1 — 2026-08-25
+
+- Hydrate HomeBase Professional modem firmware and privacy-sanitized SIM-slot status from the
+  already observed native Mega parameter envelopes. Card/subscriber identifiers and APN/PIN
+  material are discarded before the WebSocket model is built.
+- Add Professional eMMC/HDD metadata support and correct station-command capability recognition
+  in the evidence dashboard, including S380 local indexes and thumbnail transport.
+
 ## 1.6.0 — 2026-08-25
 
 - Add explicit HomeBase evidence/video capability reporting to the ingress dashboard: account

@@ -73,6 +73,16 @@ search_events:
       selector:
         text:
 
+refresh_homebase_storage:
+  name: Refresh HomeBase storage
+  description: Request fresh read-only eMMC and disk telemetry from the S380 or HomeBase Professional. This never formats, erases, or changes storage.
+  fields:
+    station_serial:
+      name: HomeBase serial filter
+      description: Optional advanced filter. Leave empty to refresh all supported HomeBases.
+      selector:
+        text:
+
 ptz:
   name: Central PTZ Service
   description: Call PTZ command for supported PTZ cameras

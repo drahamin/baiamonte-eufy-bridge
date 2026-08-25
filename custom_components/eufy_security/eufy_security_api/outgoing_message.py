@@ -207,6 +207,10 @@ class OutgoingMessageType(Enum):
         MessageField.DUMMY: auto(),
         MessageField.DOMAIN: EventSourceType.station,
     }
+    get_storage_info = {
+        MessageField.DUMMY: auto(),
+        MessageField.DOMAIN: EventSourceType.station,
+    }
     database_query_local = {
         MessageField.DUMMY: auto(),
         MessageField.DOMAIN: EventSourceType.station,

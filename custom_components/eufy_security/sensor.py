@@ -337,13 +337,18 @@ def _structured_shape(value) -> dict:
 
 
 class EufySecurityStructuredAISensor(SensorEntity, EufySecurityEntity):
-    """Expose only the safe structure of a complex AI property."""
+    """Expose only the safe structure of a complex capability property."""
 
     def __init__(
         self, coordinator: EufySecurityDataUpdateCoordinator, metadata: Metadata
     ) -> None:
         super().__init__(coordinator, metadata)
-        self._attr_icon = "mdi:brain"
+        if metadata.name.startswith("storageInfo"):
+            self._attr_icon = "mdi:harddisk"
+        elif metadata.name.startswith("simSlot"):
+            self._attr_icon = "mdi:sim"
+        else:
+            self._attr_icon = "mdi:brain"
         # A complex property may be writable at the bridge, but this entity intentionally is not.
         # Home Assistant also rejects config-category sensors without a writable entity surface.
         self._attr_entity_category = EntityCategory.DIAGNOSTIC

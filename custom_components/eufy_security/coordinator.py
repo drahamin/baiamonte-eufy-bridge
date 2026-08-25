@@ -129,7 +129,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 if station_serial and station.serial_no != station_serial:
                     continue
                 if "database_query_local" not in (station.commands or []):
-                    continue
+                    # Station command capabilities are legacy CommandName values; unlike device
+                    # commands, schema 21 does not snake-case them.
+                    if "stationDatabaseQueryLocal" not in (station.commands or []):
+                        continue
                 serial_numbers = [device_serial] if device_serial else [
                     device.serial_no
                     for device in self.devices.values()
@@ -141,8 +144,8 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 try:
                     raw = await station.database_query_local(
                         serial_numbers,
-                        start.isoformat(),
-                        end.isoformat(),
+                        start.strftime("%Y%m%d"),
+                        end.strftime("%Y%m%d"),
                     )
                     events.extend(normalize_local_event(record) for record in raw)
                 except (RuntimeError, ValueError, asyncio.TimeoutError) as exc:
@@ -173,6 +176,18 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             "warnings": warnings,
             "events": result,
         }
+
+    async def refresh_homebase_storage(self, station_serial: str = "") -> dict:
+        """Request fresh read-only storage telemetry from compatible HomeBases."""
+        refreshed = []
+        for station in self.stations.values():
+            if station_serial and station.serial_no != station_serial:
+                continue
+            if station.model not in {"T8030", "T9000"}:
+                continue
+            await self._api.get_storage_info(station.serial_no)
+            refreshed.append(station.model)
+        return {"requested": len(refreshed), "models": sorted(set(refreshed))}
 
     async def _update_local(self):
         try:

@@ -210,10 +210,10 @@ async function buildStatus() {
         properties: Object.keys(metadata).length,
         writable: Object.values(metadata).filter((item) => item && item.writeable).length,
         commands: (commandsResult.commands || []).length,
-        localRecordIndex: (commandsResult.commands || []).includes("database_query_local"),
-        dateRecordIndex: (commandsResult.commands || []).includes("database_query_by_date"),
-        recordCountIndex: (commandsResult.commands || []).includes("database_count_by_date"),
-        thumbnailDownload: (commandsResult.commands || []).includes("download_image"),
+        localRecordIndex: (commandsResult.commands || []).includes("stationDatabaseQueryLocal"),
+        dateRecordIndex: (commandsResult.commands || []).includes("stationDatabaseQueryByDate"),
+        recordCountIndex: (commandsResult.commands || []).includes("stationDatabaseCoundByDate"),
+        thumbnailDownload: (commandsResult.commands || []).includes("stationDownloadImage"),
       });
     }
     return { deviceRows, stationRows };

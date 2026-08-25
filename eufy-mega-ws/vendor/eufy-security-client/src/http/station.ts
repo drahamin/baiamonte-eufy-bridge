@@ -44,6 +44,8 @@ import {
   IndoorS350DetectionTypes,
   EufyCamC35DetectionTypes,
   HOMEBASE_PRO_LTE_STATUS_PARAM,
+  HOMEBASE_PRO_SIM_SLOT_1_STATUS_PARAM,
+  HOMEBASE_PRO_SIM_SLOT_2_STATUS_PARAM,
 } from "./types";
 import {
   FloodlightDetectionRangeT8425Property,
@@ -66,6 +68,22 @@ import {
   Schedule,
   PropertyMetadataObject,
 } from "./interfaces";
+
+const sanitizeHomeBaseProSimStatus = (value: string): Record<string, unknown> => {
+  try {
+    const decoded = JSON.parse(Buffer.from(value, "base64").toString("utf8")) as unknown;
+    if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) return {};
+    const safe: Record<string, unknown> = {};
+    const allowed = /^(slot|status|state|active|enabled|inserted|present|registered|registration|carrier|operator|network|roaming|signal|band)$/i;
+    for (const [key, item] of Object.entries(decoded as Record<string, unknown>).slice(0, 64)) {
+      if (!allowed.test(key)) continue;
+      if (["string", "number", "boolean"].includes(typeof item)) safe[key] = item;
+    }
+    return safe;
+  } catch {
+    return {};
+  }
+};
 import {
   encodePasscode,
   getAdvancedLockTimezone,
@@ -661,6 +679,9 @@ export class Station extends TypedEmitter<StationEvents> {
           }
           return "";
         }
+        case HOMEBASE_PRO_SIM_SLOT_1_STATUS_PARAM:
+        case HOMEBASE_PRO_SIM_SLOT_2_STATUS_PARAM:
+          return sanitizeHomeBaseProSimStatus(value);
       }
       if (property.name === PropertyName.Model && Device.isLockWifiT8510P(this.getDeviceType(), this.getSerial())) {
         return "T8510P";
