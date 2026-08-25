@@ -471,6 +471,14 @@ export class MegaTransition {
                 dataPoints: catalog.data_point_list.length,
                 known: catalog.data_point_list.filter((point) => point.known).length,
                 unknown: catalog.data_point_list.filter((point) => !point.known).length,
+                knownIds: catalog.data_point_list
+                  .filter((point) => point.known)
+                  .map((point) => point.dp_id)
+                  .sort((a, b) => a - b),
+                unknownIds: catalog.data_point_list
+                  .filter((point) => !point.known)
+                  .map((point) => point.dp_id)
+                  .sort((a, b) => a - b),
               },
             ])
           ),

@@ -67,6 +67,7 @@ describe("native Mega inventory augmentation", () => {
     const getDeviceDetailsDecrypted = jest.fn().mockResolvedValue({ devices: [{ actions: [] }] });
     const getRomVersionsDecrypted = jest.fn().mockResolvedValue({ rom_versions: [] });
     (transition as any).megaLoggedIn = true;
+    (transition as any).writeMegaStatus = jest.fn();
     (transition as any).nativeInventory = {
       devices: [
         { device_model: "T87A0", device_type: 119, device_sn: "display", category: "eufy_mega" },
@@ -100,5 +101,14 @@ describe("native Mega inventory augmentation", () => {
       knownDataPoints: 0,
       unknownDataPoints: 1,
     });
+    expect((transition as any).writeMegaStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        observedSchemas: expect.objectContaining({
+          models: expect.objectContaining({
+            T8600: expect.objectContaining({ knownIds: [], unknownIds: [60001] }),
+          }),
+        }),
+      })
+    );
   });
 });

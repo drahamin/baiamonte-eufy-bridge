@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2 — 2026-08-25
+
+- Publish redacted per-model known and unknown native data-point ID lists without exposing values,
+  serials, account data, broker details, or command credentials.
+- Classify each dashboard schema row as a camera, HomeBase/station, smart display, or other device,
+  and make its exact unmapped ID list expandable for ongoing schema research.
+
 ## 1.2.1 — 2026-08-25
 
 - Add per-model observed Mega schema coverage to the ingress dashboard, including mapped and
