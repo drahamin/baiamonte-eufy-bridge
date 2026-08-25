@@ -25,11 +25,12 @@ export class InternalLogger {
 }
 
 const sensitiveLogKey =
-  /(serial|station|device|address|host|payload|buffer|data|token|password|passcode|username|email|url|key|account|member|user|pin|image|picture)/i;
+  /(serial|station|device|address|host|payload|buffer|data|token|password|passcode|username|email|url|key|account|member|user|pin|image|picture|fid|credential|refresh)/i;
 
 const redactLogString = (value: string): string =>
   value
     .replace(/\b(?:https?|wss?|rtsp):\/\/\S+/gi, "[redacted-url]")
+    .replace(/\b[c-f][A-Za-z0-9_-]{21}\b/g, "[redacted-fid]")
     .replace(/\b[A-Z0-9]{10,}\b/g, "[redacted-identifier]")
     .replace(/\b[\w.+-]+@[\w.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]")
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]");

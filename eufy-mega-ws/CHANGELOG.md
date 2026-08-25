@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1 — 2026-08-25
+
+- Redact Firebase installation identifiers and credential fields from push registration logs.
+
 ## 1.4.0 — 2026-08-25
 
 - Query both the native `device_new_pn` product code and model alias when they differ, stopping as

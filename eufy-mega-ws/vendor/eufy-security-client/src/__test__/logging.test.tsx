@@ -83,8 +83,9 @@ describe("Logging index file", () => {
     };
     setLoggingLevel("all", LogLevel.Error);
 
-    rootMainLogger.error("station T123456789012 at 192.168.1.20", {
+    rootMainLogger.error("station T123456789012 at 192.168.1.20 fid cabcdefghijklmnopqrstu", {
       stationSN: "T123456789012",
+      fid: "cabcdefghijklmnopqrstu",
       payload: "secret",
       count: 2,
     });
@@ -93,6 +94,7 @@ describe("Logging index file", () => {
     const serialized = JSON.stringify(error.mock.calls[0]);
     expect(serialized).not.toContain("T123456789012");
     expect(serialized).not.toContain("192.168.1.20");
+    expect(serialized).not.toContain("cabcdefghijklmnopqrstu");
     expect(serialized).not.toContain("secret");
     expect(serialized).toContain("[redacted]");
     InternalLogger.logger = undefined;

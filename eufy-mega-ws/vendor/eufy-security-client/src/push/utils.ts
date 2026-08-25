@@ -20,7 +20,7 @@ export function generateFid(): string {
   const fid = b64_safe.substr(0, 22);
 
   if (VALID_FID_PATTERN.test(fid)) {
-    rootPushLogger.info("generateFid", fid);
+    rootPushLogger.info("generateFid completed");
     return fid;
   }
   throw new FidGenerationError("Generated invalid FID", { context: { fid: fid } });
