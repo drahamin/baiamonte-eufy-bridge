@@ -71,6 +71,13 @@ export interface MegaHouseInventoryRequest {
   add_pns?: string[];
 }
 
+/** One device descriptor accepted by the official batch ROM-version endpoint. */
+export interface MegaRomVersionRequest {
+  device_type: number;
+  device_sn: string;
+  category: string;
+}
+
 /** Identifier-free aggregate suitable for diagnostics and logs. */
 export interface MegaHouseInventorySummary {
   deviceCount: number;

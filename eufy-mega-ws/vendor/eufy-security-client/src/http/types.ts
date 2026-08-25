@@ -35,6 +35,7 @@ export enum DeviceType {
   PROFESSIONAL_247 = 24, // T8600
   MINIBASE_CHIME = 25,
   CAMERA3_PRO = 26,
+  HOMEBASE_PRO = 27, // HomeBase Professional S1 (T9000)
   HOMEBASE_MINI = 28, //T8025
   INDOOR_CAMERA = 30,
   INDOOR_PT_CAMERA = 31,
@@ -930,6 +931,10 @@ export enum PropertyName {
   StationStorageInfoEmmc = "storageInfoEmmc",
   StationStorageInfoHdd = "storageInfoHdd",
   StationStorageInfoSdCard = "storageInfoSdCard",
+  StationBattery = "stationBattery",
+  StationLteSignal = "lteSignal",
+  StationLteBand = "lteBand",
+  StationLteRegistrationState = "lteRegistrationState",
   StationCrossCameraTracking = "crossCameraTracking",
   StationContinuousTrackingTime = "continuousTrackingTime",
   StationTrackingAssistance = "trackingAssistance",
@@ -1011,6 +1016,7 @@ export const GenericTypeProperty: PropertyMetadataNumeric = {
     24: "eufyCam E330 (Professional)",
     25: "MiniBase Chime",
     26: "eufyCam S3 Pro",
+    27: "HomeBase Professional S1 (T9000)",
     28: "HomeBase Mini (T8025)",
     30: "Indoor Camera",
     31: "Indoor Camera PT",
@@ -9273,6 +9279,49 @@ export const StationStorageInfoSdCardProperty: PropertyMetadataObject = {
   type: "object",
 };
 
+// HomeBase Professional S1 publishes a base64-encoded LTE status object under this parameter.
+// Only non-identifier fields are exposed; IMEI/ICCID/IMSI values remain internal.
+export const HOMEBASE_PRO_LTE_STATUS_PARAM = 6221;
+
+export const StationBatteryProperty: PropertyMetadataNumeric = {
+  key: CommandType.CMD_GET_BATTERY,
+  name: PropertyName.StationBattery,
+  label: "Backup Battery",
+  readable: true,
+  writeable: false,
+  type: "number",
+  min: 0,
+  max: 100,
+  unit: "%",
+};
+
+export const StationLteSignalProperty: PropertyMetadataString = {
+  key: HOMEBASE_PRO_LTE_STATUS_PARAM,
+  name: PropertyName.StationLteSignal,
+  label: "LTE Signal",
+  readable: true,
+  writeable: false,
+  type: "string",
+};
+
+export const StationLteBandProperty: PropertyMetadataString = {
+  key: HOMEBASE_PRO_LTE_STATUS_PARAM,
+  name: PropertyName.StationLteBand,
+  label: "LTE Band",
+  readable: true,
+  writeable: false,
+  type: "string",
+};
+
+export const StationLteRegistrationStateProperty: PropertyMetadataString = {
+  key: HOMEBASE_PRO_LTE_STATUS_PARAM,
+  name: PropertyName.StationLteRegistrationState,
+  label: "LTE Registration State",
+  readable: true,
+  writeable: false,
+  type: "string",
+};
+
 export const StationContinuousTrackingTimeProperty: PropertyMetadataNumeric = {
   key: CommandType.CMD_SET_CONTINUOUS_TRACKING_TIME,
   name: PropertyName.StationContinuousTrackingTime,
@@ -9431,6 +9480,37 @@ export const StationProperties: Properties = {
     [PropertyName.StationTrackingAssistance]: StationTrackingAssistanceProperty,
     [PropertyName.StationCrossTrackingCameraList]: StationCrossTrackingCameraListProperty,
     [PropertyName.StationCrossTrackingGroupList]: StationCrossTrackingGroupListProperty,
+  },
+  [DeviceType.HOMEBASE_PRO]: {
+    ...BaseStationProperties,
+    // This conservative set is backed by parameter IDs observed on T9000 and shared with HB3.
+    // New Pro-only controls remain absent until their action descriptors and payloads are verified.
+    [PropertyName.StationLANIpAddress]: StationLanIpAddressProperty,
+    [PropertyName.StationMacAddress]: StationMacAddressProperty,
+    [PropertyName.StationGuardMode]: StationGuardModeProperty,
+    [PropertyName.StationCurrentMode]: StationCurrentModeProperty,
+    [PropertyName.StationTimeFormat]: StationTimeFormatProperty,
+    [PropertyName.StationTimeZone]: StationTimeZoneProperty,
+    [PropertyName.StationPromptVolume]: StationPromptVolumeProperty,
+    [PropertyName.StationAlarmTone]: StationAlarmToneProperty,
+    [PropertyName.StationNotificationSwitchModeSchedule]: StationNotificationSwitchModeScheduleProperty,
+    [PropertyName.StationNotificationSwitchModeGeofence]: StationNotificationSwitchModeGeofenceProperty,
+    [PropertyName.StationNotificationSwitchModeApp]: StationNotificationSwitchModeAppProperty,
+    [PropertyName.StationNotificationSwitchModeKeypad]: StationNotificationSwitchModeKeypadProperty,
+    [PropertyName.StationNotificationStartAlarmDelay]: StationNotificationStartAlarmDelayProperty,
+    [PropertyName.StationAutoEndAlarm]: StationAutoEndAlarmProperty,
+    [PropertyName.StationAlarm]: StationAlarmProperty,
+    [PropertyName.StationAlarmType]: StationAlarmTypeProperty,
+    [PropertyName.StationAlarmArmed]: StationAlarmArmedProperty,
+    [PropertyName.StationAlarmArmDelay]: StationAlarmArmDelayProperty,
+    [PropertyName.StationAlarmDelay]: StationAlarmDelayProperty,
+    [PropertyName.StationAlarmDelayType]: StationAlarmDelayTypeProperty,
+    [PropertyName.StationBattery]: StationBatteryProperty,
+    [PropertyName.StationLteSignal]: StationLteSignalProperty,
+    [PropertyName.StationLteBand]: StationLteBandProperty,
+    [PropertyName.StationLteRegistrationState]: StationLteRegistrationStateProperty,
+    [PropertyName.StationContinuousTrackingTime]: StationContinuousTrackingTimeProperty,
+    [PropertyName.StationTrackingAssistance]: StationTrackingAssistanceProperty,
   },
   [DeviceType.MINIBASE_CHIME]: {
     ...BaseStationProperties,
@@ -10909,6 +10989,9 @@ export const StationCommands: Commands = {
     CommandName.StationDatabaseCountByDate,
     CommandName.StationDatabaseDelete,
   ],
+  // Properties use verified T9000 parameter IDs, but command payload compatibility is still being
+  // validated. Do not advertise destructive/reboot/alarm/database commands by analogy alone.
+  [DeviceType.HOMEBASE_PRO]: [],
   [DeviceType.HOMEBASE_MINI]: [
     CommandName.StationReboot,
     CommandName.StationTriggerAlarmSound,

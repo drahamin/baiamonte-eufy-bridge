@@ -26,6 +26,7 @@ import {
   MegaSession,
   MegaHouseInventoryRequest,
   MegaHouseInventorySummary,
+  MegaRomVersionRequest,
 } from "./megaInterfaces";
 
 export type {
@@ -38,6 +39,7 @@ export type {
   MegaSession,
   MegaHouseInventoryRequest,
   MegaHouseInventorySummary,
+  MegaRomVersionRequest,
 } from "./megaInterfaces";
 
 /**
@@ -672,6 +674,28 @@ export class MegaHTTPApi {
     });
   }
 
+  /** Rich per-device descriptors used by the v6 app to decide which properties/actions exist. */
+  public async getDeviceDetailsDecrypted(houseId = "", attribute = 7): Promise<unknown> {
+    if (!Number.isInteger(attribute) || attribute < 0 || attribute > 255) throw new Error("invalid attribute");
+    if (houseId.length > 128) throw new Error("houseId is too long");
+    return this.callDecrypted("devicerelation", "/app/devicerelation/get_devices_info", {
+      house_id: houseId,
+      attribute,
+    });
+  }
+
+  /** Batch-query current OTA metadata without starting an upgrade. */
+  public async getRomVersionsDecrypted(devices: MegaRomVersionRequest[]): Promise<unknown> {
+    if (devices.length > 64) throw new Error("too many devices");
+    const get_roms_param = devices.map((device) => {
+      if (!Number.isInteger(device.device_type) || device.device_type < 0) throw new Error("invalid device_type");
+      if (!device.device_sn || device.device_sn.length > 128) throw new Error("invalid device_sn");
+      if (!device.category || device.category.length > 128) throw new Error("invalid category");
+      return device;
+    });
+    return this.callDecrypted("ota", "/app/ota/get_rom_versions", { get_roms_param });
+  }
+
   /**
    * Eufy-side native inventory (`house/get_devs_list`), decrypted.
    *
@@ -697,9 +721,7 @@ export class MegaHTTPApi {
    * Return only non-sensitive inventory aggregates. Never includes names, serials, network data,
    * member/account fields, P2P credentials, device keys, or parameter values.
    */
-  public async getHouseInventorySummary(
-    request: MegaHouseInventoryRequest = {}
-  ): Promise<MegaHouseInventorySummary> {
+  public async getHouseInventorySummary(request: MegaHouseInventoryRequest = {}): Promise<MegaHouseInventorySummary> {
     return summarizeMegaHouseInventory(await this.getHouseInventoryDecrypted(request));
   }
 

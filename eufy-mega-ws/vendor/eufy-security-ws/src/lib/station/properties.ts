@@ -2,6 +2,14 @@ import { Station, IndexedProperty, PropertyName } from "eufy-security-client";
 
 import { Modify } from "../state.js";
 
+// These schema-21 fields are supplied by the compatible client fork installed during image
+// assembly; string casts keep the server build compatible with its upstream 4.1.0 dependency.
+const stationBatteryPropertyName = "stationBattery" as PropertyName;
+const stationLteSignalPropertyName = "lteSignal" as PropertyName;
+const stationLteBandPropertyName = "lteBand" as PropertyName;
+const stationLteRegistrationStatePropertyName =
+  "lteRegistrationState" as PropertyName;
+
 export interface StationPropertiesSchema0 {
   name: string;
   model: string;
@@ -50,6 +58,10 @@ type StationPropertiesSchema2 = Modify<
   {
     storageInfoEmmc: object;
     storageInfoHdd: object;
+    stationBattery: number;
+    lteSignal: string;
+    lteBand: string;
+    lteRegistrationState: string;
     crossCameraTracking: boolean;
     continuousTrackingTime: number;
     trackingAssistance: boolean;
@@ -182,6 +194,18 @@ export const dumpStationProperties = (
   stationProperties2.storageInfoHdd = station.getPropertyValue(
     PropertyName.StationStorageInfoHdd,
   ) as object;
+  stationProperties2.stationBattery = station.getPropertyValue(
+    stationBatteryPropertyName,
+  ) as number;
+  stationProperties2.lteSignal = station.getPropertyValue(
+    stationLteSignalPropertyName,
+  ) as string;
+  stationProperties2.lteBand = station.getPropertyValue(
+    stationLteBandPropertyName,
+  ) as string;
+  stationProperties2.lteRegistrationState = station.getPropertyValue(
+    stationLteRegistrationStatePropertyName,
+  ) as string;
   stationProperties2.crossCameraTracking = station.getPropertyValue(
     PropertyName.StationCrossCameraTracking,
   ) as boolean;
@@ -265,6 +289,11 @@ export const dumpStationPropertiesMetadata = (
   // All schemas >= 21
   result["storageInfoEmmc"] = metadata[PropertyName.StationStorageInfoEmmc];
   result["storageInfoHdd"] = metadata[PropertyName.StationStorageInfoHdd];
+  result["stationBattery"] = metadata[stationBatteryPropertyName];
+  result["lteSignal"] = metadata[stationLteSignalPropertyName];
+  result["lteBand"] = metadata[stationLteBandPropertyName];
+  result["lteRegistrationState"] =
+    metadata[stationLteRegistrationStatePropertyName];
   result["crossCameraTracking"] =
     metadata[PropertyName.StationCrossCameraTracking];
   result["continuousTrackingTime"] =

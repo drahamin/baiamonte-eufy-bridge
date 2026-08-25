@@ -43,6 +43,7 @@ import {
   SmartLockNotification,
   IndoorS350DetectionTypes,
   EufyCamC35DetectionTypes,
+  HOMEBASE_PRO_LTE_STATUS_PARAM,
 } from "./types";
 import {
   FloodlightDetectionRangeT8425Property,
@@ -642,6 +643,24 @@ export class Station extends TypedEmitter<StationEvents> {
           return value !== undefined ? (value !== "0" ? false : true) : false;
         case CommandType.CMD_SET_HUB_ALARM_CLOSE:
           return value !== undefined ? (value === "1" ? false : true) : false;
+        case HOMEBASE_PRO_LTE_STATUS_PARAM: {
+          let status: Record<string, unknown> = {};
+          try {
+            const decoded = JSON.parse(Buffer.from(value, "base64").toString("utf8")) as unknown;
+            if (decoded && typeof decoded === "object") status = decoded as Record<string, unknown>;
+          } catch {
+            // Treat missing/malformed diagnostics as empty; they must not interrupt station hydration.
+          }
+          switch (property.name) {
+            case PropertyName.StationLteSignal:
+              return typeof status.Signal === "string" ? status.Signal.trim() : "";
+            case PropertyName.StationLteBand:
+              return typeof status.band === "string" ? status.band : "";
+            case PropertyName.StationLteRegistrationState:
+              return typeof status.regstate === "string" ? status.regstate : "";
+          }
+          return "";
+        }
       }
       if (property.name === PropertyName.Model && Device.isLockWifiT8510P(this.getDeviceType(), this.getSerial())) {
         return "T8510P";
@@ -800,6 +819,7 @@ export class Station extends TypedEmitter<StationEvents> {
     return (
       type === DeviceType.STATION ||
       type === DeviceType.HB3 ||
+      type === DeviceType.HOMEBASE_PRO ||
       type === DeviceType.MINIBASE_CHIME ||
       type === DeviceType.HOMEBASE_MINI ||
       type === DeviceType.NVR_S4_MAX
@@ -818,6 +838,10 @@ export class Station extends TypedEmitter<StationEvents> {
     return type === DeviceType.HB3;
   }
 
+  public static isStationHomeBasePro(type: number): boolean {
+    return type === DeviceType.HOMEBASE_PRO;
+  }
+
   public static isStationHomeBaseMini(type: number): boolean {
     return type === DeviceType.HOMEBASE_MINI;
   }
@@ -828,6 +852,10 @@ export class Station extends TypedEmitter<StationEvents> {
 
   public static isStationHomeBase3BySn(sn: string): boolean {
     return sn.startsWith("T8030");
+  }
+
+  public static isStationHomeBaseProBySn(sn: string): boolean {
+    return sn.startsWith("T9000");
   }
 
   public static isStationHomeBaseMiniBySn(sn: string): boolean {
@@ -854,6 +882,10 @@ export class Station extends TypedEmitter<StationEvents> {
     return Station.isStationHomeBase3(this.rawStation.device_type);
   }
 
+  public isStationHomeBasePro(): boolean {
+    return Station.isStationHomeBasePro(this.rawStation.device_type);
+  }
+
   public isStationHomeBaseMini(): boolean {
     return Station.isStationHomeBaseMini(this.rawStation.device_type);
   }
@@ -871,7 +903,7 @@ export class Station extends TypedEmitter<StationEvents> {
    * @returns Returns true, if this is a HomeBase 3 or a HomeBase mini, otherwise false.
    */
   public isDeviceControlledByHomeBase(): boolean {
-    return this.isStationHomeBase3() || this.isStationHomeBaseMini();
+    return this.isStationHomeBase3() || this.isStationHomeBasePro() || this.isStationHomeBaseMini();
   }
 
   /**
@@ -880,7 +912,11 @@ export class Station extends TypedEmitter<StationEvents> {
    * @returns Returns true, if this is a HomeBase 3 or a HomeBase mini, otherwise false.
    */
   public static isDeviceControlledByHomeBaseBySn(sn: string): boolean {
-    return Station.isStationHomeBase3BySn(sn) || Station.isStationHomeBaseMiniBySn(sn);
+    return (
+      Station.isStationHomeBase3BySn(sn) ||
+      Station.isStationHomeBaseProBySn(sn) ||
+      Station.isStationHomeBaseMiniBySn(sn)
+    );
   }
 
   public isIntegratedDevice(): boolean {

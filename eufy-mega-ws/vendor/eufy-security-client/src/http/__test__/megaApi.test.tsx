@@ -459,10 +459,7 @@ describe("MegaHTTPApi", () => {
     });
 
     it("uses the official Mega device-relation attribute 7 schema", async () => {
-      const response = megaEncryptBody(
-        JSON.stringify({ devices: [] }),
-        sharedKeyToAesKey(fakeIdentity().sharedKey)
-      );
+      const response = megaEncryptBody(JSON.stringify({ devices: [] }), sharedKeyToAesKey(fakeIdentity().sharedKey));
       const { api, requests } = await makeApi([
         { statusCode: 200, body: JSON.stringify({ code: 0, msg: "ok", data: response }) },
       ]);
@@ -472,6 +469,37 @@ describe("MegaHTTPApi", () => {
       const sent = JSON.parse(megaDecrypt(requests.at(-1)!.body!, fakeIdentity().sharedKey));
       expect(sent).toEqual({ house_id: "", attribute: 7 });
       expect(requests.at(-1)!.url).toContain("/app/devicerelation/get_device_list");
+    });
+
+    it("requests rich device descriptors with the official attribute 7 schema", async () => {
+      const response = megaEncryptBody(JSON.stringify({ devices: [] }), sharedKeyToAesKey(fakeIdentity().sharedKey));
+      const { api, requests } = await makeApi([
+        { statusCode: 200, body: JSON.stringify({ code: 0, msg: "ok", data: response }) },
+      ]);
+
+      await api.getDeviceDetailsDecrypted();
+
+      const sent = JSON.parse(megaDecrypt(requests.at(-1)!.body!, fakeIdentity().sharedKey));
+      expect(sent).toEqual({ house_id: "", attribute: 7 });
+      expect(requests.at(-1)!.url).toContain("/app/devicerelation/get_devices_info");
+    });
+
+    it("queries batch ROM metadata without invoking an upgrade", async () => {
+      const response = megaEncryptBody(
+        JSON.stringify({ rom_versions: [] }),
+        sharedKeyToAesKey(fakeIdentity().sharedKey)
+      );
+      const { api, requests } = await makeApi([
+        { statusCode: 200, body: JSON.stringify({ code: 0, msg: "ok", data: response }) },
+      ]);
+
+      await api.getRomVersionsDecrypted([{ device_type: 27, device_sn: "station", category: "security" }]);
+
+      const sent = JSON.parse(megaDecrypt(requests.at(-1)!.body!, fakeIdentity().sharedKey));
+      expect(sent).toEqual({
+        get_roms_param: [{ device_type: 27, device_sn: "station", category: "security" }],
+      });
+      expect(requests.at(-1)!.url).toContain("/app/ota/get_rom_versions");
     });
   });
 

@@ -46,12 +46,8 @@ describe("native Mega inventory augmentation", () => {
   });
 
   it("does not expose an unverified native product", () => {
-    expect(
-      translateNativeMegaDevice({ device_sn: "x", device_model: "T9999", category: "eufy_mega" })
-    ).toBeUndefined();
-    expect(
-      translateNativeMegaDevice({ device_sn: "x", device_model: "T87A0", category: "security" })
-    ).toBeUndefined();
+    expect(translateNativeMegaDevice({ device_sn: "x", device_model: "T9999", category: "eufy_mega" })).toBeUndefined();
+    expect(translateNativeMegaDevice({ device_sn: "x", device_model: "T87A0", category: "security" })).toBeUndefined();
   });
 
   it("fetches a catalog once for every distinct account product code and tolerates failures", async () => {
@@ -61,24 +57,37 @@ describe("native Mega inventory augmentation", () => {
       .mockResolvedValueOnce({ data_point_list: [{ code: "a" }, { code: "b" }] })
       .mockResolvedValueOnce({ data_point_list: [] })
       .mockRejectedValueOnce(new Error("not supported"));
+    const getDeviceDetailsDecrypted = jest.fn().mockResolvedValue({ devices: [{ actions: [] }] });
+    const getRomVersionsDecrypted = jest.fn().mockResolvedValue({ rom_versions: [] });
     (transition as any).megaLoggedIn = true;
     (transition as any).nativeInventory = {
       devices: [
-        { device_model: "T87A0" },
+        { device_model: "T87A0", device_type: 119, device_sn: "display", category: "eufy_mega" },
         { device_model: "T87A0" },
         { device_new_pn: "T8600" },
         { device_model: "T9999" },
       ],
     };
-    (transition as any).getMegaApi = jest.fn(async () => ({ getProductDataPointsDecrypted }));
+    (transition as any).getMegaApi = jest.fn(async () => ({
+      getProductDataPointsDecrypted,
+      getDeviceDetailsDecrypted,
+      getRomVersionsDecrypted,
+    }));
 
     await transition.refreshProductDataPointCatalogs();
 
     expect(getProductDataPointsDecrypted).toHaveBeenCalledTimes(3);
     expect(getProductDataPointsDecrypted.mock.calls.map(([code]) => code).sort()).toEqual(["T8600", "T87A0", "T9999"]);
-    expect(mockLogger.info).toHaveBeenCalledWith(
-      expect.stringContaining("catalog scan complete"),
-      { attempted: 3, available: 1, empty: 1, failed: 1, dataPoints: 2 }
-    );
+    expect(getDeviceDetailsDecrypted).toHaveBeenCalledWith("", 7);
+    expect(getRomVersionsDecrypted).toHaveBeenCalledWith([
+      { device_type: 119, device_sn: "display", category: "eufy_mega" },
+    ]);
+    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("catalog scan complete"), {
+      attempted: 3,
+      available: 1,
+      empty: 1,
+      failed: 1,
+      dataPoints: 2,
+    });
   });
 });

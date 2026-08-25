@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1.0-baiamonte.9 — 2026-08-25
+
+- Recognize the connected HomeBase Professional S1 (`T9000`) as a station and expose verified
+  guard, notification, alarm, time, volume, tracking, backup-battery, and redacted LTE properties.
+- Keep unverified Pro reboot/alarm/database commands disabled while retaining verified writable
+  parameter controls.
+- Query richer Mega per-device capability descriptors and batch OTA metadata in bounded, read-only
+  background discovery; identifiers, descriptor contents, versions, and download locations stay out
+  of logs.
+- Add official-app-derived API coverage for `get_devices_info` and `get_rom_versions` so E10 and
+  HomeBase Pro firmware/capability research no longer depends on legacy inventory alone.
+
 ## 3.1.0-baiamonte.8 — 2026-08-25
 
 - Include the native inventory `connected` diagnostic and its metadata in schema-21 WebSocket

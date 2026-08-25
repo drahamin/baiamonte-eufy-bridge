@@ -44,6 +44,7 @@ interface NativeMegaDevice extends Record<string, unknown> {
   software_version?: unknown;
   hardware_version?: unknown;
   status?: unknown;
+  device_type?: unknown;
 }
 
 interface NativeMegaInventory extends Record<string, unknown> {
@@ -201,6 +202,8 @@ export class MegaTransition {
   private nativeInventory?: NativeMegaInventory;
   private nativeInventoryInProgress?: Promise<NativeMegaInventory>;
   private nativeDeviceRelations?: unknown;
+  private nativeDeviceDetails?: unknown;
+  private nativeRomVersions?: unknown;
   private productCatalogRefresh?: Promise<void>;
   private readonly productDataPointCatalogs = new Map<string, unknown>();
   /** Serialises connect(): concurrent calls await the in-flight one instead of racing the sequence. */
@@ -319,6 +322,55 @@ export class MegaTransition {
           )
         ).slice(0, 64);
         const mega = await this.getMegaApi();
+        try {
+          this.nativeDeviceDetails ??= await mega.getDeviceDetailsDecrypted("", 7);
+          const details =
+            this.nativeDeviceDetails && typeof this.nativeDeviceDetails === "object"
+              ? (this.nativeDeviceDetails as Record<string, unknown>)
+              : {};
+          const devices = Array.isArray(details.devices)
+            ? details.devices
+            : Array.isArray(details.device_list)
+              ? details.device_list
+              : [];
+          rootMainLogger.info("v6 per-device capability descriptors loaded (contents redacted)", {
+            devices: devices.length,
+            available: devices.length > 0,
+          });
+        } catch {
+          // Catalog discovery remains useful even where this newer endpoint is unavailable.
+        }
+
+        const romRequests = (inventory.devices ?? [])
+          .map((device) => ({
+            device_type: typeof device.device_type === "number" ? device.device_type : -1,
+            device_sn: safeString(device.device_sn),
+            category: safeString(device.category),
+          }))
+          .filter((device) => device.device_type >= 0 && device.device_sn.length > 0 && device.category.length > 0)
+          .slice(0, 64);
+        if (romRequests.length > 0) {
+          try {
+            this.nativeRomVersions ??= await mega.getRomVersionsDecrypted(romRequests);
+            const response =
+              this.nativeRomVersions && typeof this.nativeRomVersions === "object"
+                ? (this.nativeRomVersions as Record<string, unknown>)
+                : {};
+            const records = Array.isArray(response.rom_versions)
+              ? response.rom_versions
+              : Array.isArray(response.devices)
+                ? response.devices
+                : Array.isArray(this.nativeRomVersions)
+                  ? this.nativeRomVersions
+                  : [];
+            rootMainLogger.info("v6 OTA metadata loaded without starting upgrades (contents redacted)", {
+              requested: romRequests.length,
+              records: records.length,
+            });
+          } catch {
+            // OTA discovery is optional and must never affect normal controls.
+          }
+        }
         for (const productCode of productCodes) {
           summary.attempted++;
           try {
