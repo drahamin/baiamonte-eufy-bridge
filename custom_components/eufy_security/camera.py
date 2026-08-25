@@ -121,19 +121,9 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         self.ffmpeg = self.coordinator.hass.data[DATA_FFMPEG]
 
     async def stream_source(self) -> str | None:
-        """Return a live source, starting the advertised P2P stream on demand."""
+        """Return an already-started source without side effects during HA probes."""
         if self.is_streaming is False:
-            if "start_livestream" not in self.product.commands:
-                return None
-            started = await self.product.start_livestream()
-            if started is False and self.is_streaming is False:
-                return None
-            if not await wait_for_value_to_equal(
-                self.product.__dict__, "stream_status", StreamStatus.STREAMING
-            ):
-                if started:
-                    await self.product.stop_livestream()
-                return None
+            return None
         return self.product.stream_url
 
     async def handle_async_mjpeg_stream(self, request):

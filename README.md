@@ -67,7 +67,7 @@ Trigger motion or ring a doorbell and verify that the matching
 
 | Component | Version/contract |
 | --- | --- |
-| Home Assistant custom integration | Baiamonte Eufy Security 9.3.3 |
+| Home Assistant custom integration | Baiamonte Eufy Security 9.3.4 |
 | WebSocket schema | 21 |
 | WebSocket server | `eufy-security-ws` 3.1.0 |
 | Client build | `eufy-security-client` 4.1.1-mega.13 (upstream 4.1.1) |

@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.3.4 — 2026-08-25
+
+- Keep `stream_source()` side-effect-free because Home Assistant probes it while adding every
+  camera for WebRTC support; explicit Start P2P remains the only live-stream start path.
+- Retain on-demand snapshot capture, truthful failed-start errors, neutral empty event images, and
+  T8134 control filtering from 9.3.2–9.3.3.
+
 ## 9.3.3 — 2026-08-25
 
 - Report a failed P2P or RTSP media handshake as a real Home Assistant service error instead of
