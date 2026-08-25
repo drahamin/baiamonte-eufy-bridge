@@ -114,6 +114,11 @@ if bashio::config.has_value 'username' && bashio::config.has_value 'password'; t
     # See bropat/eufy-security-ws#564.
     export BAIAMONTE_BRIDGE_PORT="$BRIDGE_PORT"
     export BAIAMONTE_DASHBOARD_PORT="8097"
+    export BAIAMONTE_CONTROL_AUDIT_TARGET=""
+    if bashio::config.has_value 'control_audit_target'; then
+        BAIAMONTE_CONTROL_AUDIT_TARGET="$(bashio::config 'control_audit_target')"
+        export BAIAMONTE_CONTROL_AUDIT_TARGET
+    fi
     if [[ "${BAIAMONTE_SKIP_DASHBOARD:-false}" != "true" ]]; then
         /usr/bin/node /opt/baiamonte-eufy-dashboard/server.cjs &
     fi

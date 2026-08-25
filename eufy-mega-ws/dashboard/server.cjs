@@ -336,11 +336,13 @@ async function runRequestedControlAudit() {
   } else {
     try {
       const options = JSON.parse(fs.readFileSync("/data/options.json", "utf8"));
-      const configuredTarget = typeof options.control_audit_target === "string" ? options.control_audit_target.trim() : "";
+      const configuredTarget = String(process.env.BAIAMONTE_CONTROL_AUDIT_TARGET || options.control_audit_target || "").trim();
       if (!configuredTarget || completedConfiguredAudits.has(configuredTarget)) return;
       request = { targetName: configuredTarget, active: true };
     } catch {
-      return;
+      const configuredTarget = String(process.env.BAIAMONTE_CONTROL_AUDIT_TARGET || "").trim();
+      if (!configuredTarget || completedConfiguredAudits.has(configuredTarget)) return;
+      request = { targetName: configuredTarget, active: true };
     }
   }
   const targetName = typeof request.targetName === "string" ? request.targetName.trim() : "";

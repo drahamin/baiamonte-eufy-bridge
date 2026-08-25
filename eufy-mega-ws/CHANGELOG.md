@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.4 — 2026-08-25
+
+- Pass the explicit one-shot audit target from the Supervisor-aware launcher into the isolated
+  dashboard process without exposing account settings or opening a network control endpoint.
+
 ## 1.5.3 — 2026-08-25
 
 - Allow an explicitly configured one-shot control audit to run through Home Assistant app options
