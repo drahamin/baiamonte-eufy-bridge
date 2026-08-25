@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.0-baiamonte.6 — 2026-08-25
+
+- Encode the native inventory presence diagnostic in the client library's expected raw boolean
+  format so Home Assistant receives a valid `connected` binary sensor.
+
 ## 3.1.0-baiamonte.5 — 2026-08-25
 
 - Add a read-only `Present in Mega inventory` diagnostic for native-only devices so Home Assistant
