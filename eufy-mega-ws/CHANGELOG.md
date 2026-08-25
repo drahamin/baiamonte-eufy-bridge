@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.0-baiamonte.8 — 2026-08-25
+
+- Include the native inventory `connected` diagnostic and its metadata in schema-21 WebSocket
+  serialization so Home Assistant can create the E10 presence entity.
+
 ## 3.1.0-baiamonte.7 — 2026-08-25
 
 - Allow read-only WebSocket property, metadata, and command-list queries for standalone native

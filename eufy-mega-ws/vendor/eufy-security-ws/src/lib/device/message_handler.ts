@@ -148,7 +148,8 @@ export class DeviceMessageHandler {
     if (command === DeviceCommand.getPropertiesMetadata) {
       const properties = device.getPropertiesMetadata();
       if (client.schemaVersion <= 3) return { properties };
-      if (client.schemaVersion <= 12) return { serialNumber: device.getSerial(), properties };
+      if (client.schemaVersion <= 12)
+        return { serialNumber: device.getSerial(), properties };
       return {
         serialNumber: device.getSerial(),
         properties: dumpDevicePropertiesMetadata(device, client.schemaVersion),
@@ -157,20 +158,27 @@ export class DeviceMessageHandler {
     if (command === DeviceCommand.getProperties) {
       const properties = device.getProperties();
       if (client.schemaVersion <= 3) return { properties };
-      if (client.schemaVersion <= 12) return { serialNumber: device.getSerial(), properties };
+      if (client.schemaVersion <= 12)
+        return { serialNumber: device.getSerial(), properties };
       return {
         serialNumber: device.getSerial(),
-        properties: dumpDeviceProperties(device, client.schemaVersion) as unknown as Record<string, unknown>,
+        properties: dumpDeviceProperties(
+          device,
+          client.schemaVersion,
+        ) as unknown as Record<string, unknown>,
       };
     }
     if (command === DeviceCommand.getCommands) {
       if (client.schemaVersion < 3) throw new UnknownCommandError(command);
       const result = device.getCommands();
       const commands = Array.from(result, (deviceCommand) =>
-        convertCamelCaseToSnakeCase(deviceCommand.replace("device", ""))
+        convertCamelCaseToSnakeCase(deviceCommand.replace("device", "")),
       );
       if (client.schemaVersion === 3) return { commands: result };
-      return { serialNumber: device.getSerial(), commands: commands as CommandName[] };
+      return {
+        serialNumber: device.getSerial(),
+        commands: commands as CommandName[],
+      };
     }
 
     const station = await driver.getStation(device.getStationSerial());

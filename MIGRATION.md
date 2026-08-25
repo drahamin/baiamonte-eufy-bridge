@@ -4,7 +4,7 @@ This fork is a transitional hybrid, designed to keep the Home Assistant installa
 Eufy completes the Mega migration and the community publishes native Mega inventory/control APIs.
 It must never describe a legacy-backed capability as Mega-native.
 
-## Capability ownership in `3.1.0-baiamonte.7`
+## Capability ownership in `3.1.0-baiamonte.8`
 
 | Capability | Current provider | Target provider |
 | --- | --- | --- |

@@ -8,6 +8,11 @@ import {
 } from "eufy-security-client";
 import { Modify } from "../state.js";
 
+// The add-on swaps in its compatible client fork at image assembly time. Keep
+// the server source buildable against upstream 4.1.0 while exposing the fork's
+// native-only diagnostic when that client is present at runtime.
+const nativeMegaConnectedPropertyName = "connected" as PropertyName;
+
 export interface DevicePropertiesSchema0 {
   name: string;
   model: string;
@@ -27,6 +32,7 @@ export interface DevicePropertiesSchema0 {
   batteryUsageLastWeek: number;
   wifiRssi: number;
   wifiSignalLevel: number;
+  connected: boolean;
   enabled: boolean;
   antitheftDetection: boolean;
   autoNightvision: boolean;
@@ -388,6 +394,9 @@ export const dumpDeviceProperties = (
     wifiSignalLevel: device.getPropertyValue(
       PropertyName.DeviceWifiSignalLevel,
     ) as number,
+    connected: device.getPropertyValue(
+      nativeMegaConnectedPropertyName,
+    ) as boolean,
     enabled: device.getPropertyValue(PropertyName.DeviceEnabled) as boolean,
     antitheftDetection: device.getPropertyValue(
       PropertyName.DeviceAntitheftDetection,
@@ -1217,6 +1226,7 @@ export const dumpDevicePropertiesMetadata = (
     batteryUsageLastWeek: metadata[PropertyName.DeviceBatteryUsageLastWeek],
     wifiRssi: metadata[PropertyName.DeviceWifiRSSI],
     wifiSignalLevel: metadata[PropertyName.DeviceWifiSignalLevel],
+    connected: metadata[nativeMegaConnectedPropertyName],
     enabled: metadata[PropertyName.DeviceEnabled],
     antitheftDetection: metadata[PropertyName.DeviceAntitheftDetection],
     autoNightvision: metadata[PropertyName.DeviceAutoNightvision],
