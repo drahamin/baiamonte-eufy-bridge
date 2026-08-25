@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.3.3 — 2026-08-25
+
+- Report a failed P2P or RTSP media handshake as a real Home Assistant service error instead of
+  returning success while the camera remains idle.
+- Suppress three generic AI detection switches on T8134 that its native Solo Camera command enum
+  cannot accept; Human and All Other Motion controls remain available.
+
 ## 9.3.2 — 2026-08-25
 
 - Start advertised P2P streams on demand for Home Assistant live-view and snapshot requests,

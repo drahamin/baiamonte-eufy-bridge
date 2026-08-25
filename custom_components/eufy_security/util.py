@@ -12,6 +12,24 @@ from .const import (
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
+_MODEL_UNSUPPORTED_PROPERTIES = {
+    # Solo-camera native detection enum supports Human and All Other Motion only.
+    "T8134": {
+        "motionDetectionTypeHumanRecognition",
+        "motionDetectionTypePet",
+        "motionDetectionTypeVehicle",
+    },
+}
+
+
+def _property_supported_for_product(product, property_name: str) -> bool:
+    """Reject generic metadata fields contradicted by a model's native enum."""
+    model = str(product.model or "")
+    return not any(
+        model.startswith(prefix) and property_name in unsupported
+        for prefix, unsupported in _MODEL_UNSUPPORTED_PROPERTIES.items()
+    )
+
 
 def get_properties_by_filter(metadata: dict, filtering: MetadataFilter) -> dict:
     """Filter properties based on attributes for presentation"""
@@ -59,7 +77,9 @@ def get_product_properties_by_filter(lists: [], filtering: MetadataFilter):
     for products in lists:
         for product in products:
             metadatas = get_properties_by_filter(product.metadata, filtering)
-            for value in metadatas.values():
+            for name, value in metadatas.items():
+                if not _property_supported_for_product(product, name):
+                    continue
                 product_properties.append(value)
     return product_properties
 

@@ -2,7 +2,7 @@
 
 Home Assistant companion integration for **Baiamonte eufy Bridge**.
 
-Version 9.3.2 is an in-place successor to `fuatakgun/eufy_security` 8.2.4. It deliberately retains
+Version 9.3.3 is an in-place successor to `fuatakgun/eufy_security` 8.2.4. It deliberately retains
 the `eufy_security` domain and entity unique-ID format, while replacing the visible product name,
 documentation, diagnostics, and connection handling.
 

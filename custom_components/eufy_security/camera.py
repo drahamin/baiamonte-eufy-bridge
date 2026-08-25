@@ -274,9 +274,10 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
     async def _start_livestream(self) -> None:
         """start byte based livestream on camera"""
         if await self.product.start_livestream() is False:
-            await self._stop_livestream()
-        else:
-            await self._start_hass_streaming()
+            raise ServiceValidationError(
+                f"{self.product.model} opened P2P but delivered no media"
+            )
+        await self._start_hass_streaming()
         self.async_write_ha_state()
 
     async def _stop_livestream(self) -> None:
@@ -288,9 +289,10 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
     async def _start_rtsp_livestream(self) -> None:
         """start rtsp based livestream on camera"""
         if await self.product.start_rtsp_livestream() is False:
-            await self._stop_rtsp_livestream()
-        else:
-            await self._start_hass_streaming()
+            raise ServiceValidationError(
+                f"{self.product.model} did not deliver an RTSP stream"
+            )
+        await self._start_hass_streaming()
         self.async_write_ha_state()
 
     async def _stop_rtsp_livestream(self) -> None:
