@@ -8,6 +8,7 @@ EUFY_USERNAME="$(bashio::config 'username')"
 EUFY_PASSWORD="$(bashio::config 'password')"
 EUFY_COUNTRY="$(bashio::config 'country')"
 TRUSTED_DEVICE_NAME="$(bashio::config 'trusted_device_name')"
+CONTROL_AUDIT_TARGET="$(bashio::config 'control_audit_target')"
 
 read_integer_option() {
     local option="$1"
@@ -114,11 +115,7 @@ if bashio::config.has_value 'username' && bashio::config.has_value 'password'; t
     # See bropat/eufy-security-ws#564.
     export BAIAMONTE_BRIDGE_PORT="$BRIDGE_PORT"
     export BAIAMONTE_DASHBOARD_PORT="8097"
-    export BAIAMONTE_CONTROL_AUDIT_TARGET=""
-    if bashio::config.has_value 'control_audit_target'; then
-        BAIAMONTE_CONTROL_AUDIT_TARGET="$(bashio::config 'control_audit_target')"
-        export BAIAMONTE_CONTROL_AUDIT_TARGET
-    fi
+    export BAIAMONTE_CONTROL_AUDIT_TARGET="$CONTROL_AUDIT_TARGET"
     if [[ "${BAIAMONTE_SKIP_DASHBOARD:-false}" != "true" ]]; then
         /usr/bin/node /opt/baiamonte-eufy-dashboard/server.cjs &
     fi

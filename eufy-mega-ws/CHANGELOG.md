@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.5 — 2026-08-25
+
+- Read the explicitly configured audit target directly in the launcher so optional-value
+  normalization cannot suppress a valid device name.
+
 ## 1.5.4 — 2026-08-25
 
 - Pass the explicit one-shot audit target from the Supervisor-aware launcher into the isolated
