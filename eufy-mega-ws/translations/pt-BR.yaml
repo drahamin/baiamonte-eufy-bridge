@@ -26,6 +26,9 @@ configuration:
   firmware_research:
     name: Baixar firmware E10 para pesquisa
     description: Salva um pacote OTA E10 oferecido pelo servidor sem iniciar uma atualização
+  control_audit_target:
+    name: Temporary local control audit target
+    description: Optional exact device name for an explicit one-shot local control audit
   trusted_device_name:
     name: Nome do dispositivo confiável
     description: Nome opcional deste serviço na lista de dispositivos confiáveis da Eufy

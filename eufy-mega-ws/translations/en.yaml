@@ -26,6 +26,9 @@ configuration:
   firmware_research:
     name: Download E10 research firmware
     description: Save a server-offered Smart Display E10 OTA package to the Home Assistant share without starting an upgrade
+  control_audit_target:
+    name: Temporary local control audit target
+    description: Optional exact device name for an explicit one-shot local control audit
   trusted_device_name:
     name: Trusted device name
     description: Optional name shown for this bridge in Eufy's trusted-device list

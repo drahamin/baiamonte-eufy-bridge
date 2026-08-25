@@ -26,6 +26,9 @@ configuration:
   firmware_research:
     name: E10-Forschungsfirmware herunterladen
     description: Ein vom Server angebotenes E10-OTA-Paket speichern, ohne ein Upgrade zu starten
+  control_audit_target:
+    name: Temporary local control audit target
+    description: Optional exact device name for an explicit one-shot local control audit
   trusted_device_name:
     name: Name des vertrauenswürdigen Geräts
     description: Optionaler Name dieses Dienstes in Eufys Liste vertrauenswürdiger Geräte
