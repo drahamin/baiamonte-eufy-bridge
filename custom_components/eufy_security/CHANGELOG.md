@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.3.2 — 2026-08-25
+
+- Start advertised P2P streams on demand for Home Assistant live-view and snapshot requests,
+  capture a fresh frame, and stop short-lived snapshot streams cleanly.
+- Return a valid neutral image while no Eufy event image is cached so device-page image requests
+  do not fail with HTTP 500; the availability attribute remains authoritative.
+
 ## 9.3.1 — 2026-08-25
 
 - Make P2P stream stopping idempotent when the camera is already idle.

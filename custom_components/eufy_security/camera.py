@@ -113,15 +113,27 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         # camera image
         self._last_url = None
         self._last_image = None
+        self._snapshot_lock = asyncio.Lock()
         if self.product.picture_base64 is not None:
             self._last_image = self.product.picture_bytes
 
         # ffmpeg entities
         self.ffmpeg = self.coordinator.hass.data[DATA_FFMPEG]
 
-    async def stream_source(self) -> str:
+    async def stream_source(self) -> str | None:
+        """Return a live source, starting the advertised P2P stream on demand."""
         if self.is_streaming is False:
-            return None
+            if "start_livestream" not in self.product.commands:
+                return None
+            started = await self.product.start_livestream()
+            if started is False and self.is_streaming is False:
+                return None
+            if not await wait_for_value_to_equal(
+                self.product.__dict__, "stream_status", StreamStatus.STREAMING
+            ):
+                if started:
+                    await self.product.stop_livestream()
+                return None
         return self.product.stream_url
 
     async def handle_async_mjpeg_stream(self, request):
@@ -223,18 +235,40 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        _LOGGER.debug("Camera image requested; streaming=%s", self.is_streaming)
-        if self.is_streaming is True:
-            with contextlib.suppress(asyncio.TimeoutError):
-                self._last_image = await asyncio.wait_for(
-                    self._get_image_from_stream_url(width, height),
-                    STREAM_TIMEOUT_SECONDS,
-                )
-            _LOGGER.debug(f"image 2 - is_empty {self._last_image is None}")
+        """Return a fresh frame, starting a short P2P stream when required."""
+        async with self._snapshot_lock:
+            _LOGGER.debug("Camera image requested; streaming=%s", self.is_streaming)
+            started_here = False
+            if (
+                self.is_streaming is False
+                and "start_livestream" in self.product.commands
+                and "stop_livestream" in self.product.commands
+            ):
+                started_here = await self.product.start_livestream()
+                if started_here:
+                    await wait_for_value_to_equal(
+                        self.product.__dict__,
+                        "stream_status",
+                        StreamStatus.STREAMING,
+                    )
 
-        _LOGGER.debug(f"async_camera_image 5 - is_empty {self._last_image is None}")
+            try:
+                if self.is_streaming is True:
+                    with contextlib.suppress(asyncio.TimeoutError):
+                        self._last_image = await asyncio.wait_for(
+                            self._get_image_from_stream_url(width, height),
+                            STREAM_TIMEOUT_SECONDS,
+                        )
+                    _LOGGER.debug(
+                        "Camera image capture empty=%s", self._last_image is None
+                    )
+            finally:
+                if started_here:
+                    await self.product.stop_livestream()
+
+        _LOGGER.debug("Camera image result empty=%s", self._last_image is None)
         if self._last_image is not None:
-            _LOGGER.debug(f"async_camera_image 6 - {len(self._last_image)}")
+            _LOGGER.debug("Camera image result bytes=%s", len(self._last_image))
         return self._last_image
 
     async def _start_livestream(self) -> None:
