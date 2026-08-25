@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1 — 2026-08-25
+
+- Add per-model observed Mega schema coverage to the ingress dashboard, including mapped and
+  unmapped data-point counts, coverage bars, and explicit read-only access labels.
+- Display an operator warning whenever observed catalogs replace empty server catalogs, making the
+  command-safety boundary visible in the UI.
+- Retitle the remaining legacy inventory path as compatibility coverage while continuing to report
+  honestly when it is still active for controls not yet supplied by Mega.
+
 ## 1.2.0 — 2026-08-25
 
 - Replace empty server catalogs with per-product observed catalogs synthesized from native house

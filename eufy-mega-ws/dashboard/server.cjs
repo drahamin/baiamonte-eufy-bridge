@@ -178,7 +178,7 @@ async function buildStatus() {
     policy: {
       authentication: "Mega",
       push: "Mega + FCM",
-      inventory: "Mega augmented; legacy fallback while catalogs are incomplete",
+      inventory: "Mega-native discovery with compatibility coverage for incomplete catalogs",
       commands: "P2P where supported",
       snapshots: "Push-event images with persistent local cache",
     },
