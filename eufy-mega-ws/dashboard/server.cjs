@@ -14,6 +14,36 @@ const ptzPropertyPattern = /(pan|tilt|zoom|track|privacy|preset|calibrat|patrol|
 let cache;
 let cacheTime = 0;
 
+// Return structure only: no names, IDs, coordinates, URLs, recognition results, or other values.
+function safeValueShape(value) {
+  if (value === undefined) return { kind: "missing", count: 0, keys: [], fieldTypes: {} };
+  if (value === null) return { kind: "null", count: 0, keys: [], fieldTypes: {} };
+  let parsed = value;
+  if (typeof value === "string" && value.length <= 65536) {
+    try { parsed = JSON.parse(value); } catch { return { kind: "string", count: value.length ? 1 : 0, keys: [], fieldTypes: {} }; }
+  }
+  if (Array.isArray(parsed)) {
+    const objects = parsed.filter((item) => item && typeof item === "object" && !Array.isArray(item)).slice(0, 16);
+    const keys = [...new Set(objects.flatMap((item) => Object.keys(item).slice(0, 32)))].sort().slice(0, 64);
+    return {
+      kind: "array",
+      count: parsed.length,
+      keys,
+      fieldTypes: Object.fromEntries(keys.map((key) => [key, [...new Set(objects.map((item) => Array.isArray(item[key]) ? "array" : item[key] === null ? "null" : typeof item[key]))].sort()])),
+    };
+  }
+  if (parsed && typeof parsed === "object") {
+    const keys = Object.keys(parsed).sort().slice(0, 64);
+    return {
+      kind: "object",
+      count: Object.keys(parsed).length,
+      keys,
+      fieldTypes: Object.fromEntries(keys.map((key) => [key, Array.isArray(parsed[key]) ? "array" : parsed[key] === null ? "null" : typeof parsed[key]])),
+    };
+  }
+  return { kind: typeof parsed, count: 1, keys: [], fieldTypes: {} };
+}
+
 function bridgeSession(schemaVersion, onState) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(`ws://${bridgeHost}:${bridgePort}`, { handshakeTimeout: 8000 });
@@ -132,6 +162,16 @@ async function buildStatus() {
       const commands = commandsResult.commands || [];
       const aiNames = Object.keys(metadata).filter((name) => aiPattern.test(name));
       const entityAiNames = aiNames.filter((name) => ["boolean", "number", "string"].includes(metadata[name]?.type));
+      const complexAiProperties = aiNames
+        .filter((name) => metadata[name]?.type === "object")
+        .map((name) => ({
+          name,
+          type: "object",
+          readable: metadata[name]?.readable !== false,
+          writeable: Boolean(metadata[name]?.writeable),
+          present: properties[name] !== undefined && properties[name] !== null,
+          shape: safeValueShape(properties[name]),
+        }));
       const writableAiNames = aiNames.filter((name) => metadata[name] && metadata[name].writeable);
       const ptzPropertyNames = Object.keys(metadata).filter((name) => ptzPropertyPattern.test(name));
       const writablePtzPropertyNames = ptzPropertyNames.filter((name) => metadata[name] && metadata[name].writeable);
@@ -142,6 +182,7 @@ async function buildStatus() {
         aiProperties: aiNames.length,
         aiPropertyNames: aiNames,
         entityAiPropertyNames: entityAiNames,
+        complexAiProperties,
         aiLiveValues: aiNames.filter((name) => properties[name] !== undefined && properties[name] !== null).length,
         writableAiProperties: writableAiNames,
         ptzProperties: writablePtzPropertyNames,
@@ -186,6 +227,7 @@ async function buildStatus() {
       aiProperties: 0,
       aiPropertyNames: [],
       entityAiPropertyNames: [],
+      complexAiProperties: [],
       writableAiProperties: [],
       writable: 0,
       panTilt: false,
@@ -202,6 +244,17 @@ async function buildStatus() {
     row.aiProperties = Math.max(row.aiProperties, item.aiProperties);
     row.aiPropertyNames = [...new Set([...row.aiPropertyNames, ...item.aiPropertyNames])].sort();
     row.entityAiPropertyNames = [...new Set([...row.entityAiPropertyNames, ...item.entityAiPropertyNames])].sort();
+    for (const property of item.complexAiProperties) {
+      const existing = row.complexAiProperties.find((candidate) => candidate.name === property.name);
+      if (!existing) row.complexAiProperties.push(property);
+      else {
+        existing.present ||= property.present;
+        existing.writeable ||= property.writeable;
+        const shapes = [existing.shape, property.shape];
+        existing.shape = shapes.find((shape) => shape.kind !== "missing" && shape.kind !== "null") ?? shapes[0];
+      }
+    }
+    row.complexAiProperties.sort((a, b) => a.name.localeCompare(b.name));
     row.writableAiProperties = [...new Set([...row.writableAiProperties, ...item.writableAiProperties])].sort();
     row.writable = Math.max(row.writable, item.writable);
     row.panTilt ||= item.panTilt;

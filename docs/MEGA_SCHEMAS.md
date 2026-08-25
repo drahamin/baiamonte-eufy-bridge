@@ -47,8 +47,9 @@ privacy/consent switches. Their records use `param_name`, `param_value`, `destin
 
 ## Remaining live-verification gates
 
-- Confirm which connected products return non-empty `data_point_list` catalogs with the current app
-  identity.
+- Continue monitoring which connected products return non-empty `data_point_list` catalogs with the
+  current app identity. The scanner now tries the inventory's `device_new_pn` and `device_model`
+  aliases once each when they differ.
 - Correlate catalog `dp_id`/`code` with each device's native state without exposing values.
 - Enable MQTT writes only for a device/data-point pair whose catalog mode explicitly permits writes.
 - Treat unknown product codes and undocumented HTTP routes as read-only diagnostics.
@@ -67,3 +68,8 @@ inventory: known numeric IDs receive their existing enum names, unknown IDs rece
 `param_<id>` names, and every synthesized point is forced to `ro`/`observed`. These catalogs make
 native state coverage usable immediately but cannot authorize a write. A real server descriptor or
 separately verified device protocol is still required before changing a point.
+
+The dashboard calls the union of populated official descriptors and synthesized signed-inventory
+catalogs **effective native read catalogs**. This is a coverage statement, not a write claim. Native
+MQTT publishing remains gated on an official descriptor whose mode explicitly authorizes the exact
+device/data-point pair.

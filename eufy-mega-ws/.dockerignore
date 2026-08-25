@@ -1,0 +1,7 @@
+vendor/**/node_modules
+vendor/**/coverage
+vendor/**/build
+vendor/**/dist
+vendor/**/tsconfig.tsbuildinfo
+**/__pycache__
+*.log

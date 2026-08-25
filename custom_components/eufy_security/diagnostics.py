@@ -39,9 +39,11 @@ async def async_get_config_entry_diagnostics(
     mega = status.get("mega", {}) or {}
     observed = mega.get("observedSchemas", {}) or {}
     parameters = mega.get("inventory", {}).get("parameters", {}) or {}
+    catalogs = mega.get("catalogs", {}) or {}
+    compatibility = mega.get("compatibility", {}) or {}
     return {
         "integration": {
-            "version": "9.1.0",
+            "version": "9.2.0",
             "entry_version": config_entry.version,
             "data": async_redact_data(dict(config_entry.data), TO_REDACT),
             "options": async_redact_data(dict(config_entry.options), TO_REDACT),
@@ -65,7 +67,20 @@ async def async_get_config_entry_diagnostics(
             "unique_verified": len(parameters.get("knownTypes", [])),
             "unique_classified": len(parameters.get("classifiedTypes", [])),
             "unique_unresolved": len(parameters.get("unknownTypes", [])),
+            "official_descriptor_catalogs": catalogs.get("available", 0),
+            "official_descriptor_requests": catalogs.get(
+                "requests", catalogs.get("attempted", 0)
+            ),
+            "effective_native_read_catalogs": catalogs.get(
+                "effectiveAvailable",
+                catalogs.get("available", 0) + catalogs.get("synthesized", 0),
+            ),
             "compatibility_fallback_active": bool(mega.get("legacyFallbackRequired")),
+            "compatibility_inventory_active": bool(compatibility.get("inventory")),
+            "compatibility_properties_active": bool(compatibility.get("properties")),
+            "compatibility_cloud_commands_active": bool(
+                compatibility.get("cloudCommands")
+            ),
             "generated_at": status.get("generatedAt"),
         },
     }

@@ -1,3 +1,4 @@
+import json
 import logging
 from enum import Enum
 
@@ -10,10 +11,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     BRIDGE_DEVICE_ID,
+    CAPABILITY_PROPERTY_PATTERN,
     COORDINATOR,
     DOMAIN,
     Platform,
     PlatformToPropertyType,
+    PropertyType,
 )
 from .coordinator import EufySecurityDataUpdateCoordinator
 from .entity import EufySecurityEntity
@@ -66,6 +69,19 @@ async def async_setup_entry(
     entities = [
         EufySecuritySensor(coordinator, metadata) for metadata in product_properties
     ]
+    structured_ai_properties = []
+    for product in [*coordinator.devices.values(), *coordinator.stations.values()]:
+        structured_ai_properties.extend(
+            metadata
+            for metadata in product.metadata.values()
+            if metadata.readable
+            and metadata.type is PropertyType.object
+            and CAPABILITY_PROPERTY_PATTERN.search(metadata.name) is not None
+        )
+    entities.extend(
+        EufySecurityStructuredAISensor(coordinator, metadata)
+        for metadata in structured_ai_properties
+    )
     entities.append(BaiamonteCatalogCoverageSensor(coordinator))
     async_add_entities(entities)
 
@@ -121,6 +137,7 @@ class BaiamonteCatalogCoverageSensor(CoordinatorEntity, SensorEntity):
         observed = self._observed
         inventory = mega.get("inventory", {}).get("parameters", {}) or {}
         catalogs = mega.get("catalogs", {}) or {}
+        compatibility = mega.get("compatibility", {}) or {}
         models = status.get("models", []) or []
         ai_fields = {
             name for model in models for name in model.get("aiPropertyNames", [])
@@ -130,6 +147,12 @@ class BaiamonteCatalogCoverageSensor(CoordinatorEntity, SensorEntity):
         }
         entity_ai_fields = {
             name for model in models for name in model.get("entityAiPropertyNames", [])
+        }
+        complex_ai_fields = {
+            prop.get("name")
+            for model in models
+            for prop in model.get("complexAiProperties", [])
+            if prop.get("name")
         }
         data_points = observed.get("dataPoints", 0)
         semantic = (
@@ -151,9 +174,16 @@ class BaiamonteCatalogCoverageSensor(CoordinatorEntity, SensorEntity):
             "unique_classified": len(inventory.get("classifiedTypes", [])),
             "unique_unresolved": len(inventory.get("unknownTypes", [])),
             "official_catalogs_populated": catalogs.get("available", 0),
-            "official_catalogs_queried": catalogs.get("attempted", 0),
+            "official_catalog_requests": catalogs.get(
+                "requests", catalogs.get("attempted", 0)
+            ),
+            "effective_native_catalogs": catalogs.get(
+                "effectiveAvailable",
+                catalogs.get("available", 0) + catalogs.get("synthesized", 0),
+            ),
             "ai_metadata_fields": len(ai_fields),
             "ai_entity_compatible_fields": len(entity_ai_fields),
+            "ai_structured_diagnostic_fields": len(complex_ai_fields),
             "writable_ai_controls": len(writable_ai),
             "companion_ai_coverage_percent": (
                 round(len(entity_ai_fields) * 100 / len(ai_fields), 1)
@@ -161,6 +191,11 @@ class BaiamonteCatalogCoverageSensor(CoordinatorEntity, SensorEntity):
                 else None
             ),
             "compatibility_fallback_active": bool(mega.get("legacyFallbackRequired")),
+            "compatibility_inventory_active": bool(compatibility.get("inventory")),
+            "compatibility_properties_active": bool(compatibility.get("properties")),
+            "compatibility_cloud_commands_active": bool(
+                compatibility.get("cloudCommands")
+            ),
             "updated_at": status.get("generatedAt"),
         }
 
@@ -203,3 +238,114 @@ class EufySecuritySensor(SensorEntity, EufySecurityEntity):
         if len(str(value)) > 250:
             value = str(value)[-250:]
         return value
+
+
+def _structured_shape(value) -> dict:
+    """Describe a complex value without exposing recognition data or configuration values."""
+    if value is None:
+        return {"kind": "unavailable", "item_count": 0, "keys": [], "field_types": {}}
+    parsed = value
+    if isinstance(value, str):
+        if len(value) > 65536:
+            return {
+                "kind": "string",
+                "item_count": 1,
+                "keys": [],
+                "field_types": {},
+            }
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            return {
+                "kind": "string",
+                "item_count": 1 if value else 0,
+                "keys": [],
+                "field_types": {},
+            }
+    if isinstance(parsed, list):
+        objects = [item for item in parsed[:16] if isinstance(item, dict)]
+        keys = sorted(
+            {
+                key
+                for item in objects
+                for key in list(item)[:32]
+                if isinstance(key, str)
+            }
+        )[:64]
+        field_types = {
+            key: sorted(
+                {
+                    "array"
+                    if isinstance(item.get(key), list)
+                    else "object"
+                    if isinstance(item.get(key), dict)
+                    else "null"
+                    if item.get(key) is None
+                    else type(item.get(key)).__name__
+                    for item in objects
+                    if key in item
+                }
+            )
+            for key in keys
+        }
+        return {
+            "kind": "array",
+            "item_count": len(parsed),
+            "keys": keys,
+            "field_types": field_types,
+        }
+    if isinstance(parsed, dict):
+        keys = sorted(key for key in parsed if isinstance(key, str))[:64]
+        field_types = {
+            key: "array"
+            if isinstance(parsed[key], list)
+            else "object"
+            if isinstance(parsed[key], dict)
+            else "null"
+            if parsed[key] is None
+            else type(parsed[key]).__name__
+            for key in keys
+        }
+        return {
+            "kind": "object",
+            "item_count": len(parsed),
+            "keys": keys,
+            "field_types": field_types,
+        }
+    return {
+        "kind": type(parsed).__name__,
+        "item_count": 1,
+        "keys": [],
+        "field_types": {},
+    }
+
+
+class EufySecurityStructuredAISensor(SensorEntity, EufySecurityEntity):
+    """Expose only the safe structure of a complex AI property."""
+
+    def __init__(
+        self, coordinator: EufySecurityDataUpdateCoordinator, metadata: Metadata
+    ) -> None:
+        super().__init__(coordinator, metadata)
+        self._attr_icon = "mdi:brain"
+
+    @property
+    def _shape(self) -> dict:
+        return _structured_shape(self.product.properties.get(self.metadata.name))
+
+    @property
+    def native_value(self):
+        return self._shape["kind"]
+
+    @property
+    def extra_state_attributes(self):
+        shape = self._shape
+        return {
+            "field": self.metadata.name,
+            "item_count": shape["item_count"],
+            "keys": shape["keys"],
+            "field_types": shape["field_types"],
+            "raw_values_exposed": False,
+            "write_control_exposed": False,
+            "bridge_reports_writable": self.metadata.writeable,
+        }

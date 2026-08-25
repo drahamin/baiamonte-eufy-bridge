@@ -92,6 +92,7 @@ describe("native Mega inventory augmentation", () => {
     ]);
     expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("catalog scan complete"), {
       attempted: 3,
+      requests: 3,
       available: 1,
       empty: 1,
       failed: 1,
@@ -101,6 +102,8 @@ describe("native Mega inventory augmentation", () => {
       knownDataPoints: 0,
       classifiedDataPoints: 0,
       unknownDataPoints: 1,
+      effectiveAvailable: 2,
+      effectiveDataPoints: 3,
     });
     expect((transition as any).writeMegaStatus).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -111,5 +114,28 @@ describe("native Mega inventory augmentation", () => {
         }),
       })
     );
+  });
+
+  it("tries a distinct new-PN catalog alias before falling back to the model", async () => {
+    const transition = new MegaTransition(host);
+    const getProductDataPointsDecrypted = jest
+      .fn()
+      .mockResolvedValueOnce({ data_point_list: [] })
+      .mockResolvedValueOnce({ data_point_list: [{ code: "motion", dp_id: 1 }] });
+    (transition as any).megaLoggedIn = true;
+    (transition as any).loadNativeInventory = jest.fn(async () => ({
+      devices: [{ device_model: "T9999", device_new_pn: "T9999_NEW", params: [] }],
+    }));
+    (transition as any).getMegaApi = jest.fn(async () => ({
+      getProductDataPointsDecrypted,
+      getDeviceRelationsDecrypted: jest.fn(async () => ({ devices: [] })),
+      getDeviceDetailsDecrypted: jest.fn(async () => ({ devices: [] })),
+      getRomVersionsDecrypted: jest.fn(async () => []),
+    }));
+    (transition as any).writeMegaStatus = jest.fn();
+
+    await transition.refreshProductDataPointCatalogs();
+
+    expect(getProductDataPointsDecrypted.mock.calls.map(([code]: [string]) => code)).toEqual(["T9999_NEW", "T9999"]);
   });
 });

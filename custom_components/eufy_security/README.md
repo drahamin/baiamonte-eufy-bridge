@@ -14,6 +14,8 @@ documentation, diagnostics, and connection handling.
 - End-to-end bridge connection entity.
 - Mega catalog research-coverage entity with verified, classified, unresolved, unique-ID, official
   catalog, schema, authentication, and compatibility-fallback attributes.
+- Disabled-by-default structured AI diagnostic sensors that publish only object/array shape, keys,
+  and field types; raw recognition values and writes are deliberately excluded.
 - Privacy-safe downloadable Home Assistant diagnostics.
 - Automatic version-2 config-entry migration and Baiamonte title adoption without entity churn.
 - Input validation for raw JSON and log-level services.

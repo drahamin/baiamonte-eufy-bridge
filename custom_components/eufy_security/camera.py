@@ -178,7 +178,36 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
 
     @property
     def extra_state_attributes(self):
-        return {"stream_debug": self.product.stream_debug}
+        """Expose privacy-safe capabilities for capability-driven dashboards.
+
+        Serial numbers, stream URLs and raw bridge payloads deliberately stay out of
+        the state attributes.  Consumers can use these booleans to avoid presenting
+        controls that the connected camera does not advertise.
+        """
+        commands = set(self.product.commands or [])
+        return {
+            "baiamonte_eufy": True,
+            "model": self.product.model,
+            "capabilities": {
+                "streaming": bool(
+                    {"start_livestream", "stop_livestream"} & commands
+                ),
+                "rtsp": bool(
+                    {"start_rtsp_livestream", "stop_rtsp_livestream"} & commands
+                ),
+                "ptz": "pan_and_tilt" in commands,
+                "rotate_360": "pan_and_tilt" in commands,
+                "presets": "preset_position" in commands,
+                "save_presets": "save_preset_position" in commands,
+                "delete_presets": "delete_preset_position" in commands,
+                "calibrate": "calibrate" in commands,
+                "quick_response": "quick_response" in commands,
+                "alarm": bool(
+                    {"trigger_alarm", "trigger_camera_alarm", "reset_alarm"} & commands
+                ),
+            },
+            "stream_debug": self.product.stream_debug,
+        }
 
     async def _get_image_from_stream_url(self, width, height):
         while True:

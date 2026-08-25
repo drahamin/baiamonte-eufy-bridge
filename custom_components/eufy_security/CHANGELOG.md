@@ -1,5 +1,21 @@
 # Changelog
 
+## 9.2.0 — 2026-08-25
+
+- Add disabled-by-default diagnostic sensors for complex AI objects. Their states and attributes
+  expose only structure, collection sizes, keys, and field types—never recognition results, IDs,
+  coordinates, URLs, or writable controls.
+- Distinguish effective native read catalogs from Eufy-issued descriptor requests in the bridge
+  coverage entity.
+
+## 9.1.1 — 2026-08-25
+
+- Publish privacy-safe camera capability flags so dashboards can render PTZ,
+  preset, calibration, streaming and quick-response controls only where the
+  connected model advertises them.
+- Keep device identifiers, stream URLs and raw bridge payloads out of the new
+  capability contract.
+
 ## 9.1.0 — 2026-08-25
 
 - Expose every writable AI, notification, tracking, lighting, delivery-guard, and PTZ-related

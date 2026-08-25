@@ -58,7 +58,10 @@ interface NativeMegaInventory extends Record<string, unknown> {
 }
 
 export interface MegaProductCatalogSummary {
+  /** Distinct connected products for which a catalog was requested. */
   attempted: number;
+  /** Actual HTTP catalog requests, including bounded model/new-PN aliases. */
+  requests: number;
   available: number;
   empty: number;
   failed: number;
@@ -68,6 +71,9 @@ export interface MegaProductCatalogSummary {
   knownDataPoints: number;
   classifiedDataPoints: number;
   unknownDataPoints: number;
+  /** Populated official plus observed read-only catalogs. */
+  effectiveAvailable: number;
+  effectiveDataPoints: number;
 }
 
 const safeString = (value: unknown, fallback = ""): string =>
@@ -435,6 +441,7 @@ export class MegaTransition {
     this.productCatalogRefresh = (async () => {
       const summary: MegaProductCatalogSummary = {
         attempted: 0,
+        requests: 0,
         available: 0,
         empty: 0,
         failed: 0,
@@ -444,9 +451,18 @@ export class MegaTransition {
         knownDataPoints: 0,
         classifiedDataPoints: 0,
         unknownDataPoints: 0,
+        effectiveAvailable: 0,
+        effectiveDataPoints: 0,
       };
       const discovery: Record<string, unknown> = {
         legacyFallbackRequired: true,
+        compatibility: {
+          inventory: true,
+          properties: true,
+          cloudCommands: true,
+          invitations: true,
+          reason: "Mega descriptors do not yet authorize complete entity mapping or writes",
+        },
         descriptors: { available: false, devices: 0 },
         ota: { requested: 0, records: 0 },
         firmware: { enabled: Boolean(this.host.config.firmwareResearch), packageAvailable: false },
@@ -502,22 +518,34 @@ export class MegaTransition {
         } catch {
           // The house inventory is still enough to continue the product catalog scan.
         }
-        const relationProductCodes = relationDevices.map((entry) => {
+        const relationProductAliases = relationDevices.map((entry) => {
           const wrapper = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
           const detail =
             wrapper.device && typeof wrapper.device === "object"
               ? (wrapper.device as Record<string, unknown>)
               : wrapper;
-          return safeString(detail.device_model ?? detail.device_new_pn);
+          const model = safeString(detail.device_model ?? detail.device_new_pn);
+          const aliases = [safeString(detail.device_new_pn), safeString(detail.device_model)].filter(
+            (code) => code.length > 0 && code.length <= 64
+          );
+          return { model, aliases };
         });
-        const productCodes = Array.from(
-          new Set(
-            (inventory.devices ?? [])
-              .map((device) => safeString(device.device_model ?? device.device_new_pn))
-              .concat(relationProductCodes)
-              .filter((code) => code.length > 0 && code.length <= 64)
-          )
-        ).slice(0, 64);
+        const productAliases = new Map<string, string[]>();
+        for (const device of inventory.devices ?? []) {
+          const model = safeString(device.device_model ?? device.device_new_pn);
+          if (!model) continue;
+          const aliases = [safeString(device.device_new_pn), safeString(device.device_model)].filter(
+            (code) => code.length > 0 && code.length <= 64
+          );
+          productAliases.set(model, Array.from(new Set([...(productAliases.get(model) ?? []), ...aliases])));
+        }
+        // Relation records sometimes carry a PN that is absent from the house response. Keep each
+        // PN attached to its own model so aliases cannot inflate the connected-product count.
+        for (const { model, aliases } of relationProductAliases) {
+          if (!model) continue;
+          productAliases.set(model, Array.from(new Set([...(productAliases.get(model) ?? []), ...aliases])));
+        }
+        const productTargets = Array.from(productAliases.entries()).slice(0, 64);
         const mega = await this.getMegaApi();
         try {
           this.nativeDeviceDetails ??= await mega.getDeviceDetailsDecrypted("", 7);
@@ -581,12 +609,25 @@ export class MegaTransition {
             // OTA discovery is optional and must never affect normal controls.
           }
         }
-        for (const productCode of productCodes) {
+        for (const [productCode, aliases] of productTargets) {
           summary.attempted++;
           try {
-            const catalog = await mega.getProductDataPointsDecrypted(productCode);
+            let catalog: unknown = { data_point_list: [] };
+            let points: unknown[] = [];
+            let successfulRequest = false;
+            for (const alias of aliases) {
+              summary.requests++;
+              try {
+                catalog = await mega.getProductDataPointsDecrypted(alias);
+                successfulRequest = true;
+                points = Array.isArray(catalog) ? catalog : findMegaArray(catalog, "data_point_list");
+                if (points.length > 0) break;
+              } catch {
+                // A PN alias can be unknown to one rollout while the model code remains valid.
+              }
+            }
+            if (!successfulRequest) throw new Error("No product catalog alias succeeded");
             this.productDataPointCatalogs.set(productCode, catalog);
-            const points = Array.isArray(catalog) ? catalog : findMegaArray(catalog, "data_point_list");
             summary.dataPoints += points.length;
             if (points.length === 0) {
               summary.empty++;
@@ -608,6 +649,8 @@ export class MegaTransition {
             summary.failed++;
           }
         }
+        summary.effectiveAvailable = summary.available + summary.synthesized;
+        summary.effectiveDataPoints = summary.dataPoints + summary.observedDataPoints;
         rootMainLogger.info("v6 product data-point catalog scan complete (product codes and values redacted)", summary);
         discovery.catalogs = summary;
         this.writeMegaStatus(discovery);

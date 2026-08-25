@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.0 — 2026-08-25
+
+- Query both the native `device_new_pn` product code and model alias when they differ, stopping as
+  soon as Eufy returns a populated descriptor catalog.
+- Report complete effective native read catalogs separately from Eufy-issued writable-mode
+  descriptors, so an empty descriptor response no longer looks like missing inventory coverage.
+- Add privacy-safe structured AI schema diagnostics containing only field names, collection sizes,
+  and value types; recognition results and configuration values remain private.
+- Retain P2P and compatibility inventory/property/command services only where Mega has not yet
+  supplied a proven complete entity or writable descriptor.
+- Exclude local dependencies, build products, coverage reports, and Python caches from the Docker
+  build context, reducing it from hundreds of megabytes to about four.
+
 ## 1.3.1 — 2026-08-25
 
 - Remove WebSocket peer addresses, ports, and client-supplied close reasons from server logs.
