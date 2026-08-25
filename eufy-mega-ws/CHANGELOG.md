@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 — 2026-08-25
+
+- Compare every native Mega inventory parameter ID with the existing legacy enum catalogs and show
+  mapped/unmapped coverage on the Baiamonte dashboard without exposing parameter values.
+
 ## 1.1.0 — 2026-08-25
 
 - Match the current official Android app identity (`6.0.80_28612`) for Mega requests.

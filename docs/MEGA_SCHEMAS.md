@@ -52,3 +52,12 @@ privacy/consent switches. Their records use `param_name`, `param_value`, `destin
 - Correlate catalog `dp_id`/`code` with each device's native state without exposing values.
 - Enable MQTT writes only for a device/data-point pair whose catalog mode explicitly permits writes.
 - Treat unknown product codes and undocumented HTTP routes as read-only diagnostics.
+
+## Live coverage snapshot
+
+After deploying the current identity and nested-envelope parser on 2026-08-25, both tested US
+accounts still returned successful but empty product catalogs, and the richer descriptor route was
+unavailable. Native house inventory was not empty: the larger account exposed 305 distinct numeric
+parameter IDs, 207 already present in the legacy command/parameter enums and 98 unmapped; the
+second exposed 217 IDs, 146 mapped and 71 unmapped. The dashboard calculates these sets on every
+scan so later server-side catalog rollouts are visible without recording parameter values.

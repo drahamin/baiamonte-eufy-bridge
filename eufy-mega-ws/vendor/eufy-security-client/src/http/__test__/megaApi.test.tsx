@@ -417,7 +417,14 @@ describe("MegaHTTPApi", () => {
         groupCount: 1,
         models: { T87A0: 1, T9000: 1 },
         categories: { smart_display: 1, eufy_security: 1 },
-        parameters: { total: 3, minPerDevice: 1, maxPerDevice: 2, types: ["101", "102"] },
+        parameters: {
+          total: 3,
+          minPerDevice: 1,
+          maxPerDevice: 2,
+          types: ["101", "102"],
+          knownTypes: [],
+          unknownTypes: ["101", "102"],
+        },
       });
       expect(JSON.stringify(summary)).not.toContain("must not leak");
       expect(JSON.stringify(summary)).not.toContain("192.0.2.1");

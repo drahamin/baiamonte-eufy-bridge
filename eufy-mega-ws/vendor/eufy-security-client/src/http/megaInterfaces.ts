@@ -203,6 +203,8 @@ export interface MegaHouseInventorySummary {
     minPerDevice: number;
     maxPerDevice: number;
     types: string[];
+    knownTypes: string[];
+    unknownTypes: string[];
   };
 }
 

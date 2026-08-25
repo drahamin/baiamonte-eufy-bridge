@@ -3,7 +3,8 @@ import md5 from "crypto-js/md5";
 
 import { rootHTTPLogger } from "../logging";
 import { encryptAPIData } from "./utils";
-import { ResponseErrorCode } from "./types";
+import { ParamType, ResponseErrorCode } from "./types";
+import { CommandType } from "../p2p/types";
 import {
   MEGA_PRESET_KEY,
   buildKeyExchange,
@@ -101,6 +102,12 @@ const LOGIN_SERVER_PUBLIC_KEY =
 export const megaLoginHash = (email: string, password: string, openudid: string): string =>
   createHash("sha256").update(`${openudid}:${email}:${password}`).digest("hex");
 
+const knownMegaParameterTypes = new Set(
+  [...Object.values(ParamType), ...Object.values(CommandType)]
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    .map(String)
+);
+
 /** Build an identifier-free summary from one already-decrypted native inventory response. */
 export const summarizeMegaHouseInventory = (value: unknown): MegaHouseInventorySummary => {
   const inventory = value as { devices?: Array<Record<string, unknown>>; groups?: unknown[] };
@@ -129,6 +136,7 @@ export const summarizeMegaHouseInventory = (value: unknown): MegaHouseInventoryS
     }
   }
 
+  const types = Array.from(parameterTypes).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   return {
     deviceCount: devices.length,
     groupCount: groups.length,
@@ -138,7 +146,9 @@ export const summarizeMegaHouseInventory = (value: unknown): MegaHouseInventoryS
       total: parameterCounts.reduce((sum, count) => sum + count, 0),
       minPerDevice: parameterCounts.length > 0 ? Math.min(...parameterCounts) : 0,
       maxPerDevice: parameterCounts.length > 0 ? Math.max(...parameterCounts) : 0,
-      types: Array.from(parameterTypes).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+      types,
+      knownTypes: types.filter((type) => knownMegaParameterTypes.has(type)),
+      unknownTypes: types.filter((type) => !knownMegaParameterTypes.has(type)),
     },
   };
 };
