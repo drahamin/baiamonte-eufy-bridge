@@ -4,13 +4,15 @@ This fork is a transitional hybrid, designed to keep the Home Assistant installa
 Eufy completes the Mega migration and the community publishes native Mega inventory/control APIs.
 It must never describe a legacy-backed capability as Mega-native.
 
-## Capability ownership in `3.1.0-baiamonte.3`
+## Capability ownership in `3.1.0-baiamonte.4`
 
 | Capability | Current provider | Target provider |
 | --- | --- | --- |
 | Authentication and 2FA | Mega v6 | Mega v6 |
 | FCM push registration | Mega v6 | Mega v6 |
 | Houses, stations, and device inventory | Legacy cloud | Mega v6 |
+| Supported native-only inventory augmentation (currently E10/T87A0) | Mega v6 | Mega v6 |
+| Product data-point catalog discovery | Mega v6 | Mega v6 |
 | Cloud properties and cloud-only commands | Legacy cloud | Mega v6 |
 | Shared-device invitations | Legacy cloud | Mega v6 |
 | Streams and direct station/device commands | P2P | P2P |

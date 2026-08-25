@@ -1,9 +1,10 @@
 import { HTTPApi } from "./api";
-import { MegaHTTPApi, megaLoginHash } from "./megaApi";
+import { MegaHTTPApi, megaLoginHash, summarizeMegaHouseInventory } from "./megaApi";
 import { rootMainLogger } from "../logging";
 import type { HTTPApiPersistentData, LoginOptions } from "./interfaces";
 import type { EufySecurityConfig, EufySecurityPersistentData } from "../interfaces";
-import { ResponseErrorCode } from "./types";
+import type { DeviceListResponse } from "./models";
+import { DeviceType, ResponseErrorCode } from "./types";
 import { ensureError } from "../error";
 import { getError } from "../utils";
 import { formatCapabilitySummary } from "./cloudCapabilities";
@@ -30,6 +31,127 @@ export type MegaLoginResult = "ok" | "tfa_required" | "captcha_required" | "lock
 
 /** Which backend a submitted 2FA code / captcha must be routed to. */
 export type ChallengeSource = "mega" | "legacy";
+
+interface NativeMegaDevice extends Record<string, unknown> {
+  device_sn?: unknown;
+  device_name?: unknown;
+  device_model?: unknown;
+  device_new_pn?: unknown;
+  category?: unknown;
+  device_id?: unknown;
+  main_sw_version?: unknown;
+  main_hw_version?: unknown;
+  software_version?: unknown;
+  hardware_version?: unknown;
+  status?: unknown;
+}
+
+interface NativeMegaInventory extends Record<string, unknown> {
+  devices?: NativeMegaDevice[];
+  groups?: unknown[];
+}
+
+export interface MegaProductCatalogSummary {
+  attempted: number;
+  available: number;
+  empty: number;
+  failed: number;
+  dataPoints: number;
+}
+
+const safeString = (value: unknown, fallback = ""): string =>
+  typeof value === "string" && value.length <= 256 ? value : fallback;
+
+/**
+ * Translate only explicitly supported native-only products into the legacy-shaped in-memory model.
+ * Unknown Mega products stay diagnostic-only until their semantics are verified. Parameter values,
+ * broker details, account/member data, P2P material and network addresses are never copied.
+ */
+export const translateNativeMegaDevice = (device: NativeMegaDevice): DeviceListResponse | undefined => {
+  const model = safeString(device.device_model ?? device.device_new_pn);
+  const serial = safeString(device.device_sn);
+  if (model !== "T87A0" || device.category !== "eufy_mega" || serial.length === 0) return undefined;
+
+  return {
+    device_id: typeof device.device_id === "number" ? device.device_id : 0,
+    is_init_complete: false,
+    device_sn: serial,
+    device_name: safeString(device.device_name, "eufy Smart Display E10"),
+    device_model: model,
+    time_zone: "",
+    device_type: DeviceType.SMART_DISPLAY_E10,
+    device_channel: 0,
+    station_sn: "",
+    schedule: "",
+    schedulex: "",
+    wifi_mac: "",
+    sub1g_mac: "",
+    main_sw_version: safeString(device.main_sw_version ?? device.software_version),
+    main_hw_version: safeString(device.main_hw_version ?? device.hardware_version),
+    sec_sw_version: "",
+    sec_hw_version: "",
+    sector_id: 0,
+    event_num: 0,
+    wifi_ssid: "",
+    ip_addr: "",
+    volume: "",
+    main_sw_time: 0,
+    sec_sw_time: 0,
+    bind_time: 0,
+    bt_mac: "",
+    cover_path: "",
+    cover_time: 0,
+    local_ip: "",
+    language: "",
+    sku_number: model,
+    lot_number: "",
+    cpu_id: "",
+    create_time: 0,
+    update_time: 0,
+    status: typeof device.status === "number" ? device.status : 1,
+    svr_domain: "",
+    svr_port: 0,
+    station_conn: {
+      station_sn: "",
+      station_name: "",
+      station_model: "",
+      main_sw_version: "",
+      main_hw_version: "",
+      p2p_did: "",
+      push_did: "",
+      ndt_did: "",
+      p2p_conn: "",
+      app_conn: "",
+      binded: false,
+      setup_code: "",
+      setup_id: "",
+      bt_mac: "",
+      wifi_mac: "",
+      dsk_key: "",
+      expiration: 0,
+    },
+    family_num: 0,
+    member: {} as DeviceListResponse["member"],
+    permission: {},
+    params: [],
+    pir_total: 0,
+    pir_none: 0,
+    pir_missing: 0,
+    week_pir_total: 0,
+    week_pir_none: 0,
+    month_pir_total: 0,
+    month_pir_none: 0,
+    charging_days: 0,
+    charing_total: 0,
+    charging_reserve: 0,
+    charging_missing: 0,
+    battery_usage_last_week: 0,
+    virtual_version: "",
+    relate_devices: [],
+    baiamonte_native_source: "mega",
+    baiamonte_read_only: true,
+  };
+};
 
 /**
  * The narrow surface {@link MegaTransition} needs from {@link EufySecurity}. It is satisfied with a
@@ -74,6 +196,11 @@ export class MegaTransition {
   private megaLoggedIn = false;
   /** A native inventory diagnostic is bounded to one attempt per process. */
   private inventoryDiagnosticAttempted = false;
+  private nativeInventory?: NativeMegaInventory;
+  private nativeInventoryInProgress?: Promise<NativeMegaInventory>;
+  private nativeDeviceRelations?: unknown;
+  private productCatalogRefresh?: Promise<void>;
+  private readonly productDataPointCatalogs = new Map<string, unknown>();
   /** Serialises connect(): concurrent calls await the in-flight one instead of racing the sequence. */
   private connectInProgress?: Promise<void>;
 
@@ -81,7 +208,7 @@ export class MegaTransition {
     this.host = host;
     rootMainLogger.info(`Baiamonte cloud policy: hybrid ${formatCapabilitySummary()}`);
     rootMainLogger.warn(
-      "Baiamonte migration status: legacy cloud remains required for inventory/properties/commands until native Mega endpoints ship"
+      "Baiamonte migration status: Mega augments supported native-only devices and catalogs; legacy remains required for the main inventory/properties/commands"
     );
   }
 
@@ -108,13 +235,112 @@ export class MegaTransition {
     if (!this.host.config.megaInventoryDiagnostics || this.inventoryDiagnosticAttempted) return;
     this.inventoryDiagnosticAttempted = true;
     try {
-      const summary = await (await this.getMegaApi()).getHouseInventorySummary();
+      const summary = summarizeMegaHouseInventory(await this.loadNativeInventory());
       rootMainLogger.info("v6 inventory diagnostic (identifiers redacted)", summary);
     } catch (err) {
       rootMainLogger.warn("v6 inventory diagnostic unavailable; legacy inventory remains active", {
         error: getError(ensureError(err)),
       });
     }
+  }
+
+  private async loadNativeInventory(): Promise<NativeMegaInventory> {
+    if (this.nativeInventory) return this.nativeInventory;
+    if (!this.nativeInventoryInProgress) {
+      this.nativeInventoryInProgress = (async () => {
+        const value = (await (await this.getMegaApi()).getHouseInventoryDecrypted()) as NativeMegaInventory;
+        const inventory: NativeMegaInventory = {
+          devices: Array.isArray(value?.devices) ? value.devices : [],
+          groups: Array.isArray(value?.groups) ? value.groups : [],
+        };
+        this.nativeInventory = inventory;
+        return inventory;
+      })().finally(() => {
+        this.nativeInventoryInProgress = undefined;
+      });
+    }
+    return this.nativeInventoryInProgress;
+  }
+
+  /** Native-only products currently safe to expose to the legacy-shaped websocket model. */
+  public async getSupportedNativeDevices(): Promise<DeviceListResponse[]> {
+    if (!this.megaLoggedIn) return [];
+    try {
+      const inventory = await this.loadNativeInventory();
+      return (inventory.devices ?? [])
+        .map(translateNativeMegaDevice)
+        .filter((device): device is DeviceListResponse => device !== undefined);
+    } catch (err) {
+      rootMainLogger.warn("v6 native inventory augmentation unavailable; legacy inventory remains active", {
+        error: getError(ensureError(err)),
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Read every distinct native product catalog reported by this account. This is deliberately
+   * background, read-only, and bounded; startup and existing controls never wait for catalog scans.
+   */
+  public refreshProductDataPointCatalogs(): Promise<void> {
+    if (!this.megaLoggedIn) return Promise.resolve();
+    if (this.productCatalogRefresh) return this.productCatalogRefresh;
+    this.productCatalogRefresh = (async () => {
+      const summary: MegaProductCatalogSummary = { attempted: 0, available: 0, empty: 0, failed: 0, dataPoints: 0 };
+      try {
+        const inventory = await this.loadNativeInventory();
+        let relationDevices: unknown[] = [];
+        try {
+          this.nativeDeviceRelations ??= await (await this.getMegaApi()).getDeviceRelationsDecrypted("", 7);
+          const relationRecord =
+            this.nativeDeviceRelations && typeof this.nativeDeviceRelations === "object"
+              ? (this.nativeDeviceRelations as Record<string, unknown>)
+              : {};
+          relationDevices = Array.isArray(relationRecord.devices) ? relationRecord.devices : [];
+        } catch {
+          // The house inventory is still enough to continue the product catalog scan.
+        }
+        const relationProductCodes = relationDevices.map((entry) => {
+          const wrapper = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+          const detail =
+            wrapper.device && typeof wrapper.device === "object"
+              ? (wrapper.device as Record<string, unknown>)
+              : wrapper;
+          return safeString(detail.device_model ?? detail.device_new_pn);
+        });
+        const productCodes = Array.from(
+          new Set(
+            (inventory.devices ?? [])
+              .map((device) => safeString(device.device_model ?? device.device_new_pn))
+              .concat(relationProductCodes)
+              .filter((code) => code.length > 0 && code.length <= 64)
+          )
+        ).slice(0, 64);
+        const mega = await this.getMegaApi();
+        for (const productCode of productCodes) {
+          summary.attempted++;
+          try {
+            const catalog = await mega.getProductDataPointsDecrypted(productCode);
+            this.productDataPointCatalogs.set(productCode, catalog);
+            const record = catalog && typeof catalog === "object" ? (catalog as Record<string, unknown>) : {};
+            const points = Array.isArray(record.data_point_list)
+              ? record.data_point_list
+              : Array.isArray(catalog)
+                ? catalog
+                : [];
+            summary.dataPoints += points.length;
+            if (points.length === 0) summary.empty++;
+            else summary.available++;
+          } catch {
+            summary.failed++;
+          }
+        }
+        rootMainLogger.info("v6 product data-point catalog scan complete (product codes and values redacted)", summary);
+      } catch (err) {
+        rootMainLogger.warn("v6 product data-point catalog scan unavailable", { error: getError(ensureError(err)) });
+      }
+    })();
+    return this.productCatalogRefresh;
   }
 
   /**
@@ -290,6 +516,7 @@ export class MegaTransition {
     // PHASE 3 — both backends settled. Signal the app ONCE, only if a login actually succeeded.
     if (this.megaLoggedIn || this.host.api.isConnected()) {
       await this.host.onAPIConnect();
+      void this.refreshProductDataPointCatalogs();
     } else {
       rootMainLogger.warn("connect: neither v6 nor legacy login succeeded — not signalling connected");
       this.host.onConnectionError(new Error("Login failed on both backends"));

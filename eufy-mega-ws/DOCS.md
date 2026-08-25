@@ -1,8 +1,10 @@
 # Configuration
 
 This release operates in explicit hybrid mode: Mega v6 owns authentication and push registration,
-legacy cloud owns inventory and cloud properties that have no published Mega replacement, and P2P
-owns streams/direct device communication. The active boundary is printed in the startup log.
+Mega v6 also augments explicitly supported native-only products and reads product data-point
+catalogs, legacy cloud owns the main inventory and cloud properties that have no published Mega
+replacement, and P2P owns streams/direct device communication. The active boundary is printed in
+the startup log.
 
 | Option | Description |
 | --- | --- |
@@ -18,6 +20,9 @@ owns streams/direct device communication. The active boundary is printed in the 
 | `ipv4first` | Prefer IPv4 for Google FCM endpoints when IPv6 routing is broken. |
 | `trusted_device_name` | Optional label shown in Eufy's trusted-device list. |
 | `stations` | Optional station serial/IP pairs to speed local P2P discovery. |
+
+The Smart Display E10 (`T87A0`) is exposed as a generic read-only device. Its official product
+catalog is currently empty, so this release intentionally advertises no E10 controls.
 
 ## Suggested configuration
 
@@ -68,8 +73,9 @@ want event images stored on disk.
 - `4404 get identity error` once, followed by a retry and successful registration: expected recovery.
 - Repeated `4404` after the single retry: the session/region is being rejected; restart once and
   complete a new Mega login prompt if offered.
-- `No houses/stations/devices found`: the account no longer has legacy inventory access. The public
-  v6 bridge cannot restore unpublished inventory endpoints.
+- `No houses/stations/devices found`: the account no longer has legacy inventory access. Native
+  augmentation can expose explicitly supported native-only models, but cannot yet replace the full
+  unpublished property/command layer.
 - `Baiamonte cloud policy: hybrid ...`: informational capability ownership; use it to verify that a
   future release has moved specific features to Mega rather than silently falling back.
 - Push connects but no event arrives: confirm the dedicated account receives that camera's

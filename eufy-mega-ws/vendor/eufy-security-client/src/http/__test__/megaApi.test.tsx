@@ -457,6 +457,22 @@ describe("MegaHTTPApi", () => {
       expect(sent).toEqual({ code: "T87A0" });
       expect(requests.at(-1)!.url).toContain("/app/things/get_product_data_point");
     });
+
+    it("uses the official Mega device-relation attribute 7 schema", async () => {
+      const response = megaEncryptBody(
+        JSON.stringify({ devices: [] }),
+        sharedKeyToAesKey(fakeIdentity().sharedKey)
+      );
+      const { api, requests } = await makeApi([
+        { statusCode: 200, body: JSON.stringify({ code: 0, msg: "ok", data: response }) },
+      ]);
+
+      await api.getDeviceRelationsDecrypted();
+
+      const sent = JSON.parse(megaDecrypt(requests.at(-1)!.body!, fakeIdentity().sharedKey));
+      expect(sent).toEqual({ house_id: "", attribute: 7 });
+      expect(requests.at(-1)!.url).toContain("/app/devicerelation/get_device_list");
+    });
   });
 
   describe("generateCaptcha", () => {

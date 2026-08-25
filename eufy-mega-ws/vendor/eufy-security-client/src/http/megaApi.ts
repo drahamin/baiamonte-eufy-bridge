@@ -71,6 +71,48 @@ const LOGIN_SERVER_PUBLIC_KEY =
 export const megaLoginHash = (email: string, password: string, openudid: string): string =>
   createHash("sha256").update(`${openudid}:${email}:${password}`).digest("hex");
 
+/** Build an identifier-free summary from one already-decrypted native inventory response. */
+export const summarizeMegaHouseInventory = (value: unknown): MegaHouseInventorySummary => {
+  const inventory = value as { devices?: Array<Record<string, unknown>>; groups?: unknown[] };
+  const devices = Array.isArray(inventory?.devices) ? inventory.devices : [];
+  const groups = Array.isArray(inventory?.groups) ? inventory.groups : [];
+  const models: Record<string, number> = {};
+  const categories: Record<string, number> = {};
+  const parameterCounts: number[] = [];
+  const parameterTypes = new Set<string>();
+
+  const addCount = (target: Record<string, number>, candidate: unknown): void => {
+    if (typeof candidate !== "string" || candidate.length === 0 || candidate.length > 64) return;
+    target[candidate] = (target[candidate] ?? 0) + 1;
+  };
+
+  for (const device of devices) {
+    addCount(models, device.device_model ?? device.device_new_pn);
+    addCount(categories, device.category);
+    const params = Array.isArray(device.params) ? (device.params as Array<Record<string, unknown>>) : [];
+    parameterCounts.push(params.length);
+    for (const param of params) {
+      const type = param?.param_type;
+      if ((typeof type === "number" && Number.isFinite(type)) || (typeof type === "string" && type.length <= 64)) {
+        parameterTypes.add(String(type));
+      }
+    }
+  }
+
+  return {
+    deviceCount: devices.length,
+    groupCount: groups.length,
+    models,
+    categories,
+    parameters: {
+      total: parameterCounts.reduce((sum, count) => sum + count, 0),
+      minPerDevice: parameterCounts.length > 0 ? Math.min(...parameterCounts) : 0,
+      maxPerDevice: parameterCounts.length > 0 ? Math.max(...parameterCounts) : 0,
+      types: Array.from(parameterTypes).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    },
+  };
+};
+
 export class MegaHTTPApi {
   private readonly ab: string;
   private readonly osType: string;
@@ -617,6 +659,20 @@ export class MegaHTTPApi {
   }
 
   /**
+   * Official AIoT/device-relation inventory. App 6.0.80 sends attribute=7 on Mega accounts
+   * (the request model's older default is 3). This complements the security house inventory with
+   * other current product families such as cleaning devices.
+   */
+  public async getDeviceRelationsDecrypted(houseId = "", attribute = 7): Promise<unknown> {
+    if (!Number.isInteger(attribute) || attribute < 0 || attribute > 255) throw new Error("invalid attribute");
+    if (houseId.length > 128) throw new Error("houseId is too long");
+    return this.callDecrypted("devicerelation", "/app/devicerelation/get_device_list", {
+      house_id: houseId,
+      attribute,
+    });
+  }
+
+  /**
    * Eufy-side native inventory (`house/get_devs_list`), decrypted.
    *
    * The official 6.0.80 app sends `house_id`, `categories`, and `add_pns`. The previous probe used
@@ -644,47 +700,7 @@ export class MegaHTTPApi {
   public async getHouseInventorySummary(
     request: MegaHouseInventoryRequest = {}
   ): Promise<MegaHouseInventorySummary> {
-    const inventory = (await this.getHouseInventoryDecrypted(request)) as {
-      devices?: Array<Record<string, unknown>>;
-      groups?: unknown[];
-    };
-    const devices = Array.isArray(inventory?.devices) ? inventory.devices : [];
-    const groups = Array.isArray(inventory?.groups) ? inventory.groups : [];
-    const models: Record<string, number> = {};
-    const categories: Record<string, number> = {};
-    const parameterCounts: number[] = [];
-    const parameterTypes = new Set<string>();
-
-    const addCount = (target: Record<string, number>, value: unknown): void => {
-      if (typeof value !== "string" || value.length === 0 || value.length > 64) return;
-      target[value] = (target[value] ?? 0) + 1;
-    };
-
-    for (const device of devices) {
-      addCount(models, device.device_model ?? device.device_new_pn);
-      addCount(categories, device.category);
-      const params = Array.isArray(device.params) ? (device.params as Array<Record<string, unknown>>) : [];
-      parameterCounts.push(params.length);
-      for (const param of params) {
-        const type = param?.param_type;
-        if ((typeof type === "number" && Number.isFinite(type)) || (typeof type === "string" && type.length <= 64)) {
-          parameterTypes.add(String(type));
-        }
-      }
-    }
-
-    return {
-      deviceCount: devices.length,
-      groupCount: groups.length,
-      models,
-      categories,
-      parameters: {
-        total: parameterCounts.reduce((sum, count) => sum + count, 0),
-        minPerDevice: parameterCounts.length > 0 ? Math.min(...parameterCounts) : 0,
-        maxPerDevice: parameterCounts.length > 0 ? Math.max(...parameterCounts) : 0,
-        types: Array.from(parameterTypes).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
-      },
-    };
+    return summarizeMegaHouseInventory(await this.getHouseInventoryDecrypted(request));
   }
 
   /** Official product data-point catalog request (`{code: productCode}`). */

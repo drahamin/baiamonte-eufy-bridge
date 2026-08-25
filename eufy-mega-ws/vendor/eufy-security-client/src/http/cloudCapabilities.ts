@@ -11,6 +11,8 @@ export const CLOUD_CAPABILITIES = {
   authentication: "mega",
   pushRegistration: "mega",
   inventory: "legacy",
+  nativeInventoryAugmentation: "mega",
+  productDataPointCatalogs: "mega",
   cloudProperties: "legacy",
   cloudCommands: "legacy",
   invitations: "legacy",

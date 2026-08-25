@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1.0-baiamonte.4 — 2026-08-25
+
+- Add the native-only Smart Display E10 (`T87A0`) to schema-21 inventory as a safe read-only
+  generic device, using a non-camera internal type and no guessed properties or commands.
+- Preserve native-only devices across periodic legacy inventory refreshes without replacing richer
+  legacy records for devices visible on both backends.
+- Read and cache the official product data-point catalog for every distinct native account model in
+  a bounded background scan, combining house inventory with the official Mega device-relation
+  inventory (`attribute: 7`); failures and empty catalogs do not affect startup or existing control.
+- Redact product codes, identifiers, parameter values, broker data, and account data from catalog
+  scan diagnostics.
+
 ## 3.1.0-baiamonte.3 — 2026-08-25
 
 - Replace the legacy-shaped native inventory probe with the official Mega

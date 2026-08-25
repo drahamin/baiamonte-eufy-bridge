@@ -961,6 +961,9 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
           new_device = GarageCamera.getInstance(this.api, device, deviceConfig);
         } else if (Device.isSmartDrop(device.device_type)) {
           new_device = SmartDrop.getInstance(this.api, device, deviceConfig);
+        } else if (device.device_type === DeviceType.SMART_DISPLAY_E10) {
+          rootMainLogger.info("Native Mega read-only device added", { model: device.device_model });
+          new_device = UnknownDevice.getInstance(this.api, device, deviceConfig);
         } else if (Device.isCamera(device.device_type)) {
           new_device = Camera.getInstance(this.api, device, deviceConfig);
         } else if (Device.isLock(device.device_type)) {
@@ -1082,6 +1085,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     }
     Promise.all(promises).then((devices) => {
       devices.forEach((device) => {
+        if (!device.getStationSerial()) return;
         this.getStation(device.getStationSerial())
           .then((station: Station) => {
             if (!station.isConnected() && station.isP2PConnectableDevice()) {
@@ -1111,6 +1115,9 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
       if (!newDeviceSNs.includes(deviceSN)) {
         this.getDevice(deviceSN)
           .then((device: Device) => {
+            // Native-only products are augmented after each legacy refresh. Do not briefly remove
+            // them merely because the legacy response cannot see them.
+            if (device.getRawDevice().baiamonte_native_source === "mega") return;
             this.removeDevice(device);
           })
           .catch((err) => {
@@ -1132,6 +1139,8 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
       const error = ensureError(err);
       rootMainLogger.error("Error during API data refreshing", { error: getError(error) });
     });
+    if (this.devicesLoaded !== undefined) await this.devicesLoaded;
+    await this.augmentNativeMegaDevices();
     if (this.refreshEufySecurityCloudTimeout !== undefined) clearTimeout(this.refreshEufySecurityCloudTimeout);
     if (this.config.pollingIntervalMinutes > 0)
       this.refreshEufySecurityCloudTimeout = setTimeout(
@@ -1144,6 +1153,28 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
       rootMainLogger.info(
         `Automatic retrieval of data from the cloud has been deactivated (config pollingIntervalMinutes: ${this.config.pollingIntervalMinutes})`
       );
+  }
+
+  private async augmentNativeMegaDevices(): Promise<void> {
+    const nativeDevices = await this.megaTransition.getSupportedNativeDevices();
+    if (nativeDevices.length === 0) return;
+
+    const merged: FullDevices = {};
+    for (const device of Object.values(this.devices)) merged[device.getSerial()] = device.getRawDevice();
+
+    let changed = false;
+    for (const nativeDevice of nativeDevices) {
+      const existing = merged[nativeDevice.device_sn];
+      // Never replace a richer legacy record. Native inventory only fills products legacy omits.
+      if (!existing || existing.baiamonte_native_source === "mega") {
+        merged[nativeDevice.device_sn] = nativeDevice;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+
+    this.handleDevices(merged);
+    if (this.devicesLoaded !== undefined) await this.devicesLoaded;
   }
 
   public close(): void {

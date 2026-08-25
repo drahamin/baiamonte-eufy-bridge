@@ -110,6 +110,9 @@ export enum DeviceType {
   INDOOR_PT_CAMERA_C220_V2 = 10010, // T8W11C (Type 10010)
   INDOOR_PT_CAMERA_C220_V3 = 10011, // T8419N
   CAMERA_C35 = 10035, //T8110
+  // Baiamonte internal type. Native Mega reports T87A0 as type 1 (which means Camera in the
+  // legacy schema), so it must be translated to a non-colliding read-only type.
+  SMART_DISPLAY_E10 = 10100, // T87A0
 }
 
 export enum ParamType {
@@ -1082,6 +1085,7 @@ export const GenericTypeProperty: PropertyMetadataNumeric = {
     10010: "Indoor Cam C220 (T8W11C)",
     10011: "Indoor Cam C220 (T8419N)",
     10035: "eufyCam C35 (T8110)",
+    10100: "Smart Display E10 (T87A0)",
   },
 };
 
@@ -5504,6 +5508,9 @@ export const LockT85V0DeviceProperties: IndexedProperty = {
 };
 
 export const DeviceProperties: Properties = {
+  [DeviceType.SMART_DISPLAY_E10]: {
+    ...GenericDeviceProperties,
+  },
   [DeviceType.CAMERA2]: {
     ...GenericDeviceProperties,
     [PropertyName.DeviceBattery]: DeviceBatteryProperty,
