@@ -142,6 +142,37 @@ export class DeviceMessageHandler {
     const { serialNumber, command } = message;
 
     const device = await driver.getDevice(serialNumber);
+
+    // Read-only device introspection must not require a station. Native-only standalone products
+    // such as Smart Display E10 intentionally have no P2P station association.
+    if (command === DeviceCommand.getPropertiesMetadata) {
+      const properties = device.getPropertiesMetadata();
+      if (client.schemaVersion <= 3) return { properties };
+      if (client.schemaVersion <= 12) return { serialNumber: device.getSerial(), properties };
+      return {
+        serialNumber: device.getSerial(),
+        properties: dumpDevicePropertiesMetadata(device, client.schemaVersion),
+      };
+    }
+    if (command === DeviceCommand.getProperties) {
+      const properties = device.getProperties();
+      if (client.schemaVersion <= 3) return { properties };
+      if (client.schemaVersion <= 12) return { serialNumber: device.getSerial(), properties };
+      return {
+        serialNumber: device.getSerial(),
+        properties: dumpDeviceProperties(device, client.schemaVersion) as unknown as Record<string, unknown>,
+      };
+    }
+    if (command === DeviceCommand.getCommands) {
+      if (client.schemaVersion < 3) throw new UnknownCommandError(command);
+      const result = device.getCommands();
+      const commands = Array.from(result, (deviceCommand) =>
+        convertCamelCaseToSnakeCase(deviceCommand.replace("device", ""))
+      );
+      if (client.schemaVersion === 3) return { commands: result };
+      return { serialNumber: device.getSerial(), commands: commands as CommandName[] };
+    }
+
     const station = await driver.getStation(device.getStationSerial());
 
     switch (command) {
@@ -245,46 +276,6 @@ export class DeviceMessageHandler {
         } else {
           throw new UnknownCommandError(command);
         }
-      case DeviceCommand.getPropertiesMetadata: {
-        const properties = device.getPropertiesMetadata();
-
-        if (client.schemaVersion <= 3) {
-          return { properties: properties };
-        } else if (client.schemaVersion >= 4 && client.schemaVersion <= 12) {
-          return {
-            serialNumber: device.getSerial(),
-            properties: properties,
-          };
-        } else {
-          return {
-            serialNumber: device.getSerial(),
-            properties: dumpDevicePropertiesMetadata(
-              device,
-              client.schemaVersion,
-            ),
-          };
-        }
-      }
-      case DeviceCommand.getProperties: {
-        const properties = device.getProperties();
-
-        if (client.schemaVersion <= 3) {
-          return { properties: properties };
-        } else if (client.schemaVersion >= 4 && client.schemaVersion <= 12) {
-          return {
-            serialNumber: device.getSerial(),
-            properties: properties,
-          };
-        } else {
-          return {
-            serialNumber: device.getSerial(),
-            properties: dumpDeviceProperties(
-              device,
-              client.schemaVersion,
-            ) as unknown as Record<string, unknown>,
-          };
-        }
-      }
       case DeviceCommand.setProperty:
         await driver
           .setDeviceProperty(
@@ -552,29 +543,6 @@ export class DeviceMessageHandler {
             return {
               serialNumber: device.getSerial(),
               exists: result,
-            };
-          }
-        } else {
-          throw new UnknownCommandError(command);
-        }
-      }
-      case DeviceCommand.getCommands: {
-        if (client.schemaVersion >= 3) {
-          const result = device.getCommands();
-
-          const commands: Array<string> = [];
-          result.forEach((command) => {
-            commands.push(
-              convertCamelCaseToSnakeCase(command.replace("device", "")),
-            );
-          });
-
-          if (client.schemaVersion === 3) {
-            return { commands: result };
-          } else if (client.schemaVersion >= 4) {
-            return {
-              serialNumber: device.getSerial(),
-              commands: commands as CommandName[], //TODO: Convert to correct type
             };
           }
         } else {

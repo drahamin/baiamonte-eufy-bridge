@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.0-baiamonte.7 — 2026-08-25
+
+- Allow read-only WebSocket property, metadata, and command-list queries for standalone native
+  devices without resolving a P2P station; mutating and streaming commands still require one.
+
 ## 3.1.0-baiamonte.6 — 2026-08-25
 
 - Encode the native inventory presence diagnostic in the client library's expected raw boolean
