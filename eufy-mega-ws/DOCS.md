@@ -25,6 +25,21 @@ The Smart Display E10 (`T87A0`) is exposed as a generic read-only device. Its of
 catalog is currently empty, so this release intentionally advertises no E10 controls. A disabled-by-
 default `Present in Mega inventory` diagnostic is provided so Home Assistant can register the device.
 
+## Mega schema coverage
+
+The dashboard distinguishes three evidence levels:
+
+- **Verified**: an existing parser or an unambiguous typed payload supports the name.
+- **Classified**: the field belongs to a recurring feature family, but its exact semantics remain
+  unpublished. These fields are read-only and never authorize a command.
+- **Unresolved**: no defensible name or family is known yet.
+
+HomeBase Pro LTE diagnostics, cellular modem firmware, and both SIM-slot status envelopes are named
+but remain read-only. SIM envelopes are shape-profiled only; card and subscriber identifiers are
+never included in status output. The recurring `1418–1420`, `1509–1513`, and `92xx` blocks occur on
+multiple product categories, so the bridge labels them as cross-product or Mega capability fields
+instead of inventing camera-specific AI names.
+
 ## Suggested configuration
 
 ```yaml

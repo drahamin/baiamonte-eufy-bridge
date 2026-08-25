@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.4 — 2026-08-25
+
+- Name four directly evidenced HomeBase Pro Mega fields: LTE diagnostics, cellular modem firmware,
+  and privacy-safe status envelopes for SIM slots 1 and 2. All remain read-only.
+- Separate verified, family-classified, and unresolved observed IDs so recurring platform-reserved
+  blocks are no longer presented as missing camera features or mistaken for writable controls.
+- Add identifier-free value-shape profiling (empty, integer, version, JSON, or Base64 JSON) to make
+  future schema correlation useful without publishing parameter values, SIM identifiers, or device
+  identifiers.
+- Update the ingress dashboard with expandable classified names, safe value shapes, and honest
+  unresolved counts per model.
+
 ## 1.2.3 — 2026-08-25
 
 - Resolve schema-21 device and station identifiers into live product records before building the

@@ -3,7 +3,7 @@ import md5 from "crypto-js/md5";
 
 import { rootHTTPLogger } from "../logging";
 import { encryptAPIData } from "./utils";
-import { ParamType, ResponseErrorCode } from "./types";
+import { HOMEBASE_PRO_LTE_STATUS_PARAM, ParamType, ResponseErrorCode } from "./types";
 import { CommandType } from "../p2p/types";
 import {
   MEGA_PRESET_KEY,
@@ -106,6 +106,104 @@ const LOGIN_SERVER_PUBLIC_KEY =
 export const megaLoginHash = (email: string, password: string, openudid: string): string =>
   createHash("sha256").update(`${openudid}:${email}:${password}`).digest("hex");
 
+type ObservedMegaMetadata = {
+  code: string;
+  name: string;
+  confidence: "verified" | "classified";
+  classification: string;
+};
+
+/**
+ * Additions recovered outside the legacy enum. Every entry remains read-only. "verified" requires
+ * either an existing parser or an unambiguous typed payload; broad numeric coincidences are not
+ * accepted as evidence.
+ */
+const observedMegaMetadata = new Map<number, ObservedMegaMetadata>([
+  [
+    HOMEBASE_PRO_LTE_STATUS_PARAM,
+    {
+      code: "HOMEBASE_PRO_LTE_DIAGNOSTICS",
+      name: "HomeBase Pro LTE diagnostics",
+      confidence: "verified",
+      classification: "homebase_pro_cellular",
+    },
+  ],
+  [
+    6226,
+    {
+      code: "HOMEBASE_PRO_CELLULAR_MODEM_FIRMWARE",
+      name: "HomeBase Pro cellular modem firmware",
+      confidence: "verified",
+      classification: "homebase_pro_cellular",
+    },
+  ],
+  [
+    61400,
+    {
+      code: "HOMEBASE_PRO_SIM_SLOT_1_STATUS",
+      name: "HomeBase Pro SIM slot 1 status",
+      confidence: "verified",
+      classification: "homebase_pro_cellular",
+    },
+  ],
+  [
+    61401,
+    {
+      code: "HOMEBASE_PRO_SIM_SLOT_2_STATUS",
+      name: "HomeBase Pro SIM slot 2 status",
+      confidence: "verified",
+      classification: "homebase_pro_cellular",
+    },
+  ],
+  [
+    7013,
+    {
+      code: "CAMERA_AUXILIARY_FIRMWARE_VERSION",
+      name: "Camera auxiliary firmware version",
+      confidence: "classified",
+      classification: "camera_firmware",
+    },
+  ],
+]);
+
+const crossProductPlatformIds = new Set([1418, 1419, 1420, 1509, 1510, 1511, 1512, 1513]);
+const megaCapabilityIds = new Set([9201, 9202, 9235, 9236, 9237, 9238, 9257, 9258, 9273]);
+const homeBaseProCellularReservedIds = new Set([5006, 5007, 5008, 5009, 5010, 5011, 5012, 6224, 6225]);
+
+const classifyObservedMegaParameter = (type: number, productCode?: string): ObservedMegaMetadata | undefined => {
+  const exact = observedMegaMetadata.get(type);
+  if (exact && (type === 7013 || productCode === "T9000")) return exact;
+  if (crossProductPlatformIds.has(type))
+    return {
+      code: `MEGA_CROSS_PRODUCT_PLATFORM_${type}`,
+      name: `Mega cross-product platform field ${type}`,
+      confidence: "classified",
+      classification: "cross_product_platform",
+    };
+  if (megaCapabilityIds.has(type))
+    return {
+      code: `MEGA_CAPABILITY_${type}`,
+      name: `Mega capability field ${type}`,
+      confidence: "classified",
+      classification: "mega_capability",
+    };
+  if (productCode === "T9000" && homeBaseProCellularReservedIds.has(type))
+    return {
+      code: `HOMEBASE_PRO_CELLULAR_RESERVED_${type}`,
+      name: `HomeBase Pro cellular reserved field ${type}`,
+      confidence: "classified",
+      classification: "homebase_pro_cellular_reserved",
+    };
+  if (type >= 40003 && type <= 40012)
+    return {
+      code: `WIRED_CAMERA_PLATFORM_${type}`,
+      name: `Wired camera platform field ${type}`,
+      confidence: "classified",
+      classification: "wired_camera_platform",
+    };
+  return undefined;
+};
+
 const knownMegaParameterTypes = new Set(
   [...Object.values(ParamType), ...Object.values(CommandType)]
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
@@ -119,6 +217,37 @@ const megaParameterName = (type: number): string | undefined => {
   return typeof commandName === "string" ? commandName : undefined;
 };
 
+const safeValueProfile = (value: unknown): string => {
+  if (value === undefined || value === null || value === "") return "empty";
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "decimal";
+  if (typeof value !== "string") return Array.isArray(value) ? "array" : "object";
+  if (/^-?\d+$/.test(value)) return "integer";
+  if (/^-?(?:\d+\.\d*|\d*\.\d+)$/.test(value)) return "decimal";
+  if (/^\d+(?:\.\d+){2,}(?:[-_][A-Za-z0-9.]+)?$/.test(value)) return "version";
+  if (/^https?:\/\//i.test(value)) return "url";
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? "json_array" : parsed && typeof parsed === "object" ? "json_object" : "json_scalar";
+  } catch {
+    // Continue with a bounded Base64 shape check. Decoded contents are never retained.
+  }
+  if (value.length >= 4 && value.length <= 65536 && value.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+    try {
+      const decoded = Buffer.from(value, "base64").toString("utf8");
+      const parsed = JSON.parse(decoded);
+      return Array.isArray(parsed)
+        ? "base64_json_array"
+        : parsed && typeof parsed === "object"
+          ? "base64_json_object"
+          : "base64";
+    } catch {
+      return "base64_or_text";
+    }
+  }
+  return "text";
+};
+
 /**
  * Build identifier/value-free, read-only catalogs from the native parameters actually reported by
  * each product. This is the fallback for accounts where Eufy's catalog endpoint succeeds but
@@ -127,15 +256,23 @@ const megaParameterName = (type: number): string | undefined => {
 export const buildObservedMegaProductCatalogs = (value: unknown): Record<string, MegaObservedProductCatalog> => {
   const inventory = value as { devices?: Array<Record<string, unknown>> };
   const byProduct = new Map<string, Set<number>>();
+  const profilesByProduct = new Map<string, Map<number, Set<string>>>();
   for (const device of Array.isArray(inventory?.devices) ? inventory.devices : []) {
     const product = device.device_model ?? device.device_new_pn;
     if (typeof product !== "string" || !product || product.length > 64) continue;
     const types = byProduct.get(product) ?? new Set<number>();
+    const profiles = profilesByProduct.get(product) ?? new Map<number, Set<string>>();
     for (const param of Array.isArray(device.params) ? (device.params as Array<Record<string, unknown>>) : []) {
       const candidate = typeof param.param_type === "string" ? Number(param.param_type) : param.param_type;
-      if (typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate >= 0) types.add(candidate);
+      if (typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate >= 0) {
+        types.add(candidate);
+        const valueProfiles = profiles.get(candidate) ?? new Set<string>();
+        valueProfiles.add(safeValueProfile(param.param_value));
+        profiles.set(candidate, valueProfiles);
+      }
     }
     byProduct.set(product, types);
+    profilesByProduct.set(product, profiles);
   }
 
   return Object.fromEntries(
@@ -147,14 +284,23 @@ export const buildObservedMegaProductCatalogs = (value: unknown): Record<string,
           .sort((a, b) => a - b)
           .map((dp_id) => {
             const knownName = megaParameterName(dp_id);
+            const metadata = classifyObservedMegaParameter(dp_id, productCode);
+            const verified = knownName !== undefined || metadata?.confidence === "verified";
             return {
-              code: knownName ?? `param_${dp_id}`,
+              code: knownName ?? metadata?.code ?? `param_${dp_id}`,
               dp_id,
-              name: knownName ?? `Unknown parameter ${dp_id}`,
+              name: knownName ?? metadata?.name ?? `Unresolved parameter ${dp_id}`,
               mode: "ro" as const,
               data_type: "observed" as const,
               source: "native_inventory" as const,
-              known: knownName !== undefined,
+              known: verified,
+              confidence: verified
+                ? ("verified" as const)
+                : metadata
+                  ? ("classified" as const)
+                  : ("unresolved" as const),
+              classification: knownName ? "legacy_enum" : (metadata?.classification ?? "unresolved"),
+              value_profiles: Array.from(profilesByProduct.get(productCode)?.get(dp_id) ?? []).sort(),
             };
           }),
       },
@@ -171,6 +317,8 @@ export const summarizeMegaHouseInventory = (value: unknown): MegaHouseInventoryS
   const categories: Record<string, number> = {};
   const parameterCounts: number[] = [];
   const parameterTypes = new Set<string>();
+  const verifiedObservedTypes = new Set<string>();
+  const classifiedObservedTypes = new Set<string>();
 
   const addCount = (target: Record<string, number>, candidate: unknown): void => {
     if (typeof candidate !== "string" || candidate.length === 0 || candidate.length > 64) return;
@@ -178,14 +326,22 @@ export const summarizeMegaHouseInventory = (value: unknown): MegaHouseInventoryS
   };
 
   for (const device of devices) {
-    addCount(models, device.device_model ?? device.device_new_pn);
+    const product = device.device_model ?? device.device_new_pn;
+    addCount(models, product);
     addCount(categories, device.category);
     const params = Array.isArray(device.params) ? (device.params as Array<Record<string, unknown>>) : [];
     parameterCounts.push(params.length);
     for (const param of params) {
       const type = param?.param_type;
       if ((typeof type === "number" && Number.isFinite(type)) || (typeof type === "string" && type.length <= 64)) {
-        parameterTypes.add(String(type));
+        const serializedType = String(type);
+        parameterTypes.add(serializedType);
+        const numericType = Number(type);
+        const metadata = Number.isSafeInteger(numericType)
+          ? classifyObservedMegaParameter(numericType, typeof product === "string" ? product : undefined)
+          : undefined;
+        if (metadata?.confidence === "verified") verifiedObservedTypes.add(serializedType);
+        else if (metadata?.confidence === "classified") classifiedObservedTypes.add(serializedType);
       }
     }
   }
@@ -201,8 +357,15 @@ export const summarizeMegaHouseInventory = (value: unknown): MegaHouseInventoryS
       minPerDevice: parameterCounts.length > 0 ? Math.min(...parameterCounts) : 0,
       maxPerDevice: parameterCounts.length > 0 ? Math.max(...parameterCounts) : 0,
       types,
-      knownTypes: types.filter((type) => knownMegaParameterTypes.has(type)),
-      unknownTypes: types.filter((type) => !knownMegaParameterTypes.has(type)),
+      knownTypes: types.filter((type) => knownMegaParameterTypes.has(type) || verifiedObservedTypes.has(type)),
+      classifiedTypes: types.filter(
+        (type) =>
+          !knownMegaParameterTypes.has(type) && !verifiedObservedTypes.has(type) && classifiedObservedTypes.has(type)
+      ),
+      unknownTypes: types.filter(
+        (type) =>
+          !knownMegaParameterTypes.has(type) && !verifiedObservedTypes.has(type) && !classifiedObservedTypes.has(type)
+      ),
     },
   };
 };

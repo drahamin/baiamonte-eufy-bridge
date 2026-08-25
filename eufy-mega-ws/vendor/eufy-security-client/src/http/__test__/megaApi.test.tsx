@@ -1,4 +1,10 @@
-import { buildObservedMegaProductCatalogs, MegaHTTPApi, megaLoginHash, type MegaSession } from "../megaApi";
+import {
+  buildObservedMegaProductCatalogs,
+  MegaHTTPApi,
+  megaLoginHash,
+  summarizeMegaHouseInventory,
+  type MegaSession,
+} from "../megaApi";
 import { megaEncryptBody, sharedKeyToAesKey, type MegaIdentity } from "../megaCrypto";
 
 jest.mock("../../logging", () => ({
@@ -56,6 +62,78 @@ describe("MegaHTTPApi", () => {
     ]);
     expect(JSON.stringify(catalogs)).not.toContain("private-serial");
     expect(JSON.stringify(catalogs)).not.toContain("private-value");
+  });
+
+  it("names verified HomeBase Pro fields, classifies reserved blocks, and emits only safe value shapes", () => {
+    const privateSimEnvelope = Buffer.from(JSON.stringify({ iccid: "private-card-id", slot: 1 })).toString("base64");
+    const catalogs = buildObservedMegaProductCatalogs({
+      devices: [
+        {
+          device_model: "T9000",
+          params: [
+            { param_type: 6221, param_value: Buffer.from(JSON.stringify({ signal: 4 })).toString("base64") },
+            { param_type: 6226, param_value: "modem.version.private" },
+            { param_type: 61400, param_value: privateSimEnvelope },
+            { param_type: 5006, param_value: "" },
+            { param_type: 6287, param_value: "private-opaque-value" },
+          ],
+        },
+        { device_model: "T9999", params: [{ param_type: 6221, param_value: "0" }] },
+      ],
+    });
+    const homeBaseCatalog = catalogs.T9000.data_point_list;
+
+    expect(homeBaseCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dp_id: 6221,
+          code: "HOMEBASE_PRO_LTE_DIAGNOSTICS",
+          confidence: "verified",
+          known: true,
+          value_profiles: ["base64_json_object"],
+        }),
+        expect.objectContaining({
+          dp_id: 61400,
+          code: "HOMEBASE_PRO_SIM_SLOT_1_STATUS",
+          confidence: "verified",
+          known: true,
+          value_profiles: ["base64_json_object"],
+        }),
+        expect.objectContaining({
+          dp_id: 5006,
+          confidence: "classified",
+          classification: "homebase_pro_cellular_reserved",
+          known: false,
+        }),
+        expect.objectContaining({ dp_id: 6287, confidence: "unresolved", known: false }),
+      ])
+    );
+    expect(catalogs.T9999.data_point_list).toEqual([
+      expect.objectContaining({ dp_id: 6221, confidence: "unresolved", known: false }),
+    ]);
+    const serialized = JSON.stringify(homeBaseCatalog);
+    expect(serialized).not.toContain("private-card-id");
+    expect(serialized).not.toContain("private-opaque-value");
+    expect(serialized).not.toContain("modem.version.private");
+  });
+
+  it("separates verified, classified, and unresolved IDs in redacted inventory totals", () => {
+    const summary = summarizeMegaHouseInventory({
+      devices: [
+        {
+          device_model: "T9000",
+          params: [{ param_type: 6221 }, { param_type: 5006 }, { param_type: 6287 }],
+        },
+      ],
+    });
+    expect(summary.parameters).toEqual(
+      expect.objectContaining({
+        types: ["5006", "6221", "6287"],
+        knownTypes: ["6221"],
+        classifiedTypes: ["5006"],
+        unknownTypes: ["6287"],
+      })
+    );
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -444,6 +522,7 @@ describe("MegaHTTPApi", () => {
           maxPerDevice: 2,
           types: ["101", "102"],
           knownTypes: [],
+          classifiedTypes: [],
           unknownTypes: ["101", "102"],
         },
       });

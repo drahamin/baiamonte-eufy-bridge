@@ -5,12 +5,7 @@ import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
 
 import { HTTPApi } from "./api";
-import {
-  MegaHTTPApi,
-  buildObservedMegaProductCatalogs,
-  megaLoginHash,
-  summarizeMegaHouseInventory,
-} from "./megaApi";
+import { MegaHTTPApi, buildObservedMegaProductCatalogs, megaLoginHash, summarizeMegaHouseInventory } from "./megaApi";
 import { rootMainLogger } from "../logging";
 import type { HTTPApiPersistentData, LoginOptions } from "./interfaces";
 import type { EufySecurityConfig, EufySecurityPersistentData } from "../interfaces";
@@ -463,22 +458,37 @@ export class MegaTransition {
           products: Object.keys(observedCatalogs).length,
           dataPoints: observedPoints.length,
           known: observedPoints.filter((point) => point.known).length,
-          unknown: observedPoints.filter((point) => !point.known).length,
+          classified: observedPoints.filter((point) => point.confidence === "classified").length,
+          unknown: observedPoints.filter((point) => point.confidence === "unresolved").length,
           models: Object.fromEntries(
             Object.entries(observedCatalogs).map(([model, catalog]) => [
               model,
               {
                 dataPoints: catalog.data_point_list.length,
                 known: catalog.data_point_list.filter((point) => point.known).length,
-                unknown: catalog.data_point_list.filter((point) => !point.known).length,
+                classified: catalog.data_point_list.filter((point) => point.confidence === "classified").length,
+                unknown: catalog.data_point_list.filter((point) => point.confidence === "unresolved").length,
                 knownIds: catalog.data_point_list
                   .filter((point) => point.known)
                   .map((point) => point.dp_id)
                   .sort((a, b) => a - b),
                 unknownIds: catalog.data_point_list
-                  .filter((point) => !point.known)
+                  .filter((point) => point.confidence === "unresolved")
                   .map((point) => point.dp_id)
                   .sort((a, b) => a - b),
+                unresolvedDetails: catalog.data_point_list
+                  .filter((point) => point.confidence === "unresolved")
+                  .map((point) => ({ id: point.dp_id, profiles: point.value_profiles }))
+                  .sort((a, b) => a.id - b.id),
+                classifiedIds: catalog.data_point_list
+                  .filter((point) => point.confidence === "classified")
+                  .map((point) => ({
+                    id: point.dp_id,
+                    name: point.name,
+                    family: point.classification,
+                    profiles: point.value_profiles,
+                  }))
+                  .sort((a, b) => a.id - b.id),
               },
             ])
           ),

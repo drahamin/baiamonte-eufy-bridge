@@ -111,6 +111,11 @@ export interface MegaObservedDataPointDescriptor {
   data_type: "observed";
   source: "native_inventory";
   known: boolean;
+  /** Confidence is deliberately separate from `known`: classified/reserved IDs are not writable. */
+  confidence: "verified" | "classified" | "unresolved";
+  classification: string;
+  /** Identifier-free value shapes seen for this model/ID (never raw values). */
+  value_profiles: string[];
 }
 
 export interface MegaObservedProductCatalog {
@@ -220,6 +225,7 @@ export interface MegaHouseInventorySummary {
     maxPerDevice: number;
     types: string[];
     knownTypes: string[];
+    classifiedTypes: string[];
     unknownTypes: string[];
   };
 }
