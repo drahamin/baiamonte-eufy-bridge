@@ -45,6 +45,10 @@ export interface EufySecurityConfig {
   snapshotCache?: boolean;
   /** Run one identifier-free native Mega inventory summary after v6 login. */
   megaInventoryDiagnostics?: boolean;
+  /** Download a discovered Smart Display E10 OTA package for local research; never starts an upgrade. */
+  firmwareResearch?: boolean;
+  /** Destination for research firmware. Must be explicitly supplied by the packaging layer. */
+  firmwareResearchDir?: string;
   stationIPAddresses?: StationIPAddresses;
   enableEmbeddedPKCS1Support?: boolean;
   deviceConfig?: {

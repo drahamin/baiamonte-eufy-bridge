@@ -20,6 +20,12 @@ configuration:
   snapshot_cache:
     name: Gebeurtenisbeelden bewaren
     description: Bewaar het laatste geldige pushbeeld van elke camera na een herstart van de add-on
+  mega_inventory_diagnostics:
+    name: eufy Mega-catalogi scannen
+    description: Lees native apparaat-, functie-, datapunt- en OTA-catalogi op de achtergrond
+  firmware_research:
+    name: E10-onderzoeksfirmware downloaden
+    description: Bewaar een door de server aangeboden E10 OTA-pakket zonder een upgrade te starten
   trusted_device_name:
     name: Naam vertrouwd apparaat
     description: Optionele naam van deze service in Eufy's lijst met vertrouwde apparaten

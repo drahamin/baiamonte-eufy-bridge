@@ -73,7 +73,8 @@ export interface MegaHouseInventoryRequest {
 
 /** One device descriptor accepted by the official batch ROM-version endpoint. */
 export interface MegaRomVersionRequest {
-  device_type: number;
+  /** Official app sends the product model suffixed with `_ota`, e.g. `T87A0_ota`. */
+  device_type: string;
   device_sn: string;
   category: string;
 }

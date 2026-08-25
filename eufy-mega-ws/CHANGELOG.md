@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.0 — 2026-08-25
+
+- Establish the dedicated **Baiamonte eufy Bridge** product identity, add-on slug, repository URL,
+  container labels, AppArmor profile, and Home Assistant panel title.
+- Add an authenticated Home Assistant ingress dashboard with live device/station totals, per-model
+  snapshot, livestream, AI metadata, writable-property, Mega-catalog, OTA, and migration status.
+- Correct the decompiled OTA request schema to use `<model>_ota` and `eufy_home`, add the official
+  single-device ROM query, and optionally download and verify an offered E10 package without
+  invoking an upgrade.
+- Preserve Mega authentication/push and P2P control while clearly reporting the legacy fallback
+  that remains required until Eufy publishes non-empty product catalogs.
+
 ## 3.1.0-baiamonte.9 — 2026-08-25
 
 - Recognize the connected HomeBase Professional S1 (`T9000`) as a station and expose verified

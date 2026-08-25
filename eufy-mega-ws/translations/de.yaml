@@ -20,6 +20,12 @@ configuration:
   snapshot_cache:
     name: Ereignisbilder speichern
     description: Letztes gültiges Push-Ereignisbild jeder Kamera über Neustarts hinweg speichern
+  mega_inventory_diagnostics:
+    name: eufy Mega-Kataloge scannen
+    description: Native Geräte-, Funktions-, Datenpunkt- und OTA-Kataloge im Hintergrund lesen
+  firmware_research:
+    name: E10-Forschungsfirmware herunterladen
+    description: Ein vom Server angebotenes E10-OTA-Paket speichern, ohne ein Upgrade zu starten
   trusted_device_name:
     name: Name des vertrauenswürdigen Geräts
     description: Optionaler Name dieses Dienstes in Eufys Liste vertrauenswürdiger Geräte

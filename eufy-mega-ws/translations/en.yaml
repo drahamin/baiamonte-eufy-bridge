@@ -20,6 +20,12 @@ configuration:
   snapshot_cache:
     name: Cache event snapshots
     description: Persist the last valid push-event image for each camera across add-on restarts
+  mega_inventory_diagnostics:
+    name: Scan eufy Mega catalogs
+    description: Read native device, capability, data-point, and OTA catalogs in the background
+  firmware_research:
+    name: Download E10 research firmware
+    description: Save a server-offered Smart Display E10 OTA package to the Home Assistant share without starting an upgrade
   trusted_device_name:
     name: Trusted device name
     description: Optional name shown for this bridge in Eufy's trusted-device list

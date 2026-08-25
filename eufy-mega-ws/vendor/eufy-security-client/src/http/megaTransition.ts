@@ -1,3 +1,9 @@
+import { createHash } from "crypto";
+import { createReadStream, createWriteStream, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "fs";
+import path from "path";
+import { Readable, Transform } from "stream";
+import { pipeline } from "stream/promises";
+
 import { HTTPApi } from "./api";
 import { MegaHTTPApi, megaLoginHash, summarizeMegaHouseInventory } from "./megaApi";
 import { rootMainLogger } from "../logging";
@@ -18,10 +24,9 @@ import { formatCapabilitySummary } from "./cloudCapabilities";
  * client, pending challenge, serialisation) and talks to {@link EufySecurity} only through the
  * narrow {@link MegaTransitionHost} surface, so neither file leaks the other's internals.
  *
- * For now v6 is used only for login + FCM push registration: a migrated account logs in there and
- * receives events over its push channel, while the data layer keeps using the legacy transport. The
- * data endpoints differ on v6 (signed/encrypted, different paths/bodies) and belong in the new lib,
- * so we deliberately do NOT route legacy endpoints through mega here.
+ * Mega is used for login, FCM registration, native inventory augmentation, product data-point
+ * catalogs, per-device descriptors and read-only OTA discovery. The mature data layer still uses
+ * the legacy transport for properties and commands that Mega does not yet describe completely.
  *
  * Nothing here modifies {@link MegaHTTPApi}: this layer only consumes its public API.
  */
@@ -62,6 +67,37 @@ export interface MegaProductCatalogSummary {
 
 const safeString = (value: unknown, fallback = ""): string =>
   typeof value === "string" && value.length <= 256 ? value : fallback;
+
+const recordOf = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+const romRecords = (value: unknown): Record<string, unknown>[] => {
+  const response = recordOf(value);
+  const candidates = Array.isArray(response.rom_versions)
+    ? response.rom_versions
+    : Array.isArray(response.devices)
+      ? response.devices
+      : Array.isArray(value)
+        ? value
+        : Object.keys(response).some((key) => key === "rom_version" || key === "rom_version_name")
+          ? [response]
+          : [];
+  return candidates.map(recordOf);
+};
+
+const firmwareHostAllowed = (hostname: string): boolean =>
+  ["eufy.com", "eufylife.com", "anker.com", "amazonaws.com", "amazonaws.com.cn", "cloudfront.net"].some(
+    (suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`)
+  );
+
+const md5File = async (file: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const hash = createHash("md5");
+    const stream = createReadStream(file);
+    stream.on("error", reject);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
 
 /**
  * Translate only explicitly supported native-only products into the legacy-shaped in-memory model.
@@ -217,6 +253,95 @@ export class MegaTransition {
     );
   }
 
+  private writeMegaStatus(status: Record<string, unknown>): void {
+    const persistentDir = this.host.config.persistentDir;
+    if (!persistentDir) return;
+    const file = path.join(persistentDir, "baiamonte-mega-status.json");
+    const temporary = `${file}.tmp`;
+    try {
+      writeFileSync(
+        temporary,
+        JSON.stringify({ updatedAt: new Date().toISOString(), megaAuthenticated: this.megaLoggedIn, ...status }),
+        { mode: 0o600 }
+      );
+      renameSync(temporary, file);
+    } catch (err) {
+      rootMainLogger.debug("Unable to write redacted Baiamonte Mega status", {
+        error: getError(ensureError(err)),
+      });
+    }
+  }
+
+  private async saveE10Firmware(records: Record<string, unknown>[]): Promise<Record<string, unknown>> {
+    if (!this.host.config.firmwareResearch || !this.host.config.firmwareResearchDir)
+      return { enabled: false, packageAvailable: false };
+    const record = records.find((item) => safeString(item.device_type).toUpperCase().startsWith("T87A0"));
+    const fullPackage = recordOf(record?.full_package);
+    const source = safeString(fullPackage.file_path);
+    if (!record || !source) return { enabled: true, packageAvailable: false };
+
+    const sourceUrl = new URL(source);
+    if (sourceUrl.protocol !== "https:" || !firmwareHostAllowed(sourceUrl.hostname))
+      throw new Error("firmware package host is not allowlisted");
+    const expectedSize = typeof fullPackage.file_size === "number" ? fullPackage.file_size : 0;
+    const expectedMd5 = safeString(fullPackage.file_md5).toLowerCase();
+    const version = safeString(record.rom_version_name, "unknown").replace(/[^A-Za-z0-9_.-]/g, "_");
+    const sourceName = safeString(fullPackage.file_name) || path.basename(sourceUrl.pathname) || "firmware.bin";
+    const extension =
+      path
+        .extname(sourceName)
+        .replace(/[^A-Za-z0-9.]/g, "")
+        .slice(0, 12) || ".bin";
+    const directory = path.join(this.host.config.firmwareResearchDir, "T87A0");
+    const destination = path.join(directory, `T87A0-${version}${extension}`);
+    const temporary = `${destination}.part`;
+    const maxBytes = 2 * 1024 * 1024 * 1024;
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+
+    try {
+      const existing = statSync(destination);
+      if (existing.isFile() && existing.size > 0 && (!expectedMd5 || (await md5File(destination)) === expectedMd5)) {
+        return { enabled: true, packageAvailable: true, downloaded: true, version, bytes: existing.size };
+      }
+    } catch {
+      // Download below.
+    }
+
+    let bytes = 0;
+    const limiter = new Transform({
+      transform(chunk, _encoding, callback) {
+        bytes += chunk.length;
+        callback(bytes <= maxBytes ? undefined : new Error("firmware package exceeds 2 GiB"), chunk);
+      },
+    });
+    try {
+      const response = await fetch(sourceUrl, { redirect: "follow", signal: AbortSignal.timeout(300_000) });
+      const finalUrl = new URL(response.url);
+      if (!response.ok || !response.body) throw new Error(`firmware download failed with HTTP ${response.status}`);
+      if (finalUrl.protocol !== "https:" || !firmwareHostAllowed(finalUrl.hostname))
+        throw new Error("firmware redirect host is not allowlisted");
+      await pipeline(
+        Readable.fromWeb(response.body as import("stream/web").ReadableStream),
+        limiter,
+        createWriteStream(temporary, { mode: 0o600 })
+      );
+      if (expectedSize > 0 && bytes !== expectedSize) throw new Error("firmware size verification failed");
+      const actualMd5 = await md5File(temporary);
+      if (/^[a-f0-9]{32}$/.test(expectedMd5) && actualMd5 !== expectedMd5)
+        throw new Error("firmware MD5 verification failed");
+      renameSync(temporary, destination);
+      rootMainLogger.info("E10 research firmware downloaded and verified", { version, bytes });
+      return { enabled: true, packageAvailable: true, downloaded: true, version, bytes };
+    } catch (err) {
+      try {
+        unlinkSync(temporary);
+      } catch {
+        // No partial file to remove.
+      }
+      throw err;
+    }
+  }
+
   /** Record that the LEGACY login asked for a code/captcha (called from the host's api-event hooks). */
   public recordLegacyChallenge(): void {
     this.pendingChallenge = "legacy";
@@ -292,8 +417,15 @@ export class MegaTransition {
     if (this.productCatalogRefresh) return this.productCatalogRefresh;
     this.productCatalogRefresh = (async () => {
       const summary: MegaProductCatalogSummary = { attempted: 0, available: 0, empty: 0, failed: 0, dataPoints: 0 };
+      const discovery: Record<string, unknown> = {
+        legacyFallbackRequired: true,
+        descriptors: { available: false, devices: 0 },
+        ota: { requested: 0, records: 0 },
+        firmware: { enabled: Boolean(this.host.config.firmwareResearch), packageAvailable: false },
+      };
       try {
         const inventory = await this.loadNativeInventory();
+        discovery.inventory = summarizeMegaHouseInventory(inventory);
         let relationDevices: unknown[] = [];
         try {
           this.nativeDeviceRelations ??= await (await this.getMegaApi()).getDeviceRelationsDecrypted("", 7);
@@ -337,37 +469,58 @@ export class MegaTransition {
             devices: devices.length,
             available: devices.length > 0,
           });
-        } catch {
+          discovery.descriptors = { devices: devices.length, available: devices.length > 0 };
+        } catch (err) {
+          discovery.descriptors = { devices: 0, available: false, unavailable: true };
           // Catalog discovery remains useful even where this newer endpoint is unavailable.
         }
 
         const romRequests = (inventory.devices ?? [])
           .map((device) => ({
-            device_type: typeof device.device_type === "number" ? device.device_type : -1,
+            device_type: `${safeString(device.device_model ?? device.device_new_pn)}_ota`,
             device_sn: safeString(device.device_sn),
-            category: safeString(device.category),
+            category: "eufy_home",
           }))
-          .filter((device) => device.device_type >= 0 && device.device_sn.length > 0 && device.category.length > 0)
+          .filter((device) => device.device_type.length > 4 && device.device_sn.length > 0)
           .slice(0, 64);
         if (romRequests.length > 0) {
           try {
             this.nativeRomVersions ??= await mega.getRomVersionsDecrypted(romRequests);
-            const response =
-              this.nativeRomVersions && typeof this.nativeRomVersions === "object"
-                ? (this.nativeRomVersions as Record<string, unknown>)
-                : {};
-            const records = Array.isArray(response.rom_versions)
-              ? response.rom_versions
-              : Array.isArray(response.devices)
-                ? response.devices
-                : Array.isArray(this.nativeRomVersions)
-                  ? this.nativeRomVersions
-                  : [];
+            const records = romRecords(this.nativeRomVersions);
+            const e10Request = romRequests.find((request) => request.device_type === "T87A0_ota");
+            if (e10Request) {
+              try {
+                records.push(...romRecords(await mega.getRomVersionDecrypted(e10Request)));
+              } catch {
+                // Batch results may still include the E10.
+              }
+            }
             rootMainLogger.info("v6 OTA metadata loaded without starting upgrades (contents redacted)", {
               requested: romRequests.length,
               records: records.length,
             });
-          } catch {
+            discovery.ota = {
+              requested: romRequests.length,
+              records: records.length,
+              packages: records.filter((record) => safeString(recordOf(record.full_package).file_path).length > 0)
+                .length,
+            };
+            try {
+              discovery.firmware = await this.saveE10Firmware(records);
+            } catch (err) {
+              discovery.firmware = {
+                enabled: true,
+                packageAvailable: records.some(
+                  (record) =>
+                    safeString(record.device_type).toUpperCase().startsWith("T87A0") &&
+                    safeString(recordOf(record.full_package).file_path).length > 0
+                ),
+                downloaded: false,
+                verificationFailed: true,
+              };
+            }
+          } catch (err) {
+            discovery.ota = { requested: romRequests.length, records: 0, unavailable: true };
             // OTA discovery is optional and must never affect normal controls.
           }
         }
@@ -390,8 +543,13 @@ export class MegaTransition {
           }
         }
         rootMainLogger.info("v6 product data-point catalog scan complete (product codes and values redacted)", summary);
+        discovery.catalogs = summary;
+        this.writeMegaStatus(discovery);
       } catch (err) {
         rootMainLogger.warn("v6 product data-point catalog scan unavailable", { error: getError(ensureError(err)) });
+        discovery.catalogs = summary;
+        discovery.unavailable = true;
+        this.writeMegaStatus(discovery);
       }
     })();
     return this.productCatalogRefresh;

@@ -4,9 +4,9 @@ umask 077
 
 CONFIG_PATH=/data/eufy-security-ws-config.json
 
-USERNAME="$(bashio::config 'username')"
-PASSWORD="$(bashio::config 'password')"
-COUNTRY="$(bashio::config 'country')"
+EUFY_USERNAME="$(bashio::config 'username')"
+EUFY_PASSWORD="$(bashio::config 'password')"
+EUFY_COUNTRY="$(bashio::config 'country')"
 TRUSTED_DEVICE_NAME="$(bashio::config 'trusted_device_name')"
 
 read_integer_option() {
@@ -55,12 +55,11 @@ POLLING_INTERVAL_MINUTES="$(read_integer_option 'polling_interval' '10')"
 ACCEPT_INVITATIONS="$(read_boolean_option 'accept_invitations' 'true')"
 SNAPSHOT_CACHE="$(read_boolean_option 'snapshot_cache' 'true')"
 MEGA_INVENTORY_DIAGNOSTICS="$(read_boolean_option 'mega_inventory_diagnostics' 'true')"
+FIRMWARE_RESEARCH="$(read_boolean_option 'firmware_research' 'false')"
 STATIONS_JSON="$(read_array_option 'stations')"
 
-PORT_OPTION=""
-if bashio::config.has_value 'port'; then
-    PORT_OPTION="--port $(bashio::config 'port')"
-fi
+BRIDGE_PORT="$(read_integer_option 'port' '3000')"
+PORT_OPTION="--port ${BRIDGE_PORT}"
 
 DEBUG_OPTION=""
 if bashio::config.true 'debug'; then
@@ -73,15 +72,16 @@ if bashio::config.true 'ipv4first'; then
 fi
 
 JSON_STRING="$(jq -n \
-    --arg username "$USERNAME" \
-    --arg password "$PASSWORD" \
-    --arg country "$COUNTRY" \
+    --arg username "$EUFY_USERNAME" \
+    --arg password "$EUFY_PASSWORD" \
+    --arg country "$EUFY_COUNTRY" \
     --arg trusted_device_name "$TRUSTED_DEVICE_NAME" \
     --argjson event_duration_seconds "$EVENT_DURATION_SECONDS" \
     --argjson polling_interval_minutes "$POLLING_INTERVAL_MINUTES" \
     --argjson accept_invitations "$ACCEPT_INVITATIONS" \
     --argjson snapshot_cache "$SNAPSHOT_CACHE" \
     --argjson mega_inventory_diagnostics "$MEGA_INVENTORY_DIAGNOSTICS" \
+    --argjson firmware_research "$FIRMWARE_RESEARCH" \
     --argjson stations "$STATIONS_JSON" \
     '(
       {
@@ -94,6 +94,8 @@ JSON_STRING="$(jq -n \
         acceptInvitations: $accept_invitations,
         snapshotCache: $snapshot_cache,
         megaInventoryDiagnostics: $mega_inventory_diagnostics,
+        firmwareResearch: $firmware_research,
+        firmwareResearchDir: "/share/baiamonte-eufy/firmware",
         enableEmbeddedPKCS1Support: true
       }
       + (if $trusted_device_name != "" then {trustedDeviceName: $trusted_device_name} else {} end)
@@ -110,6 +112,11 @@ if bashio::config.has_value 'username' && bashio::config.has_value 'password'; t
     # config.enableEmbeddedPKCS1Support=true, so eufy-security-client uses its
     # pure-JS PKCS#1 v1.5 path and the P2P RSA handshake keeps working.
     # See bropat/eufy-security-ws#564.
+    export BAIAMONTE_BRIDGE_PORT="$BRIDGE_PORT"
+    export BAIAMONTE_DASHBOARD_PORT="8099"
+    if [[ "${BAIAMONTE_SKIP_DASHBOARD:-false}" != "true" ]]; then
+        /usr/bin/node /opt/baiamonte-eufy-dashboard/server.cjs &
+    fi
     exec /usr/bin/node $IPV4_FIRST_NODE_OPTION /usr/src/app/node_modules/eufy-security-ws/dist/bin/server.js --host 0.0.0.0 --config "$CONFIG_PATH" $DEBUG_OPTION $PORT_OPTION
 else
     bashio::log.fatal "Required parameters username and/or password not set. Starting aborted!"

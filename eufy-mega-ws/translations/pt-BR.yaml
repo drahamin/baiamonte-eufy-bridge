@@ -20,6 +20,12 @@ configuration:
   snapshot_cache:
     name: Armazenar imagens de eventos
     description: Mantém a última imagem válida de cada câmera após reiniciar o complemento
+  mega_inventory_diagnostics:
+    name: Verificar catálogos eufy Mega
+    description: Lê em segundo plano catálogos nativos de dispositivos, recursos, dados e OTA
+  firmware_research:
+    name: Baixar firmware E10 para pesquisa
+    description: Salva um pacote OTA E10 oferecido pelo servidor sem iniciar uma atualização
   trusted_device_name:
     name: Nome do dispositivo confiável
     description: Nome opcional deste serviço na lista de dispositivos confiáveis da Eufy

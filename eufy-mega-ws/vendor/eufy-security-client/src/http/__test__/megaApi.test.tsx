@@ -493,13 +493,33 @@ describe("MegaHTTPApi", () => {
         { statusCode: 200, body: JSON.stringify({ code: 0, msg: "ok", data: response }) },
       ]);
 
-      await api.getRomVersionsDecrypted([{ device_type: 27, device_sn: "station", category: "security" }]);
+      await api.getRomVersionsDecrypted([{ device_type: "T9000_ota", device_sn: "station", category: "eufy_home" }]);
 
       const sent = JSON.parse(megaDecrypt(requests.at(-1)!.body!, fakeIdentity().sharedKey));
       expect(sent).toEqual({
-        get_roms_param: [{ device_type: 27, device_sn: "station", category: "security" }],
+        get_roms_param: [{ device_type: "T9000_ota", device_sn: "station", category: "eufy_home" }],
       });
       expect(requests.at(-1)!.url).toContain("/app/ota/get_rom_versions");
+    });
+
+    it("queries one ROM using the model_ota device type without invoking an upgrade", async () => {
+      const response = megaEncryptBody(
+        JSON.stringify({ rom_version_name: "v1" }),
+        sharedKeyToAesKey(fakeIdentity().sharedKey)
+      );
+      const { api, requests } = await makeApi([
+        { statusCode: 200, body: JSON.stringify({ code: 0, msg: "ok", data: response }) },
+      ]);
+
+      await api.getRomVersionDecrypted({
+        device_type: "T87A0_ota",
+        device_sn: "display",
+        category: "eufy_home",
+      });
+
+      const sent = JSON.parse(megaDecrypt(requests.at(-1)!.body!, fakeIdentity().sharedKey));
+      expect(sent).toEqual({ device_type: "T87A0_ota", device_sn: "display", category: "eufy_home" });
+      expect(requests.at(-1)!.url).toContain("/app/ota/get_rom_version");
     });
   });
 

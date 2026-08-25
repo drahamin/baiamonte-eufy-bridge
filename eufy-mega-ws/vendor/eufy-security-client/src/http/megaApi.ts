@@ -688,12 +688,20 @@ export class MegaHTTPApi {
   public async getRomVersionsDecrypted(devices: MegaRomVersionRequest[]): Promise<unknown> {
     if (devices.length > 64) throw new Error("too many devices");
     const get_roms_param = devices.map((device) => {
-      if (!Number.isInteger(device.device_type) || device.device_type < 0) throw new Error("invalid device_type");
+      if (!device.device_type || device.device_type.length > 128) throw new Error("invalid device_type");
       if (!device.device_sn || device.device_sn.length > 128) throw new Error("invalid device_sn");
       if (!device.category || device.category.length > 128) throw new Error("invalid category");
       return device;
     });
     return this.callDecrypted("ota", "/app/ota/get_rom_versions", { get_roms_param });
+  }
+
+  /** Query one model's ROM metadata. This is read-only and never invokes `ota_upgrade_net`. */
+  public async getRomVersionDecrypted(device: MegaRomVersionRequest): Promise<unknown> {
+    if (!device.device_type || device.device_type.length > 128) throw new Error("invalid device_type");
+    if (!device.device_sn || device.device_sn.length > 128) throw new Error("invalid device_sn");
+    if (!device.category || device.category.length > 128) throw new Error("invalid category");
+    return this.callDecrypted("ota", "/app/ota/get_rom_version", device);
   }
 
   /**

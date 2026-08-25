@@ -80,7 +80,7 @@ describe("native Mega inventory augmentation", () => {
     expect(getProductDataPointsDecrypted.mock.calls.map(([code]) => code).sort()).toEqual(["T8600", "T87A0", "T9999"]);
     expect(getDeviceDetailsDecrypted).toHaveBeenCalledWith("", 7);
     expect(getRomVersionsDecrypted).toHaveBeenCalledWith([
-      { device_type: 119, device_sn: "display", category: "eufy_mega" },
+      { device_type: "T87A0_ota", device_sn: "display", category: "eufy_home" },
     ]);
     expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("catalog scan complete"), {
       attempted: 3,

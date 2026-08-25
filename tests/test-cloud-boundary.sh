@@ -24,4 +24,4 @@ assert_file 'livestream: "p2p"' "$CLIENT_ROOT/http/cloudCapabilities.ts"
 assert_file 'No fallback may be silent' MIGRATION.md
 
 # Home Assistant must install this fork separately from both upstream add-ons.
-assert_file '^slug: baiamonte_eufy_hybrid$' eufy-mega-ws/config.yaml
+assert_file '^slug: baiamonte_eufy_bridge$' eufy-mega-ws/config.yaml

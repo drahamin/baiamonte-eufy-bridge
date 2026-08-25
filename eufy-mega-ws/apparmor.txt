@@ -1,7 +1,7 @@
 #include <tunables/global>
 
-#profile baiamonte_eufy_hybrid flags=(audit,complain,attach_disconnected,mediate_deleted) {
-profile baiamonte_eufy_hybrid flags=(attach_disconnected,mediate_deleted) {
+#profile baiamonte_eufy_bridge flags=(audit,complain,attach_disconnected,mediate_deleted) {
+profile baiamonte_eufy_bridge flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
 
   # Capabilities
@@ -41,7 +41,7 @@ profile baiamonte_eufy_hybrid flags=(attach_disconnected,mediate_deleted) {
     #include <abstractions/base>
 
     # Receive signals from S6-Overlay
-    signal (receive) peer=*_baiamonte_eufy_hybrid,
+    signal (receive) peer=*_baiamonte_eufy_bridge,
 
     # Access to options.json and other files within your addon
     /data/** rw,
