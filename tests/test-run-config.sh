@@ -5,6 +5,7 @@ set -euo pipefail
 CONFIG_PATH="$(mktemp /tmp/eufy-mega-ws-config.XXXXXX.json)"
 RUN_SCRIPT="$(mktemp /tmp/eufy-mega-ws-run.XXXXXX.sh)"
 export BAIAMONTE_SKIP_DASHBOARD=true
+SERVER_INVOCATION=""
 trap 'rm "$CONFIG_PATH" "$RUN_SCRIPT"' EXIT
 
 function bashio::config() {
@@ -46,6 +47,7 @@ function bashio::log.warning() {
 
 # Capture the final server invocation instead of replacing this test process.
 function exec() {
+    SERVER_INVOCATION="$*"
     printf 'server invocation: %s\n' "$*"
 }
 
@@ -68,3 +70,4 @@ jq -e '
 ' "$CONFIG_PATH" >/dev/null
 
 test "$(stat -c '%a' "$CONFIG_PATH" 2>/dev/null || stat -f '%Lp' "$CONFIG_PATH")" = "600"
+[[ "$SERVER_INVOCATION" == *"--host 127.0.0.1"* ]]

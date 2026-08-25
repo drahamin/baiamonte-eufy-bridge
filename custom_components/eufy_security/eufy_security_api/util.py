@@ -12,10 +12,10 @@ def get_child_value(data, path, default_value=None):
     for key in path.split("."):
         try:
             value = value[key]
-        except:  # pylint: disable=bare-except
+        except (KeyError, TypeError):
             try:
                 value = value[int(key)]
-            except:  # pylint: disable=bare-except
+            except (IndexError, KeyError, TypeError, ValueError):
                 value = default_value
     return value
 

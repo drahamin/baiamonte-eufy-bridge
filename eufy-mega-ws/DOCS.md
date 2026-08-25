@@ -11,7 +11,7 @@ the startup log.
 | `username` | Dedicated Eufy account email. Required. |
 | `password` | Eufy account password. Required. |
 | `country` | Two-letter Eufy account region; `US` is the default. |
-| `port` | Host-network WebSocket port. Default `3000`. |
+| `port` | Loopback-only WebSocket port used by Home Assistant. Default `3000`. |
 | `polling_interval` | Legacy cloud refresh interval in minutes. Default `10`. |
 | `event_duration` | Seconds before momentary motion/ring/person sensors reset. Default `10`. |
 | `accept_invitations` | Automatically accept shared-device invitations. |

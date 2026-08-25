@@ -10,6 +10,7 @@ from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.components.ffmpeg import DATA_FFMPEG
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -167,7 +168,13 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
 
     @property
     def available(self) -> bool:
-        return True
+        return self.coordinator.available
+
+    def _require_command(self, command: str) -> None:
+        if command not in self.product.commands:
+            raise ServiceValidationError(
+                f"{self.product.model} does not advertise the {command} capability"
+            )
 
     @property
     def extra_state_attributes(self):
@@ -252,33 +259,43 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             await self._stop_livestream()
 
     async def _async_ptz(self, direction: str) -> None:
+        self._require_command("pan_and_tilt")
         await self.product.ptz(direction)
 
     async def _async_ptz_up(self) -> None:
+        self._require_command("pan_and_tilt")
         await self.product.ptz_up()
 
     async def _async_ptz_down(self) -> None:
+        self._require_command("pan_and_tilt")
         await self.product.ptz_down()
 
     async def _async_ptz_left(self) -> None:
+        self._require_command("pan_and_tilt")
         await self.product.ptz_left()
 
     async def _async_ptz_right(self) -> None:
+        self._require_command("pan_and_tilt")
         await self.product.ptz_right()
 
     async def _async_ptz_360(self) -> None:
+        self._require_command("pan_and_tilt")
         await self.product.ptz_360()
 
     async def _async_preset_position(self, position: int) -> None:
+        self._require_command("preset_position")
         await self.product.preset_position(position)
 
     async def _async_save_preset_position(self, position: int) -> None:
+        self._require_command("save_preset_position")
         await self.product.save_preset_position(position)
 
     async def _async_delete_preset_position(self, position: int) -> None:
+        self._require_command("delete_preset_position")
         await self.product.delete_preset_position(position)
 
     async def _async_calibrate(self) -> None:
+        self._require_command("calibrate")
         await self.product.calibrate()
 
     async def _generate_image(self) -> None:

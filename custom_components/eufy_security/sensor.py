@@ -121,6 +121,16 @@ class BaiamonteCatalogCoverageSensor(CoordinatorEntity, SensorEntity):
         observed = self._observed
         inventory = mega.get("inventory", {}).get("parameters", {}) or {}
         catalogs = mega.get("catalogs", {}) or {}
+        models = status.get("models", []) or []
+        ai_fields = {
+            name for model in models for name in model.get("aiPropertyNames", [])
+        }
+        writable_ai = {
+            name for model in models for name in model.get("writableAiProperties", [])
+        }
+        entity_ai_fields = {
+            name for model in models for name in model.get("entityAiPropertyNames", [])
+        }
         data_points = observed.get("dataPoints", 0)
         semantic = (
             round(observed.get("known", 0) * 100 / data_points, 1)
@@ -142,6 +152,14 @@ class BaiamonteCatalogCoverageSensor(CoordinatorEntity, SensorEntity):
             "unique_unresolved": len(inventory.get("unknownTypes", [])),
             "official_catalogs_populated": catalogs.get("available", 0),
             "official_catalogs_queried": catalogs.get("attempted", 0),
+            "ai_metadata_fields": len(ai_fields),
+            "ai_entity_compatible_fields": len(entity_ai_fields),
+            "writable_ai_controls": len(writable_ai),
+            "companion_ai_coverage_percent": (
+                round(len(entity_ai_fields) * 100 / len(ai_fields), 1)
+                if ai_fields
+                else None
+            ),
             "compatibility_fallback_active": bool(mega.get("legacyFallbackRequired")),
             "updated_at": status.get("generatedAt"),
         }

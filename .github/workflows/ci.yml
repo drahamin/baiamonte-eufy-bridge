@@ -31,7 +31,7 @@ jobs:
           manifest = json.loads(Path("custom_components/eufy_security/manifest.json").read_text())
           assert manifest["domain"] == "eufy_security"
           assert manifest["name"] == "Baiamonte Eufy Security"
-          assert manifest["version"] == "9.0.3"
+          assert manifest["version"] == "9.1.0"
           assert manifest["requirements"] == []
           for path in Path("custom_components/eufy_security/translations").glob("*.json"):
               json.loads(path.read_text())
@@ -71,9 +71,41 @@ jobs:
       - name: Compile distributable
         run: npm run build
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+  server:
+    name: Schema-21 WebSocket server
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: eufy-mega-ws/vendor/eufy-security-ws
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: eufy-mega-ws/vendor/eufy-security-ws/package-lock.json
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test -- --runInBand
+
+      - name: Compile distributable
+        run: npm run build
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
   addon:
     name: Home Assistant add-on
-    needs: client
+    needs: [client, server]
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source

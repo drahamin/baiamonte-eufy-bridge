@@ -131,6 +131,7 @@ async function buildStatus() {
       const metadata = metadataResult.properties || {};
       const commands = commandsResult.commands || [];
       const aiNames = Object.keys(metadata).filter((name) => aiPattern.test(name));
+      const entityAiNames = aiNames.filter((name) => ["boolean", "number", "string"].includes(metadata[name]?.type));
       const writableAiNames = aiNames.filter((name) => metadata[name] && metadata[name].writeable);
       const ptzPropertyNames = Object.keys(metadata).filter((name) => ptzPropertyPattern.test(name));
       const writablePtzPropertyNames = ptzPropertyNames.filter((name) => metadata[name] && metadata[name].writeable);
@@ -139,6 +140,8 @@ async function buildStatus() {
         type: device.type,
         snapshot: properties.picture !== undefined && properties.picture !== null && properties.picture !== "",
         aiProperties: aiNames.length,
+        aiPropertyNames: aiNames,
+        entityAiPropertyNames: entityAiNames,
         aiLiveValues: aiNames.filter((name) => properties[name] !== undefined && properties[name] !== null).length,
         writableAiProperties: writableAiNames,
         ptzProperties: writablePtzPropertyNames,
@@ -181,6 +184,8 @@ async function buildStatus() {
       snapshots: 0,
       streaming: 0,
       aiProperties: 0,
+      aiPropertyNames: [],
+      entityAiPropertyNames: [],
       writableAiProperties: [],
       writable: 0,
       panTilt: false,
@@ -195,6 +200,8 @@ async function buildStatus() {
     if (item.snapshot) row.snapshots++;
     if (item.streaming) row.streaming++;
     row.aiProperties = Math.max(row.aiProperties, item.aiProperties);
+    row.aiPropertyNames = [...new Set([...row.aiPropertyNames, ...item.aiPropertyNames])].sort();
+    row.entityAiPropertyNames = [...new Set([...row.entityAiPropertyNames, ...item.entityAiPropertyNames])].sort();
     row.writableAiProperties = [...new Set([...row.writableAiProperties, ...item.writableAiProperties])].sort();
     row.writable = Math.max(row.writable, item.writable);
     row.panTilt ||= item.panTilt;

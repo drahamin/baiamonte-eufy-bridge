@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 — 2026-08-25
+
+- Bind the unauthenticated WebSocket command transport to loopback so it is available to Home
+  Assistant and the dashboard but not exposed to arbitrary LAN clients.
+- Update vulnerable production dependency chains for `ip-address` and `protobufjs`; both vendored
+  packages now pass a zero-production-advisory audit.
+- Repair the WebSocket package's TypeScript Jest configuration and restore all 221 server tests.
+- Avoid a P2P energy-saving disconnect race when the remote endpoint disappears first, and
+  downgrade harmless standalone-station device lookup noise.
+- Publish privacy-safe AI property names in dashboard status for companion coverage auditing.
+- Redact identifiers, network addresses, URLs, credentials, keys, payloads, and image buffers at
+  the client logging boundary before they can reach add-on logs or WebSocket log subscribers.
+
 ## 1.2.6 — 2026-08-25
 
 - Replace the ambiguous cloud-migration dump with explicit semantic and research coverage metrics,

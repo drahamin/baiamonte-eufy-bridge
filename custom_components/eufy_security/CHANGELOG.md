@@ -1,5 +1,17 @@
 # Changelog
 
+## 9.1.0 — 2026-08-25
+
+- Expose every writable AI, notification, tracking, lighting, delivery-guard, and PTZ-related
+  property currently advertised by the connected Baiamonte and Miami device inventories.
+- Add native Home Assistant text controls for writable schedule strings.
+- Reject PTZ, preset, and calibration service calls when the target camera does not advertise the
+  required command, instead of sending a doomed request.
+- Mark camera entities unavailable when the bridge disconnects and fail in-flight requests
+  immediately so independent bridge restarts recover without a 30-second timeout backlog.
+- Replace raw debug property values with disabled-by-default, privacy-safe property-name and
+  command capability summaries.
+
 ## 9.0.3 — 2026-08-25
 
 - Declare the integration as config-entry-only for current Home Assistant configuration-schema

@@ -2,7 +2,13 @@
 
 import logging
 
-from .const import DOMAIN, NAME, MetadataFilter, PropertyToEntityDescription
+from .const import (
+    CAPABILITY_PROPERTY_PATTERN,
+    DOMAIN,
+    NAME,
+    MetadataFilter,
+    PropertyToEntityDescription,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -11,7 +17,10 @@ def get_properties_by_filter(metadata: dict, filtering: MetadataFilter) -> dict:
     """Filter properties based on attributes for presentation"""
     result = {}
     for name, value in metadata.items():
-        if (name in PropertyToEntityDescription.__members__) is False:
+        if (
+            name not in PropertyToEntityDescription.__members__
+            and CAPABILITY_PROPERTY_PATTERN.search(name) is None
+        ):
             continue
         if value.readable is not filtering.readable:
             continue

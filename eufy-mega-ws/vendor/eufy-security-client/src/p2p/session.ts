@@ -527,7 +527,14 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
         );
         this.esdDisconnectTimeout = setTimeout(() => {
           this.esdDisconnectTimeout = undefined;
-          this.sendMessage(`Closing of connection for battery saving`, this.connectAddress!, RequestMessageType.END);
+          const address = this.connectAddress;
+          if (address !== undefined) {
+            this.sendMessage(`Closing of connection for battery saving`, address, RequestMessageType.END);
+          } else {
+            rootP2PLogger.debug(`Skipped energy-saving close because the P2P connection already ended`, {
+              stationSN: this.rawStation.station_sn,
+            });
+          }
           rootP2PLogger.info(
             `Initiated closing of connection to station ${this.rawStation.station_sn} for saving battery.`
           );

@@ -1,6 +1,7 @@
 """Constants for integration"""
 
 import logging
+import re
 from enum import Enum, auto
 
 import homeassistant.helpers.config_validation as cv
@@ -25,6 +26,10 @@ COORDINATOR = "coordinator"
 DISCONNECTED = "eufy-security-ws-disconnected"
 BRIDGE_DEVICE_ID = "baiamonte_eufy_bridge"
 DEFAULT_DASHBOARD_PORT = 8097
+CAPABILITY_PROPERTY_PATTERN = re.compile(
+    r"(^ai[A-Z_]|person|human|face|familiar|vehicle|pet|animal|dog|cat|package|cry|sound|motion|detection|recognition|loiter|leaving|radar|pan|tilt|zoom|track|privacy|preset|calibrat|patrol|cruise|rotation|angle)",
+    re.IGNORECASE,
+)
 
 PLATFORMS: list[str] = [
     Platform.BINARY_SENSOR,
@@ -37,6 +42,7 @@ PLATFORMS: list[str] = [
     Platform.CAMERA,
     Platform.BUTTON,
     Platform.IMAGE,
+    Platform.TEXT,
 ]
 
 
@@ -44,10 +50,14 @@ class Schema(Enum):
     """General used service schema definition"""
 
     PTZ_SERVICE_SCHEMA = make_entity_service_schema(
-        {vol.Required("direction"): cv.string}
+        {
+            vol.Required("direction"): vol.In(
+                ["ROTATE360", "DOWN", "UP", "RIGHT", "LEFT"]
+            )
+        }
     )
     PRESET_POSITION_SERVICE_SCHEMA = make_entity_service_schema(
-        {vol.Required("position"): cv.Number}
+        {vol.Required("position"): vol.All(vol.Coerce(int), vol.Range(min=0, max=3))}
     )
     TRIGGER_ALARM_SERVICE_SCHEMA = make_entity_service_schema(
         {vol.Required("duration"): cv.Number}
@@ -183,6 +193,43 @@ class PropertyToEntityDescription(Enum):
     soundDetectionRoundLook = EntityDescription(
         id=auto(), category=EntityCategory.DIAGNOSTIC
     )
+    autoCalibration = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
+    motionAutoCruise = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
+    motionDetectionRange = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
+    motionDetectionRangeAdvancedLeftSensitivity = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    motionDetectionRangeAdvancedMiddleSensitivity = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    motionDetectionRangeAdvancedRightSensitivity = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    motionDetectionRangeStandardSensitivity = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    motionDetectionTestMode = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    motionOutOfViewDetection = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    motionTrackingSensitivity = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    notification = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
+    notificationMotion = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
+    notificationRing = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
+    recordingEndClipMotionStops = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    soundDetection = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
+    deliveryGuardPackageLiveCheckAssistance = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    deliveryGuardUncollectedPackageAlert = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
     deliveryGuard = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
     deliveryGuardPackageGuarding = EntityDescription(
         id=auto(), category=EntityCategory.CONFIG
@@ -232,6 +279,19 @@ class PropertyToEntityDescription(Enum):
         id=auto(), icon="mdi:car-light-high", category=EntityCategory.CONFIG
     )
     lightSettingsEnable = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
+    lightSettingsMotionTriggered = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    lightSettingsMotionColoredLighting = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    lightSettingsMotionDailyLighting = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    lightSettingsMotionDynamicLighting = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    motionZone = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
 
     microphone = EntityDescription(
         id=auto(), icon="mdi:microphone", category=EntityCategory.CONFIG
@@ -292,6 +352,43 @@ class PropertyToEntityDescription(Enum):
     lightSettingsScheduleDynamicLighting = EntityDescription(
         id=auto(), category=EntityCategory.CONFIG
     )
+    lightSettingsBrightnessMotion = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    lightSettingsColorTemperatureMotion = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    lightSettingsMotionActivationMode = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    lightSettingsMotionLightingActiveMode = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    lightSettingsMotionTriggeredTimer = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    notificationIntervalTime = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    notificationType = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
+    soundDetectionSensitivity = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    soundDetectionType = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
+    deliveryGuardPackageGuardingVoiceResponseVoice = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    deliveryGuardUncollectedPackageAlertTimeToCheck = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+
+    # writable text controls
+    deliveryGuardPackageGuardingActivatedTimeFrom = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
+    deliveryGuardPackageGuardingActivatedTimeTo = EntityDescription(
+        id=auto(), category=EntityCategory.CONFIG
+    )
 
     # station sensor
     currentMode = EntityDescription(id=auto(), icon="mdi:security")
@@ -321,6 +418,7 @@ class PropertyToEntityDescription(Enum):
 
     # fallback
     default = EntityDescription(id=auto(), category=EntityCategory.DIAGNOSTIC)
+    defaultConfig = EntityDescription(id=auto(), category=EntityCategory.CONFIG)
 
 
 class PlatformToPropertyType(Enum):
@@ -345,6 +443,7 @@ class PlatformToPropertyType(Enum):
         types=[PropertyType.number],
         no_fields=[MessageField.STATES.value],
     )
+    TEXT = MetadataFilter(readable=True, writeable=True, types=[PropertyType.string])
     DEVICE_TRACKER = MetadataFilter(
         readable=True, writeable=False, types=[PropertyType.boolean]
     )

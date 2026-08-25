@@ -1447,7 +1447,7 @@ export class Station extends TypedEmitter<StationEvents> {
         if (device) {
           return this.getSerial();
         } else {
-          rootHTTPLogger.error(
+          rootHTTPLogger.debug(
             `Station get device serial - No device with the same serial number as the station found`,
             { station: this.getSerial(), channel: channel }
           );

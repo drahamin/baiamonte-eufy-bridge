@@ -96,7 +96,10 @@ class EufySecurityBinarySensor(BinarySensorEntity, EufySecurityEntity):
 
 
 class EufySecurityProductEntity(BinarySensorEntity, CoordinatorEntity):
-    """Debug entity for integration"""
+    """Privacy-safe capability summary for a bridge product."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
 
     def __init__(
         self, coordinator: EufySecurityDataUpdateCoordinator, product: Product
@@ -121,14 +124,11 @@ class EufySecurityProductEntity(BinarySensorEntity, CoordinatorEntity):
     @property
     def extra_state_attributes(self):
         return {
-            "properties": {
-                i: self.product.properties[i]
-                for i in self.product.properties
-                if i != "picture"
-            },
-            # "metadata": self.product.metadata_org,
-            "commands": self.product.commands,
-            "voices": self.product.voices if self.product.is_camera else None,
+            "property_names": sorted(self.product.metadata),
+            "commands": sorted(self.product.commands),
+            "quick_response_voice_count": (
+                len(self.product.voices or {}) if self.product.is_camera else 0
+            ),
         }
 
     @property

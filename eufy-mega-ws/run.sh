@@ -117,7 +117,10 @@ if bashio::config.has_value 'username' && bashio::config.has_value 'password'; t
     if [[ "${BAIAMONTE_SKIP_DASHBOARD:-false}" != "true" ]]; then
         /usr/bin/node /opt/baiamonte-eufy-dashboard/server.cjs &
     fi
-    exec /usr/bin/node $IPV4_FIRST_NODE_OPTION /usr/src/app/node_modules/eufy-security-ws/dist/bin/server.js --host 0.0.0.0 --config "$CONFIG_PATH" $DEBUG_OPTION $PORT_OPTION
+    # Home Assistant and the dashboard are local consumers. Keeping the command
+    # socket on loopback prevents unauthenticated camera controls from being
+    # reachable by arbitrary LAN clients.
+    exec /usr/bin/node $IPV4_FIRST_NODE_OPTION /usr/src/app/node_modules/eufy-security-ws/dist/bin/server.js --host 127.0.0.1 --config "$CONFIG_PATH" $DEBUG_OPTION $PORT_OPTION
 else
     bashio::log.fatal "Required parameters username and/or password not set. Starting aborted!"
 fi

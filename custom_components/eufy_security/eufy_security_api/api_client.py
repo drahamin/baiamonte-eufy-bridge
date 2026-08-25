@@ -10,9 +10,6 @@ from typing import Any
 
 import aiohttp
 
-_LOGGER: logging.Logger = logging.getLogger(__package__)
-
-
 from .camera import Camera
 from .const import (
     SCHEMA_VERSION,
@@ -37,6 +34,8 @@ from .exceptions import (
 from .outgoing_message import OutgoingMessage, OutgoingMessageType
 from .product import Device, Product, Station
 from .web_socket_client import WebSocketClient
+
+_LOGGER: logging.Logger = logging.getLogger(__package__)
 
 
 class ApiClient:
@@ -586,6 +585,12 @@ class ApiClient:
         _LOGGER.debug(
             "Bridge WebSocket closed%s", " with an error" if exception else ""
         )
+        for pending in self._result_futures.values():
+            if not pending.done():
+                pending.set_exception(
+                    WebSocketConnectionException("Bridge WebSocket connection closed")
+                )
+        self._result_futures.clear()
         if self._on_error_callback is not None:
             self._on_error_callback(future)
 

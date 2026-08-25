@@ -1,8 +1,4 @@
-import {
-  MegaMqttCommandEnvelope,
-  MegaMqttPayload,
-  MegaMqttProtocol,
-} from "./megaInterfaces";
+import { MegaMqttCommandEnvelope, MegaMqttPayload, MegaMqttProtocol } from "./megaInterfaces";
 
 export interface MegaMqttCommandOptions {
   clientId: string;

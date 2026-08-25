@@ -48,7 +48,9 @@ library for that eventual replacement.
    **Baiamonte Eufy Security**. If Eufy Security 8.2.4 is already installed, this is an in-place,
    reversible code upgrade; the existing config entry and entity IDs are adopted automatically.
 7. Restart Home Assistant after HACS finishes copying the integration. Keep the bridge endpoint at
-   `127.0.0.1:3000` and the diagnostics endpoint at `8097`.
+   `127.0.0.1:3000` and the diagnostics endpoint at `8097`. The control socket
+   is deliberately loopback-only so unauthenticated commands are not exposed to
+   other devices on the LAN.
 
 Expected startup messages include:
 

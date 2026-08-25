@@ -42,7 +42,8 @@ class EufySecurityEntity(CoordinatorEntity):
         try:
             return PropertyToEntityDescription[self.metadata.name].value
         except KeyError:
-            return PropertyToEntityDescription.default.value
+            fallback = "defaultConfig" if self.metadata.writeable else "default"
+            return PropertyToEntityDescription[fallback].value
 
     @property
     def device_info(self):

@@ -24,6 +24,34 @@ export class InternalLogger {
   public static logger: Logger | undefined;
 }
 
+const sensitiveLogKey =
+  /(serial|station|device|address|host|payload|buffer|data|token|password|passcode|username|email|url|key|account|member|user|pin|image|picture)/i;
+
+const redactLogString = (value: string): string =>
+  value
+    .replace(/\b(?:https?|wss?|rtsp):\/\/\S+/gi, "[redacted-url]")
+    .replace(/\b[A-Z0-9]{10,}\b/g, "[redacted-identifier]")
+    .replace(/\b[\w.+-]+@[\w.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]")
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]");
+
+const redactLogValue = (value: unknown, seen = new WeakSet<object>()): unknown => {
+  if (typeof value === "string") return redactLogString(value);
+  if (value === null || typeof value !== "object") return value;
+  if (value instanceof Error) {
+    return { name: value.name, message: redactLogString(value.message) };
+  }
+  if (Buffer.isBuffer(value)) return `[redacted-buffer:${value.length}]`;
+  if (seen.has(value)) return "[circular]";
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((item) => redactLogValue(item, seen));
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      sensitiveLogKey.test(key) ? "[redacted]" : redactLogValue(item, seen),
+    ])
+  );
+};
+
 /**
  *
  * Get method name
@@ -45,27 +73,28 @@ const provider = CategoryProvider.createProvider("EufySecurityClientProvider", {
     write: (msg) => {
       const methodName = getMethodName();
       const method = methodName ? `[${methodName}] ` : "";
-      const logMessage = `[${msg.logNames}] ${method}${msg.message}`;
+      const logMessage = redactLogString(`[${msg.logNames}] ${method}${msg.message}`);
+      const safeArgs = (msg.args ?? []).map((value) => redactLogValue(value));
 
       switch (msg.level) {
         case LogLevel.Trace:
-          InternalLogger.logger?.trace(logMessage, ...(msg.args ?? []));
+          InternalLogger.logger?.trace(logMessage, ...safeArgs);
           break;
         case LogLevel.Debug:
-          InternalLogger.logger?.debug(logMessage, ...(msg.args ?? []));
+          InternalLogger.logger?.debug(logMessage, ...safeArgs);
           break;
         case LogLevel.Info:
-          InternalLogger.logger?.info(logMessage, ...(msg.args ?? []));
+          InternalLogger.logger?.info(logMessage, ...safeArgs);
           break;
         case LogLevel.Warn:
-          InternalLogger.logger?.warn(logMessage, ...(msg.args ?? []));
+          InternalLogger.logger?.warn(logMessage, ...safeArgs);
           break;
         case LogLevel.Error:
-          InternalLogger.logger?.error(logMessage, ...(msg.args ?? []));
+          InternalLogger.logger?.error(logMessage, ...safeArgs);
           break;
         case LogLevel.Fatal:
           if (InternalLogger.logger && InternalLogger.logger.fatal)
-            InternalLogger.logger.fatal(logMessage, ...(msg.args ?? []));
+            InternalLogger.logger.fatal(logMessage, ...safeArgs);
           break;
       }
     },
