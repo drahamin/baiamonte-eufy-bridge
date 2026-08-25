@@ -445,21 +445,16 @@ export class ClientsController {
     this.eventForwarder.start();
   }
 
-  addSocket(socket: WebSocket, request: HttpIncomingMessage): void {
-    this.logger.debug(
-      `New client with ip: ${request.socket.remoteAddress} port: ${request.socket.remotePort}`,
-    );
+  addSocket(socket: WebSocket, _request: HttpIncomingMessage): void {
+    this.logger.debug(`New local WebSocket client`);
     const client = new Client(socket, this.driver, this.logger, this);
     socket.on("error", (error) => {
-      this.logger.error(
-        `Client with ip: ${request.socket.remoteAddress} port: ${request.socket.remotePort} socket error`,
-        error,
-      );
+      this.logger.error(`Local WebSocket client socket error`, error);
     });
 
-    socket.on("close", (code: number, reason: Buffer) => {
+    socket.on("close", (code: number, _reason: Buffer) => {
       this.logger.info(
-        `Client disconnected with ip: ${request.socket.remoteAddress} port: ${request.socket.remotePort} code: ${code} reason: ${this.closureReasons[code]}`,
+        `Local WebSocket client disconnected code: ${code} reason: ${this.closureReasons[code]}`,
       );
       this.scheduleClientCleanup();
     });

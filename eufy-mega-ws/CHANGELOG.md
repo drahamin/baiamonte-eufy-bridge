@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1 — 2026-08-25
+
+- Remove WebSocket peer addresses, ports, and client-supplied close reasons from server logs.
+
 ## 1.3.0 — 2026-08-25
 
 - Bind the unauthenticated WebSocket command transport to loopback so it is available to Home
