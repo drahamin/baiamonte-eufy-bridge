@@ -1,5 +1,10 @@
 # Changelog
 
+## 9.0.1 — 2026-08-25
+
+- Import stream timing constants from their defining module instead of relying on an upstream
+  implicit re-export, restoring camera platform initialization under Home Assistant 2026.8.
+
 ## 9.0.0 — 2026-08-25
 
 - Rebrand the Home Assistant integration as **Baiamonte Eufy Security** while retaining the
