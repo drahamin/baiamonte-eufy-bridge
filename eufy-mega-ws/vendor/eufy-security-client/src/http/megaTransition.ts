@@ -71,6 +71,18 @@ const safeString = (value: unknown, fallback = ""): string =>
 const recordOf = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
+/** Resolve an exact named array through the response wrappers used by different Mega modules. */
+export const findMegaArray = (value: unknown, key: string, depth = 0): unknown[] => {
+  if (depth > 4 || !value || typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record[key])) return record[key] as unknown[];
+  for (const wrapper of ["data", "result", "payload"]) {
+    const found = findMegaArray(record[wrapper], key, depth + 1);
+    if (found.length > 0) return found;
+  }
+  return [];
+};
+
 const romRecords = (value: unknown): Record<string, unknown>[] => {
   const response = recordOf(value);
   const candidates = Array.isArray(response.rom_versions)
@@ -429,11 +441,7 @@ export class MegaTransition {
         let relationDevices: unknown[] = [];
         try {
           this.nativeDeviceRelations ??= await (await this.getMegaApi()).getDeviceRelationsDecrypted("", 7);
-          const relationRecord =
-            this.nativeDeviceRelations && typeof this.nativeDeviceRelations === "object"
-              ? (this.nativeDeviceRelations as Record<string, unknown>)
-              : {};
-          relationDevices = Array.isArray(relationRecord.devices) ? relationRecord.devices : [];
+          relationDevices = findMegaArray(this.nativeDeviceRelations, "devices");
         } catch {
           // The house inventory is still enough to continue the product catalog scan.
         }
@@ -456,15 +464,7 @@ export class MegaTransition {
         const mega = await this.getMegaApi();
         try {
           this.nativeDeviceDetails ??= await mega.getDeviceDetailsDecrypted("", 7);
-          const details =
-            this.nativeDeviceDetails && typeof this.nativeDeviceDetails === "object"
-              ? (this.nativeDeviceDetails as Record<string, unknown>)
-              : {};
-          const devices = Array.isArray(details.devices)
-            ? details.devices
-            : Array.isArray(details.device_list)
-              ? details.device_list
-              : [];
+          const devices = findMegaArray(this.nativeDeviceDetails, "devices");
           rootMainLogger.info("v6 per-device capability descriptors loaded (contents redacted)", {
             devices: devices.length,
             available: devices.length > 0,
@@ -529,12 +529,7 @@ export class MegaTransition {
           try {
             const catalog = await mega.getProductDataPointsDecrypted(productCode);
             this.productDataPointCatalogs.set(productCode, catalog);
-            const record = catalog && typeof catalog === "object" ? (catalog as Record<string, unknown>) : {};
-            const points = Array.isArray(record.data_point_list)
-              ? record.data_point_list
-              : Array.isArray(catalog)
-                ? catalog
-                : [];
+            const points = Array.isArray(catalog) ? catalog : findMegaArray(catalog, "data_point_list");
             summary.dataPoints += points.length;
             if (points.length === 0) summary.empty++;
             else summary.available++;

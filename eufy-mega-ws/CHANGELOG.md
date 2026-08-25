@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 — 2026-08-25
+
+- Match the current official Android app identity (`6.0.80_28612`) for Mega requests.
+- Decode device descriptors and product data-point catalogs through the nested response envelopes
+  used by current Mega modules, while retaining bounded, exact-key parsing.
+- Add typed schemas for product catalogs, device relations, named device parameters, consent
+  switches, and the native MQTT command envelope; no command is published by discovery.
+
 ## 1.0.2 — 2026-08-25
 
 - Permit the Node runtime to read the ingress dashboard and write only the dedicated opt-in E10

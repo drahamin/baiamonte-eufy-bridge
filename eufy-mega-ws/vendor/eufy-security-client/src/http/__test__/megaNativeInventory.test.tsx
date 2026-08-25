@@ -1,7 +1,7 @@
 const mockLogger = { error: jest.fn(), debug: jest.fn(), info: jest.fn(), warn: jest.fn(), trace: jest.fn() };
 jest.mock("../../logging", () => ({ rootMainLogger: mockLogger }));
 
-import { MegaTransition, MegaTransitionHost, translateNativeMegaDevice } from "../megaTransition";
+import { findMegaArray, MegaTransition, MegaTransitionHost, translateNativeMegaDevice } from "../megaTransition";
 import { DeviceType } from "../types";
 
 const host = {
@@ -18,6 +18,13 @@ const host = {
 
 describe("native Mega inventory augmentation", () => {
   afterEach(() => jest.clearAllMocks());
+
+  it("finds modeled arrays through retained Mega response wrappers", () => {
+    expect(findMegaArray({ data: { data: { data_point_list: [{ code: "a" }] } } }, "data_point_list")).toEqual([
+      { code: "a" },
+    ]);
+    expect(findMegaArray({ data: { unrelated: [] } }, "devices")).toEqual([]);
+  });
 
   it("translates the E10 to a non-camera read-only device without sensitive native fields", () => {
     const translated = translateNativeMegaDevice({

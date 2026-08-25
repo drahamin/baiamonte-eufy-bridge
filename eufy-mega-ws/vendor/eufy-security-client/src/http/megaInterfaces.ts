@@ -79,6 +79,119 @@ export interface MegaRomVersionRequest {
   category: string;
 }
 
+/** Request used by the official app's native product data-point catalog endpoint. */
+export interface MegaProductDataPointRequest {
+  code: string;
+}
+
+/** One native product data-point descriptor as modeled by app 6.0.80. */
+export interface MegaDataPointDescriptor {
+  code: string;
+  dp_id: number;
+  name: string;
+  mode: string;
+  data_type: string;
+  desc: string;
+  property: string;
+  create_time: number;
+  update_time: number;
+}
+
+/** Inner data object returned by `things/get_product_data_point`. */
+export interface MegaProductDataPointCatalog {
+  data_point_list: MegaDataPointDescriptor[];
+}
+
+/** Request used by both native device-relation inventory endpoints. */
+export interface MegaDeviceRelationRequest {
+  attribute: number;
+  house_id: string;
+}
+
+/** Device parameter shape used by the native relation/device-detail model. */
+export interface MegaDeviceParameter {
+  param_name: string;
+  param_value: string;
+  create_time: number;
+  update_time: number;
+}
+
+/** Verified common fields in the app's AIOT device relation model. */
+export interface MegaDeviceRelation {
+  device_sn?: string;
+  device_name?: string;
+  device_model?: string;
+  device_new_pn?: string;
+  category?: string;
+  params?: MegaDeviceParameter[];
+  [key: string]: unknown;
+}
+
+export interface MegaDeviceRelationList {
+  devices: MegaDeviceRelation[];
+}
+
+/** One requested privacy/consent data-point switch. This is not a general command request. */
+export interface MegaDevicePointSwitchRequestItem {
+  destination: string;
+  param_names: string[];
+  device_sn: string;
+  categories: string[];
+}
+
+export interface MegaDevicePointSwitchRequest {
+  batch_get_device_params: MegaDevicePointSwitchRequestItem[];
+}
+
+export interface MegaDevicePointSwitch {
+  param_name: string;
+  param_value: string;
+  destination: string;
+  device_sn: string;
+  category: string;
+  account: string;
+}
+
+/** Protocol numbers used inside the native AIoT MQTT payload. */
+export enum MegaMqttProtocol {
+  State = 1,
+  DataPointCommand = 2,
+  Online = 4,
+  Offline = 5,
+  OtaCommand = 9,
+  OtaState = 10,
+  AutoUpgradeCommand = 11,
+  AutoUpgradeState = 12,
+  PhotoCommand = 42,
+  PhotoState = 43,
+}
+
+export interface MegaMqttHeader {
+  version: "1.0.0.1";
+  client_id: string;
+  sess_id: string;
+  msg_seq: number;
+  cmd: number;
+  cmd_status: number;
+  sign_code: number;
+  seed: string;
+  timestamp: number;
+}
+
+export interface MegaMqttPayload {
+  protocol: MegaMqttProtocol;
+  t: number;
+  account_id: string;
+  device_sn: string;
+  data: Record<string, unknown>;
+}
+
+/** Wire representation: the inner payload is JSON encoded as a string. */
+export interface MegaMqttCommandEnvelope {
+  head: MegaMqttHeader;
+  payload: string;
+}
+
 /** Identifier-free aggregate suitable for diagnostics and logs. */
 export interface MegaHouseInventorySummary {
   deviceCount: number;

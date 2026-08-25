@@ -1,5 +1,6 @@
 export * from "./api";
 export * from "./megaApi";
+export * from "./megaMqttProtocol";
 export * from "./megaCrypto";
 export * from "./cache";
 export * from "./device";

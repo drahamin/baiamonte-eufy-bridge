@@ -27,6 +27,19 @@ import {
   MegaHouseInventoryRequest,
   MegaHouseInventorySummary,
   MegaRomVersionRequest,
+  MegaProductDataPointRequest,
+  MegaDataPointDescriptor,
+  MegaProductDataPointCatalog,
+  MegaDeviceRelationRequest,
+  MegaDeviceParameter,
+  MegaDeviceRelation,
+  MegaDeviceRelationList,
+  MegaDevicePointSwitchRequestItem,
+  MegaDevicePointSwitchRequest,
+  MegaDevicePointSwitch,
+  MegaMqttHeader,
+  MegaMqttPayload,
+  MegaMqttCommandEnvelope,
 } from "./megaInterfaces";
 
 export type {
@@ -40,7 +53,22 @@ export type {
   MegaHouseInventoryRequest,
   MegaHouseInventorySummary,
   MegaRomVersionRequest,
+  MegaProductDataPointRequest,
+  MegaDataPointDescriptor,
+  MegaProductDataPointCatalog,
+  MegaDeviceRelationRequest,
+  MegaDeviceParameter,
+  MegaDeviceRelation,
+  MegaDeviceRelationList,
+  MegaDevicePointSwitchRequestItem,
+  MegaDevicePointSwitchRequest,
+  MegaDevicePointSwitch,
+  MegaMqttHeader,
+  MegaMqttPayload,
+  MegaMqttCommandEnvelope,
 } from "./megaInterfaces";
+
+export { MegaMqttProtocol } from "./megaInterfaces";
 
 /**
  * Eufy "eufy_mega" v6 backend client.
@@ -144,7 +172,7 @@ export class MegaHTTPApi {
     this.ab = opts.ab.toLowerCase();
     this.osType = opts.osType ?? "android";
     this.appName = opts.appName ?? "eufy_mega";
-    this.appVersion = opts.appVersion ?? (this.osType === "android" ? "6.0.51_26722" : "6.0.50_260612140706");
+    this.appVersion = opts.appVersion ?? (this.osType === "android" ? "6.0.80_28612" : "6.0.50_260612140706");
     this.osVersion = opts.osVersion ?? (this.osType === "android" ? "14" : "26.5.1");
     this.phoneModel = opts.phoneModel ?? (this.osType === "android" ? "Pixel 8" : "iPhone 17 Pro");
     if (opts.openudid) this.openudid = opts.openudid;
