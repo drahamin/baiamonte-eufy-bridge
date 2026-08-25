@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.2.1 — 2026-08-25
+
+- Keep readable/writable catalog properties available as disabled-by-default diagnostic sensors
+  while their writable controls remain the authoritative configuration entities. This restores
+  compatibility with Home Assistant 2026.8, which rejects SensorEntity instances in the config
+  category.
+
 ## 9.2.0 — 2026-08-25
 
 - Add disabled-by-default diagnostic sensors for complex AI objects. Their states and attributes
@@ -7,6 +14,8 @@
   coordinates, URLs, or writable controls.
 - Distinguish effective native read catalogs from Eufy-issued descriptor requests in the bridge
   coverage entity.
+- Force complex writable objects into disabled-by-default diagnostic sensors so Home Assistant
+  never mistakes their schema visibility for a normal configuration control.
 
 ## 9.1.1 — 2026-08-25
 

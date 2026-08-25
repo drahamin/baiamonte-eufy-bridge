@@ -43,7 +43,7 @@ async def async_get_config_entry_diagnostics(
     compatibility = mega.get("compatibility", {}) or {}
     return {
         "integration": {
-            "version": "9.2.0",
+            "version": "9.2.1",
             "entry_version": config_entry.version,
             "data": async_redact_data(dict(config_entry.data), TO_REDACT),
             "options": async_redact_data(dict(config_entry.options), TO_REDACT),

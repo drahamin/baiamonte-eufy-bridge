@@ -207,6 +207,13 @@ class EufySecuritySensor(SensorEntity, EufySecurityEntity):
         self, coordinator: EufySecurityDataUpdateCoordinator, metadata: Metadata
     ) -> None:
         super().__init__(coordinator, metadata)
+        # Home Assistant does not permit read-only SensorEntity instances in the
+        # CONFIG category. Some newly discovered Eufy properties are both
+        # readable and writable, so they already have a proper control entity
+        # while this sensor is only a diagnostic view of the current value.
+        if self._attr_entity_category == EntityCategory.CONFIG:
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+            self._attr_entity_registry_enabled_default = False
         self._attr_state_class = self.description.state_class
         self._attr_native_unit_of_measurement = (
             self.description.unit if self.description.unit else metadata.unit
@@ -328,6 +335,10 @@ class EufySecurityStructuredAISensor(SensorEntity, EufySecurityEntity):
     ) -> None:
         super().__init__(coordinator, metadata)
         self._attr_icon = "mdi:brain"
+        # A complex property may be writable at the bridge, but this entity intentionally is not.
+        # Home Assistant also rejects config-category sensors without a writable entity surface.
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_registry_enabled_default = False
 
     @property
     def _shape(self) -> dict:
