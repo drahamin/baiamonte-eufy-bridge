@@ -46,7 +46,7 @@ class Product:
 
     def _set_properties(self, properties: dict) -> None:
         self.properties = properties
-        _LOGGER.debug(f"_set_properties -{self.serial_no} - {str(properties)[0:5000]}")
+        _LOGGER.debug("Initialized product properties")
         self.name = properties.get(MessageField.NAME.value, "UNSUPPORTED")
         self.model = properties.get(MessageField.MODEL.value, "UNSUPPORTED")
         self.hardware_version = properties.get(
@@ -123,7 +123,7 @@ class Product:
             handler_func = getattr(self, f"_handle_{handler.name}", None)
         except ValueError:
             # event is not acted on, skip it
-            _LOGGER.debug(f"event not handled -{self.serial_no} - {event}")
+            _LOGGER.debug("Ignored unsupported product event type %s", event.type)
             return
 
         if handler_func is not None:

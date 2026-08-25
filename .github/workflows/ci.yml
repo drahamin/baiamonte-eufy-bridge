@@ -31,7 +31,7 @@ jobs:
           manifest = json.loads(Path("custom_components/eufy_security/manifest.json").read_text())
           assert manifest["domain"] == "eufy_security"
           assert manifest["name"] == "Baiamonte Eufy Security"
-          assert manifest["version"] == "9.0.1"
+          assert manifest["version"] == "9.0.2"
           assert manifest["requirements"] == []
           for path in Path("custom_components/eufy_security/translations").glob("*.json"):
               json.loads(path.read_text())

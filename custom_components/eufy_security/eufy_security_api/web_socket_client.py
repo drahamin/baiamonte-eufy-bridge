@@ -66,11 +66,18 @@ class WebSocketClient:
 
     async def _process_messages(self):
         async for msg in self.socket:
-            if msg.type != aiohttp.WSMsgType.TEXT:
-                raise WebSocketConnectionException(
-                    f"WebSocket received {msg.type.name} while waiting for JSON"
-                )
-            await self._on_message(msg)
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                await self._on_message(msg)
+            elif msg.type in {
+                aiohttp.WSMsgType.CLOSE,
+                aiohttp.WSMsgType.CLOSED,
+                aiohttp.WSMsgType.CLOSING,
+            }:
+                return
+            elif msg.type == aiohttp.WSMsgType.ERROR:
+                raise WebSocketConnectionException("Bridge WebSocket transport error")
+            else:
+                _LOGGER.debug("Ignored unsupported bridge WebSocket frame type")
 
     async def _on_message(self, message):
         try:

@@ -89,28 +89,27 @@ class Camera(Device):
 
     async def _handle_livestream_started(self, event: Event):
         # automatically find this function for respective event
-        _LOGGER.debug(f"_handle_livestream_started - {event}")
+        _LOGGER.debug("Livestream started")
         self.p2p_started_event.set()
 
     async def _handle_livestream_stopped(self, event: Event):
         # automatically find this function for respective event
-        _LOGGER.debug(f"_handle_livestream_stopped - {event}")
+        _LOGGER.debug("Livestream stopped")
         self.stream_status = StreamStatus.IDLE
         self.video_queue = deque()
         self.audio_queue = deque()
 
     async def _handle_rtsp_livestream_started(self, event: Event):
         # automatically find this function for respective event
-        _LOGGER.debug(f"_handle_rtsp_livestream_started - {event}")
+        _LOGGER.debug("RTSP livestream started")
         self.rtsp_started_event.set()
 
     async def _handle_rtsp_livestream_stopped(self, event: Event):
         # automatically find this function for respective event
-        _LOGGER.debug(f"_handle_rtsp_livestream_stopped - {event}")
+        _LOGGER.debug("RTSP livestream stopped")
         self.stream_status = StreamStatus.IDLE
 
     async def _handle_livestream_video_data_received(self, event: Event):
-        # _LOGGER.debug(f"_handle_rtsp_livestream_stopped - {event}")
         self.video_queue.append(bytearray(event.data["buffer"]["data"]))
 
     async def _handle_livestream_audio_data_received(self, event: Event):
@@ -302,7 +301,7 @@ class Camera(Device):
             url = url.replace("{server_address}", str(self.config.rtsp_server_address))
             url = url.replace("{server_port}", str(GO2RTC_RTSP_PORT))
             self.stream_url = url
-        _LOGGER.debug(f"url - {self.stream_provider} - {self.stream_url}")
+        _LOGGER.debug("Selected %s stream provider", self.stream_provider.name)
 
     async def _handle_property_changed(self, event: Event):
         await super()._handle_property_changed(event)

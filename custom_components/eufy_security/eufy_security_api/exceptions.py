@@ -1,7 +1,5 @@
 """Define all exceptions for module."""
 
-from typing import Optional
-
 from .event import Event
 from .metadata import Metadata
 
@@ -18,9 +16,9 @@ class FailedCommandException(BaseEufySecurityException):
     """Failed command exception."""
 
     def __init__(
-        self, message_id: str, error_code: str, message: Optional[str] = None
+        self, message_id: str, error_code: str, message: str | None = None
     ) -> None:
-        super().__init__(message or f"Command failed: {error_code} - {message}")
+        super().__init__(f"Bridge command failed with code {error_code}")
         self.message_id = message_id
         self.error_code = error_code
 
@@ -47,9 +45,7 @@ class UnexpectedMessageTypeException(BaseEufySecurityException):
     """Unexcepted message type exception."""
 
     def __init__(self, message: dict) -> None:
-        super().__init__(
-            f"Unexpected message type received, please create issue under github repository to track it, {message}"
-        )
+        super().__init__("Unexpected bridge message type received")
         self.message = message
 
 
@@ -57,9 +53,7 @@ class UnknownEventSourceException(BaseEufySecurityException):
     """Unknown event source exception."""
 
     def __init__(self, event: Event) -> None:
-        super().__init__(
-            f"Unknown event source is received, type: {event.type}, data: {event.data}"
-        )
+        super().__init__(f"Unknown bridge event source for event type {event.type}")
         self.event = event
 
 
@@ -67,9 +61,7 @@ class ValueNotSetException(BaseEufySecurityException):
     """Missing property value even it exists on metadata"""
 
     def __init__(self, metadata: Metadata) -> None:
-        super().__init__(
-            f"Property value is not set, defaulting to MIN, property: {metadata.name}, device: {metadata.product.name}"
-        )
+        super().__init__(f"Property value is not set for {metadata.name}")
         self.metadata = metadata
 
 
@@ -97,9 +89,7 @@ class DeviceNotInitializedYetException(BaseEufySecurityException):
     """Device not initialized yet"""
 
     def __init__(self, event: Event) -> None:
-        super().__init__(
-            f"Device not initialized yet, it will be initialized later on, type: {event.type}, data: {event.data}"
-        )
+        super().__init__(f"Product inventory is not ready for event type {event.type}")
         self.event = event
 
 
@@ -111,11 +101,11 @@ class CameraRTSPStreamNotSupported(BaseEufySecurityModelException):
     """Camera does not support RTSP Streaming."""
 
     def __init__(self, camera_name: str) -> None:
-        super().__init__("Camera (%s) does not support RTSP Stream", camera_name)
+        super().__init__("Camera does not support RTSP streaming")
 
 
 class CameraRTSPStreamNotEnabled(BaseEufySecurityModelException):
     """RTSP Streaming is not enabled for camera."""
 
     def __init__(self, camera_name: str) -> None:
-        super().__init__("RTSP Streaming is not enabled for camera (%s)", camera_name)
+        super().__init__("RTSP streaming is not enabled for this camera")

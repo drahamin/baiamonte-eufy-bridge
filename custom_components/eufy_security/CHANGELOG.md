@@ -1,5 +1,11 @@
 # Changelog
 
+## 9.0.2 — 2026-08-25
+
+- Treat normal WebSocket close frames as shutdown instead of transport failures.
+- Remove device events, property dictionaries, serial numbers, stream URLs, raw bridge commands,
+  relay response bodies, and image data from exception and debug-log paths.
+
 ## 9.0.1 — 2026-08-25
 
 - Import stream timing constants from their defining module instead of relying on an upstream

@@ -41,7 +41,7 @@ async def async_get_config_entry_diagnostics(
     parameters = mega.get("inventory", {}).get("parameters", {}) or {}
     return {
         "integration": {
-            "version": "9.0.1",
+            "version": "9.0.2",
             "entry_version": config_entry.version,
             "data": async_redact_data(dict(config_entry.data), TO_REDACT),
             "options": async_redact_data(dict(config_entry.options), TO_REDACT),

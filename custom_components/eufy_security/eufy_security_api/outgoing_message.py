@@ -226,14 +226,11 @@ class OutgoingMessage:
             if domain == EventSourceType.server.value
             else domain + "." + self.type.name
         )
-        _LOGGER.debug(
-            f"domain - {domain} - {default_domain} - {command} - {kwargs} - {self._message}"
-        )
+        _LOGGER.debug("Prepared bridge command %s", command)
         self._message[MessageField.COMMAND.value] = command
         self._message[MessageField.MESSAGE_ID.value] = (
             self.command + "." + uuid.uuid4().hex
         )
-        _LOGGER.debug(self._message)
 
     @property
     def id(self) -> str:

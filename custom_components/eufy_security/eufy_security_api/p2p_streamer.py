@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import traceback
 
 import aiohttp
 
@@ -47,9 +46,7 @@ class P2PStreamer:
                     data=self.chunk_generator(queue, queue_name),
                     timeout=aiohttp.ClientTimeout(total=None, connect=5),
                 )
-                _LOGGER.debug(
-                    f"write_bytes {queue_name} - post response - {resp.status} - {await resp.text()}"
-                )
+                _LOGGER.debug("P2P stream relay response status %s", resp.status)
                 if resp is not None and resp.status is not None:
                     if resp.status == 500:
                         self.retry = self.retry or True
@@ -59,23 +56,17 @@ class P2PStreamer:
         except (
             asyncio.exceptions.TimeoutError,
             asyncio.exceptions.CancelledError,
-        ) as ex:
+        ):
             # live stream probabaly stopped, handle peacefully
-            _LOGGER.debug(
-                f"write_bytes {queue_name} timeout/cancelled NO RETRY exception {ex} - traceback: {traceback.format_exc()}"
-            )
+            _LOGGER.debug("P2P stream relay ended without retry")
             self.retry = self.retry or False
-        except aiohttp.client_exceptions.ServerDisconnectedError as ex:
+        except aiohttp.client_exceptions.ServerDisconnectedError:
             # connection to go2rtc server is broken, try again``
-            _LOGGER.debug(
-                f"write_bytes {queue_name} server_disconnected RETRY exception {ex} - traceback: {traceback.format_exc()}"
-            )
+            _LOGGER.debug("P2P stream relay disconnected; retrying")
             self.retry = self.retry or True
-        except Exception as ex:  # pylint: disable=broad-except
+        except Exception:  # pylint: disable=broad-except
             # other exceptions, log the error
-            _LOGGER.debug(
-                f"write_bytes {queue_name} general exception NO RETRY {ex} - traceback: {traceback.format_exc()}"
-            )
+            _LOGGER.debug("P2P stream relay stopped after an unexpected error")
             self.retry = self.retry or False
 
         _LOGGER.debug(f"write_bytes {queue_name} - ended with {self.retry}")
@@ -88,10 +79,7 @@ class P2PStreamer:
         url = f"{url}s"
         async with aiohttp.ClientSession() as session:
             async with session.delete(url, params=parameters) as response:
-                result = response.status, await response.text()
-                _LOGGER.debug(
-                    f"create_stream_on_go2rtc - delete stream response {result}"
-                )
+                _LOGGER.debug("go2rtc delete response status %s", response.status)
 
         parameters = {
             "name": str(self.camera.serial_no),
@@ -103,8 +91,7 @@ class P2PStreamer:
         url = f"{url}s"
         async with aiohttp.ClientSession() as session:
             async with session.put(url, params=parameters) as response:
-                result = response.status, await response.text()
-                _LOGGER.debug(f"create_stream_on_go2rtc - put stream response {result}")
+                _LOGGER.debug("go2rtc create response status %s", response.status)
 
     def _run(self, queue, name):
         asyncio.run(self.write_bytes(queue, name))
