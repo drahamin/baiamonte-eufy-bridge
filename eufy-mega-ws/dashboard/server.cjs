@@ -194,6 +194,7 @@ async function buildStatus() {
         privacyPosition: commands.includes("set_privacy_angle") || commands.includes("set_default_angle"),
         zoom: commands.some((name) => /zoom/i.test(name)) || writablePtzPropertyNames.some((name) => /zoom/i.test(name)),
         tracking: writablePtzPropertyNames.some((name) => /track|cruise/i.test(name)),
+        recordingDownload: commands.includes("start_download"),
       });
     }
     const stationRows = [];
@@ -209,6 +210,10 @@ async function buildStatus() {
         properties: Object.keys(metadata).length,
         writable: Object.values(metadata).filter((item) => item && item.writeable).length,
         commands: (commandsResult.commands || []).length,
+        localRecordIndex: (commandsResult.commands || []).includes("database_query_local"),
+        dateRecordIndex: (commandsResult.commands || []).includes("database_query_by_date"),
+        recordCountIndex: (commandsResult.commands || []).includes("database_count_by_date"),
+        thumbnailDownload: (commandsResult.commands || []).includes("download_image"),
       });
     }
     return { deviceRows, stationRows };
@@ -236,6 +241,7 @@ async function buildStatus() {
       privacyPosition: false,
       zoom: false,
       tracking: false,
+      recordingDownload: false,
       ptzProperties: [],
     };
     row.count++;
@@ -263,6 +269,7 @@ async function buildStatus() {
     row.privacyPosition ||= item.privacyPosition;
     row.zoom ||= item.zoom;
     row.tracking ||= item.tracking;
+    row.recordingDownload ||= item.recordingDownload;
     row.ptzProperties = [...new Set([...row.ptzProperties, ...item.ptzProperties])].sort();
     modelCapabilities.set(key, row);
   }
@@ -281,6 +288,10 @@ async function buildStatus() {
       panTiltCameras: cameras.filter((item) => item.panTilt).length,
       presetCameras: cameras.filter((item) => item.presets).length,
       streamCapableCameras: cameras.filter((item) => item.streaming).length,
+      recordingDownloadCameras: cameras.filter((item) => item.recordingDownload).length,
+      localRecordIndexStations: capabilities.stationRows.filter((item) => item.localRecordIndex).length,
+      dateRecordIndexStations: capabilities.stationRows.filter((item) => item.dateRecordIndex).length,
+      thumbnailDownloadStations: capabilities.stationRows.filter((item) => item.thumbnailDownload).length,
       writableDeviceProperties: capabilities.deviceRows.reduce((total, item) => total + item.writable, 0),
       writableStationProperties: capabilities.stationRows.reduce((total, item) => total + item.writable, 0),
     },
@@ -295,6 +306,7 @@ async function buildStatus() {
       inventory: "Mega-native discovery with compatibility coverage for incomplete catalogs",
       commands: "P2P where supported",
       snapshots: "Push-event images with persistent local cache",
+      recordings: "Authenticated account index plus local HomeBase database and encrypted P2P clip transport where advertised",
     },
   };
 }

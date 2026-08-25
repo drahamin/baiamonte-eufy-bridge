@@ -191,6 +191,8 @@ class Station(Product):
         super().__init__(
             api, ProductType.station, serial_no, properties, metadata, commands
         )
+        self._database_query_local_future = None
+        self._database_query_by_date_future = None
 
     async def chime(self, ringtone: int) -> None:
         """Quick response message to camera"""
@@ -199,3 +201,69 @@ class Station(Product):
     async def reboot(self) -> None:
         """Reboot station"""
         await self.api.reboot(self.product_type, self.serial_no)
+
+    async def database_query_local(
+        self,
+        serial_numbers: list[str],
+        start_date: str,
+        end_date: str,
+        event_type: int = 0,
+        detection_type: int = 0,
+        storage_type: int = 0,
+    ) -> list[dict]:
+        """Return detailed local recording metadata from this HomeBase."""
+        if "database_query_local" not in self.commands:
+            raise ValueError("This HomeBase does not advertise local record queries")
+        if self._database_query_local_future is not None:
+            raise RuntimeError("A local HomeBase record query is already running")
+        self._database_query_local_future = asyncio.get_running_loop().create_future()
+        try:
+            await self.api.database_query_local(
+                self.serial_no,
+                serial_numbers,
+                start_date,
+                end_date,
+                event_type,
+                detection_type,
+                storage_type,
+            )
+            return await asyncio.wait_for(self._database_query_local_future, timeout=45)
+        finally:
+            self._database_query_local_future = None
+
+    async def database_query_by_date(
+        self,
+        serial_numbers: list[str],
+        start_date: str,
+        end_date: str,
+        event_type: int = 0,
+        detection_type: int = 0,
+        storage_type: int = 0,
+    ) -> list[dict]:
+        """Return the compact local recording date index from this HomeBase."""
+        if "database_query_by_date" not in self.commands:
+            raise ValueError("This HomeBase does not advertise date-index queries")
+        if self._database_query_by_date_future is not None:
+            raise RuntimeError("A HomeBase date-index query is already running")
+        self._database_query_by_date_future = asyncio.get_running_loop().create_future()
+        try:
+            await self.api.database_query_by_date(
+                self.serial_no,
+                serial_numbers,
+                start_date,
+                end_date,
+                event_type,
+                detection_type,
+                storage_type,
+            )
+            return await asyncio.wait_for(self._database_query_by_date_future, timeout=45)
+        finally:
+            self._database_query_by_date_future = None
+
+    async def _handle_database_query_local(self, event: Event):
+        if self._database_query_local_future is not None and not self._database_query_local_future.done():
+            self._database_query_local_future.set_result(event.data.get("data", []))
+
+    async def _handle_database_query_by_date(self, event: Event):
+        if self._database_query_by_date_future is not None and not self._database_query_by_date_future.done():
+            self._database_query_by_date_future.set_result(event.data.get("data", []))

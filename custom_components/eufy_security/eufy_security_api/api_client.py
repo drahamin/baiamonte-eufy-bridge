@@ -229,6 +229,25 @@ class ApiClient:
             OutgoingMessage(OutgoingMessageType.poll_refresh)
         )
 
+    async def get_history_events(
+        self,
+        start_timestamp_ms: int,
+        end_timestamp_ms: int,
+        event_filter: dict,
+        max_results: int,
+    ) -> list[dict]:
+        """Read the authenticated account's recording index."""
+        result = await self._send_message_get_response(
+            OutgoingMessage(
+                OutgoingMessageType.get_history_events,
+                start_timestamp_ms=start_timestamp_ms,
+                end_timestamp_ms=end_timestamp_ms,
+                event_filter=event_filter,
+                max_results=max_results,
+            )
+        )
+        return result.get(MessageField.EVENTS.value, [])
+
     async def _set_captcha(self, captcha_id: str, captcha_input: str) -> None:
         await self._send_message_get_response(
             OutgoingMessage(
@@ -484,6 +503,54 @@ class ApiClient:
         )
 
     # station level commands
+
+    async def database_query_local(
+        self,
+        serial_no: str,
+        serial_numbers: list[str],
+        start_date: str,
+        end_date: str,
+        event_type: int = 0,
+        detection_type: int = 0,
+        storage_type: int = 0,
+    ) -> None:
+        """Ask a compatible HomeBase for detailed local record metadata."""
+        await self._send_message_get_response(
+            OutgoingMessage(
+                OutgoingMessageType.database_query_local,
+                serial_no=serial_no,
+                serial_numbers=serial_numbers,
+                start_date=start_date,
+                end_date=end_date,
+                event_type=event_type,
+                detection_type=detection_type,
+                storage_type=storage_type,
+            )
+        )
+
+    async def database_query_by_date(
+        self,
+        serial_no: str,
+        serial_numbers: list[str],
+        start_date: str,
+        end_date: str,
+        event_type: int = 0,
+        detection_type: int = 0,
+        storage_type: int = 0,
+    ) -> None:
+        """Ask a compatible HomeBase for its date-indexed local records."""
+        await self._send_message_get_response(
+            OutgoingMessage(
+                OutgoingMessageType.database_query_by_date,
+                serial_no=serial_no,
+                serial_numbers=serial_numbers,
+                start_date=start_date,
+                end_date=end_date,
+                event_type=event_type,
+                detection_type=detection_type,
+                storage_type=storage_type,
+            )
+        )
 
     async def chime(
         self, product_type: ProductType, serial_no: str, ringtone: int

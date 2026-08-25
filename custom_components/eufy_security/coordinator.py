@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import aiohttp
 from homeassistant.components.persistent_notification import async_create
@@ -23,6 +23,7 @@ from .eufy_security_api.exceptions import (
     WebSocketConnectionException,
 )
 from .model import Config
+from .evidence import event_merge_key, normalize_cloud_event, normalize_local_event
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -93,6 +94,85 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
     async def set_log_level(self, log_level: str) -> None:
         """set log level of websocket server"""
         await self._api.set_log_level(log_level)
+
+    async def search_evidence(
+        self,
+        *,
+        source: str = "hybrid",
+        days: int = 1,
+        max_results: int = 100,
+        station_serial: str = "",
+        device_serial: str = "",
+    ) -> dict:
+        """Search cloud-indexed and, where proven, local HomeBase records."""
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=days)
+        events: list[dict] = []
+        warnings: list[str] = []
+        local_stations = []
+
+        if source in {"hybrid", "cloud"}:
+            raw = await self._api.get_history_events(
+                int(start.timestamp() * 1000),
+                int(end.timestamp() * 1000),
+                {
+                    "stationSN": station_serial,
+                    "deviceSN": device_serial,
+                    "storageType": 0,
+                },
+                max_results,
+            )
+            events.extend(normalize_cloud_event(record) for record in raw)
+
+        if source in {"hybrid", "local"}:
+            for station in self.stations.values():
+                if station_serial and station.serial_no != station_serial:
+                    continue
+                if "database_query_local" not in (station.commands or []):
+                    continue
+                serial_numbers = [device_serial] if device_serial else [
+                    device.serial_no
+                    for device in self.devices.values()
+                    if device.properties.get("stationSerialNumber") == station.serial_no
+                ]
+                if not serial_numbers:
+                    continue
+                local_stations.append(station.model)
+                try:
+                    raw = await station.database_query_local(
+                        serial_numbers,
+                        start.isoformat(),
+                        end.isoformat(),
+                    )
+                    events.extend(normalize_local_event(record) for record in raw)
+                except (RuntimeError, ValueError, asyncio.TimeoutError) as exc:
+                    warnings.append(f"{station.model}: {type(exc).__name__}")
+
+        merged: dict[tuple, dict] = {}
+        for event in events:
+            key = event_merge_key(event)
+            if key in merged:
+                current = merged[key]
+                current["source"] = "hybrid"
+                current["ai_categories"] = sorted(
+                    set(current.get("ai_categories", []))
+                    | set(event.get("ai_categories", []))
+                )
+                current["has_thumbnail"] |= event.get("has_thumbnail", False)
+                current["has_video"] |= event.get("has_video", False)
+            else:
+                merged[key] = event
+        result = sorted(
+            merged.values(), key=lambda event: event.get("start") or "", reverse=True
+        )[:max_results]
+        return {
+            "source": source,
+            "window_days": days,
+            "count": len(result),
+            "local_homebase_models": sorted(set(local_stations)),
+            "warnings": warnings,
+            "events": result,
+        }
 
     async def _update_local(self):
         try:

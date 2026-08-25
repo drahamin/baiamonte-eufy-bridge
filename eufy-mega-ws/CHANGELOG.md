@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0 — 2026-08-25
+
+- Add explicit HomeBase evidence/video capability reporting to the ingress dashboard: account
+  index authentication, local/date indexes, direct thumbnail retrieval, encrypted saved-clip
+  transport, and live-view coverage.
+- Keep the bridge dashboard privacy-safe and place actual video playback behind authenticated
+  Home Assistant access; no record path, cipher, identity result or media URL is published by the
+  diagnostics endpoint.
+
 ## 1.5.6 — 2026-08-25
 
 - Remove the temporary one-shot Dock audit trigger and option after live validation, leaving the

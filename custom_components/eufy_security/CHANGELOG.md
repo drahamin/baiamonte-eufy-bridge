@@ -1,5 +1,16 @@
 # Changelog
 
+## 9.4.0 — 2026-08-25
+
+- Add a response-producing `search_events` service for the authenticated recording index and
+  locally indexed S380 recordings, with hybrid deduplication and bounded date/result filters.
+- Preserve AI event usefulness as person, face, vehicle, pet, package, sound, crying and motion
+  categories while excluding raw storage paths, cipher material, URLs, face/person IDs,
+  coordinates and confidence payloads.
+- Gate local HomeBase database queries on the exact station commands advertised at runtime, so
+  the S380 can use its proven local index while the newer T9000 Professional safely falls back to
+  the account index until its distinct local protocol is identified.
+
 ## 9.3.4 — 2026-08-25
 
 - Keep `stream_source()` side-effect-free because Home Assistant probes it while adding every

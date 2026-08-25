@@ -32,6 +32,47 @@ set_log_level:
             - error
             - fatal
 
+search_events:
+  name: Search HomeBase recordings
+  description: Search the authenticated eufy account index and compatible local HomeBase databases. Returns privacy-safe AI categories and media availability without exposing storage paths, keys, face IDs, or URLs.
+  fields:
+    source:
+      name: Source
+      required: true
+      default: hybrid
+      selector:
+        select:
+          options:
+            - hybrid
+            - cloud
+            - local
+    days:
+      name: Days
+      required: true
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 31
+    max_results:
+      name: Maximum results
+      required: true
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 200
+    station_serial:
+      name: HomeBase serial filter
+      description: Optional advanced filter. Leave empty to search every HomeBase on this account.
+      selector:
+        text:
+    device_serial:
+      name: Camera serial filter
+      description: Optional advanced filter. Leave empty to search all attached cameras.
+      selector:
+        text:
+
 ptz:
   name: Central PTZ Service
   description: Call PTZ command for supported PTZ cameras

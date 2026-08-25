@@ -9,7 +9,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components.persistent_notification import async_create
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.device_registry import DeviceEntry
@@ -53,12 +53,32 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def handle_log_level(call: ServiceCall) -> None:
         await _coordinator(hass).set_log_level(call.data["log_level"])
 
+    async def handle_search_events(call: ServiceCall) -> dict:
+        return await _coordinator(hass).search_evidence(**call.data)
+
     hass.services.async_register(DOMAIN, "force_sync", handle_force_sync)
     hass.services.async_register(
         DOMAIN,
         "send_message",
         handle_send_message,
         schema=vol.Schema({vol.Required("message"): vol.Any(dict, str)}),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "search_events",
+        handle_search_events,
+        schema=vol.Schema(
+            {
+                vol.Optional("source", default="hybrid"): vol.In(
+                    ["hybrid", "cloud", "local"]
+                ),
+                vol.Optional("days", default=1): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
+                vol.Optional("max_results", default=100): vol.All(vol.Coerce(int), vol.Range(min=1, max=200)),
+                vol.Optional("station_serial", default=""): cv.string,
+                vol.Optional("device_serial", default=""): cv.string,
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
         DOMAIN,

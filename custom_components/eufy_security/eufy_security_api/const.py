@@ -91,6 +91,18 @@ class MessageField(Enum):
     # get events
     MAX_RESULTS = "maxResults"
     DEVICE_SERIAL_NO = "deviceSN"
+    START_TIMESTAMP_MS = "startTimestampMs"
+    END_TIMESTAMP_MS = "endTimestampMs"
+    FILTER = "filter"
+    EVENTS = "events"
+    SERIAL_NUMBERS = "serialNumbers"
+    START_DATE = "startDate"
+    END_DATE = "endDate"
+    EVENT_TYPE = "eventType"
+    DETECTION_TYPE = "detectionType"
+    STORAGE_TYPE = "storageType"
+    DATA = "data"
+    RETURN_CODE = "returnCode"
 
 
 # https://bropat.github.io/eufy-security-ws/#/api_events?id=device-level-events
@@ -111,6 +123,9 @@ class EventNameToHandler(Enum):
     connected = "connected"
     disconnected = "disconnected"
     connection_error = "connection error"
+    database_query_local = "database query local"
+    database_query_by_date = "database query by date"
+    database_count_by_date = "database count by date"
 
 
 class ProductType(Enum):

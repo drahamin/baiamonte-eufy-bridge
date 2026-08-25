@@ -28,6 +28,16 @@ class OutgoingMessageToParameter(Enum):
     level = "log_level"
     ringtone = "ringtone"
     pin = "pin"
+    startTimestampMs = "start_timestamp_ms"
+    endTimestampMs = "end_timestamp_ms"
+    filter = "event_filter"
+    maxResults = "max_results"
+    serialNumbers = "serial_numbers"
+    startDate = "start_date"
+    endDate = "end_date"
+    eventType = "event_type"
+    detectionType = "detection_type"
+    storageType = "storage_type"
 
 
 class OutgoingMessageType(Enum):
@@ -73,6 +83,14 @@ class OutgoingMessageType(Enum):
     get_video_events = {
         MessageField.DUMMY: auto(),
         MessageField.DOMAIN: EventSourceType.driver,
+        MessageField.MAX_RESULTS: None,
+    }
+    get_history_events = {
+        MessageField.DUMMY: auto(),
+        MessageField.DOMAIN: EventSourceType.driver,
+        MessageField.START_TIMESTAMP_MS: None,
+        MessageField.END_TIMESTAMP_MS: None,
+        MessageField.FILTER: None,
         MessageField.MAX_RESULTS: None,
     }
 
@@ -188,6 +206,26 @@ class OutgoingMessageType(Enum):
     is_connected = {
         MessageField.DUMMY: auto(),
         MessageField.DOMAIN: EventSourceType.station,
+    }
+    database_query_local = {
+        MessageField.DUMMY: auto(),
+        MessageField.DOMAIN: EventSourceType.station,
+        MessageField.SERIAL_NUMBERS: None,
+        MessageField.START_DATE: None,
+        MessageField.END_DATE: None,
+        MessageField.EVENT_TYPE: None,
+        MessageField.DETECTION_TYPE: None,
+        MessageField.STORAGE_TYPE: None,
+    }
+    database_query_by_date = {
+        MessageField.DUMMY: auto(),
+        MessageField.DOMAIN: EventSourceType.station,
+        MessageField.SERIAL_NUMBERS: None,
+        MessageField.START_DATE: None,
+        MessageField.END_DATE: None,
+        MessageField.EVENT_TYPE: None,
+        MessageField.DETECTION_TYPE: None,
+        MessageField.STORAGE_TYPE: None,
     }
 
 
