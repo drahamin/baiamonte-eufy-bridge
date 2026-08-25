@@ -31,6 +31,16 @@ P2P is direct device/station transport and is not classified as a legacy cloud s
    successfully but cannot expose Home Assistant entities, so the option must not be advertised.
 6. The schema-21 WebSocket contract remains stable while providers are replaced behind it.
 
+## Home Assistant integration migration
+
+`Baiamonte Eufy Security` replaces the former custom integration code in place while keeping the
+`eufy_security` domain, config-entry data, device identifiers, entity unique IDs, entity IDs, and
+service namespace. On first load, the existing entry is migrated to version 2 and retitled. This
+avoids duplicate cameras and prevents dashboards or automations from breaking during the cutover.
+
+Before installation, retain a copy of `/config/custom_components/eufy_security`. Rollback consists
+of restoring that directory and restarting Home Assistant; no registry rewrite is required.
+
 ## Exit condition
 
 Legacy cloud support can be removed when authentication, push, inventory, properties, invitations,

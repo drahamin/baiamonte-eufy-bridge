@@ -9,6 +9,42 @@ permissions:
   contents: read
 
 jobs:
+  companion:
+    name: Home Assistant companion integration
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Use Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Validate companion package
+        run: |
+          python -m compileall -q custom_components/eufy_security
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("custom_components/eufy_security/manifest.json").read_text())
+          assert manifest["domain"] == "eufy_security"
+          assert manifest["name"] == "Baiamonte Eufy Security"
+          assert manifest["version"] == "9.0.0"
+          assert manifest["requirements"] == []
+          for path in Path("custom_components/eufy_security/translations").glob("*.json"):
+              json.loads(path.read_text())
+          PY
+
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
+
   client:
     name: Patched client
     runs-on: ubuntu-24.04

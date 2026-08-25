@@ -1,0 +1,23 @@
+# Baiamonte Eufy Security
+
+Home Assistant companion integration for **Baiamonte eufy Bridge**.
+
+Version 9.0.0 is an in-place successor to `fuatakgun/eufy_security` 8.2.4. It deliberately retains
+the `eufy_security` domain and entity unique-ID format, while replacing the visible product name,
+documentation, diagnostics, and connection handling.
+
+## Added in the Baiamonte companion
+
+- WebSocket response timeouts instead of indefinitely stuck initialization.
+- Safe handling of early device events and non-text WebSocket frames.
+- No raw bridge messages, MFA values, captcha values, stream URLs, or config-entry data in logs.
+- End-to-end bridge connection entity.
+- Mega catalog research-coverage entity with verified, classified, unresolved, unique-ID, official
+  catalog, schema, authentication, and compatibility-fallback attributes.
+- Privacy-safe downloadable Home Assistant diagnostics.
+- Automatic version-2 config-entry migration and Baiamonte title adoption without entity churn.
+- Input validation for raw JSON and log-level services.
+- Background reconnect coalescing so one outage cannot schedule repeated reloads.
+
+The integration expects the bridge WebSocket on port 3000 and its redacted diagnostics endpoint on
+port 8097 by default.

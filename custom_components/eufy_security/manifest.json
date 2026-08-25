@@ -1,0 +1,13 @@
+{
+  "domain": "eufy_security",
+  "name": "Baiamonte Eufy Security",
+  "codeowners": ["@drahamin"],
+  "config_flow": true,
+  "dependencies": ["ffmpeg", "stream"],
+  "documentation": "https://github.com/drahamin/baiamonte-eufy-bridge",
+  "integration_type": "hub",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/drahamin/baiamonte-eufy-bridge/issues",
+  "requirements": [],
+  "version": "9.0.0"
+}

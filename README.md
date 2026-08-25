@@ -1,9 +1,14 @@
 # Baiamonte eufy Bridge for Home Assistant
 
-This Baiamonte-owned fork provides a migration-ready Home Assistant add-on for the existing
-[`fuatakgun/eufy_security`](https://github.com/fuatakgun/eufy_security) integration. It keeps the
-WebSocket schema at **21**, uses `eufy-security-ws` **3.1.0**, and adds focused fixes around the
-published eufy Mega v6 transition code.
+This Baiamonte-owned project now ships both halves of the Home Assistant stack:
+
+- **Baiamonte eufy Bridge**, the add-on that authenticates, discovers, streams, and controls eufy
+  products through the schema-21 WebSocket contract.
+- **Baiamonte Eufy Security**, the companion custom integration that creates Home Assistant
+  entities and services from that bridge.
+
+The companion retains the internal `eufy_security` domain and existing unique IDs so upgrading from
+the former `fuatakgun/eufy_security` package does not rename entities or break automations.
 
 ## What works
 
@@ -39,8 +44,11 @@ library for that eventual replacement.
 3. Install **Baiamonte eufy Bridge**.
 4. Enter the same Eufy account, password, country, and station-IP overrides you use now.
 5. Start the add-on and complete any requested Mega and legacy email verification steps.
-6. Keep the Home Assistant Eufy Security integration pointed at `127.0.0.1:3000`. Reload it after
-   the add-on reports that the WebSocket server is listening.
+6. Add this same repository to HACS as an **Integration** custom repository and install
+   **Baiamonte Eufy Security**. If Eufy Security 8.2.4 is already installed, this is an in-place,
+   reversible code upgrade; the existing config entry and entity IDs are adopted automatically.
+7. Restart Home Assistant after HACS finishes copying the integration. Keep the bridge endpoint at
+   `127.0.0.1:3000` and the diagnostics endpoint at `8097`.
 
 Expected startup messages include:
 
@@ -57,22 +65,23 @@ Trigger motion or ring a doorbell and verify that the matching
 
 | Component | Version/contract |
 | --- | --- |
-| Home Assistant custom integration | `fuatakgun/eufy_security` 8.2.4 |
+| Home Assistant custom integration | Baiamonte Eufy Security 9.0.0 |
 | WebSocket schema | 21 |
 | WebSocket server | `eufy-security-ws` 3.1.0 |
-| Client build | `eufy-security-client` 4.1.1-mega.10 (upstream 4.1.1) |
+| Client build | `eufy-security-client` 4.1.1-mega.13 (upstream 4.1.1) |
 | Home Assistant architectures | amd64, aarch64 |
 | Runtime | Node.js 24 on HA base 3.23 |
 
 See [architecture and patch notes](ARCHITECTURE.md), the add-on's
 [configuration guide](eufy-mega-ws/DOCS.md), and the provider-by-provider
-[migration contract](MIGRATION.md). A reversible recovery for the separate Home Assistant
-integration's 8.2.4 WebSocket initialization bug is documented in
-[home-assistant-patches](home-assistant-patches/README.md).
+[migration contract](MIGRATION.md). The original 8.2.4 WebSocket recovery is now incorporated into
+the companion integration; its standalone patch remains documented in
+[home-assistant-patches](home-assistant-patches/README.md) for audit history.
 
 ## Upstream and license
 
 This project is a compatibility build based on the MIT-licensed work in
+[`fuatakgun/eufy_security`](https://github.com/fuatakgun/eufy_security),
 [`bropat/eufy-security-client`](https://github.com/bropat/eufy-security-client),
 [`bropat/eufy-security-ws`](https://github.com/bropat/eufy-security-ws), and
 [`bropat/hassio-eufy-security-ws`](https://github.com/bropat/hassio-eufy-security-ws). It is not
