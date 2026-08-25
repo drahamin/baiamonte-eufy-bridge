@@ -99,6 +99,7 @@ describe("native Mega inventory augmentation", () => {
       synthesized: 1,
       observedDataPoints: 1,
       knownDataPoints: 0,
+      classifiedDataPoints: 0,
       unknownDataPoints: 1,
     });
     expect((transition as any).writeMegaStatus).toHaveBeenCalledWith(

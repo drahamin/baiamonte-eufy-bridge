@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.5 — 2026-08-25
+
+- Correct the aggregate catalog counters so family-classified fields are reported separately and
+  no longer inflate the genuinely unresolved total.
+
 ## 1.2.4 — 2026-08-25
 
 - Name four directly evidenced HomeBase Pro Mega fields: LTE diagnostics, cellular modem firmware,

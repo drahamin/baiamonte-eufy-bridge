@@ -66,6 +66,7 @@ export interface MegaProductCatalogSummary {
   synthesized: number;
   observedDataPoints: number;
   knownDataPoints: number;
+  classifiedDataPoints: number;
   unknownDataPoints: number;
 }
 
@@ -441,6 +442,7 @@ export class MegaTransition {
         synthesized: 0,
         observedDataPoints: 0,
         knownDataPoints: 0,
+        classifiedDataPoints: 0,
         unknownDataPoints: 0,
       };
       const discovery: Record<string, unknown> = {
@@ -594,7 +596,12 @@ export class MegaTransition {
                 summary.synthesized++;
                 summary.observedDataPoints += observed.data_point_list.length;
                 summary.knownDataPoints += observed.data_point_list.filter((point) => point.known).length;
-                summary.unknownDataPoints += observed.data_point_list.filter((point) => !point.known).length;
+                summary.classifiedDataPoints += observed.data_point_list.filter(
+                  (point) => point.confidence === "classified"
+                ).length;
+                summary.unknownDataPoints += observed.data_point_list.filter(
+                  (point) => point.confidence === "unresolved"
+                ).length;
               }
             } else summary.available++;
           } catch {
