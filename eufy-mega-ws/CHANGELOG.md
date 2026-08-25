@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1 — 2026-08-25
+
+- Make duplicate livestream-stop requests idempotent so device-page cleanup no longer produces
+  false errors after a stream has already ended.
+- Add an explicit, one-shot local device control audit for validating advertised writable
+  properties and reversible camera commands without recording device values or identifiers.
+
 ## 1.5.0 — 2026-08-25
 
 - Adds a privacy-safe stable device relationship key to camera, image, sensor, binary-sensor and control entities so downstream applications no longer depend on editable Home Assistant entity IDs.

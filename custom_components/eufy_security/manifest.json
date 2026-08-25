@@ -9,5 +9,5 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/drahamin/baiamonte-eufy-bridge/issues",
   "requirements": [],
-  "version": "9.3.0"
+  "version": "9.3.1"
 }

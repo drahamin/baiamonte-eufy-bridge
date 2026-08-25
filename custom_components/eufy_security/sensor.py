@@ -207,6 +207,8 @@ class EufySecuritySensor(SensorEntity, EufySecurityEntity):
         self, coordinator: EufySecurityDataUpdateCoordinator, metadata: Metadata
     ) -> None:
         super().__init__(coordinator, metadata)
+        if metadata.name == "pictureUrl":
+            self._attr_name = f"{self.product.name} Event Image Status"
         # Home Assistant does not permit read-only SensorEntity instances in the
         # CONFIG category. Some newly discovered Eufy properties are both
         # readable and writable, so they already have a proper control entity
@@ -232,6 +234,13 @@ class EufySecuritySensor(SensorEntity, EufySecurityEntity):
             return get_child_value(self.product.__dict__, self.metadata.name)
 
         value = get_child_value(self.product.properties, self.metadata.name)
+
+        if self.metadata.name == "pictureUrl":
+            return (
+                "Available"
+                if getattr(self.product, "picture_base64", None) is not None
+                else "Waiting for event"
+            )
 
         if self.metadata.name == PERSON_NAME:
             return PERSON_NAME_VALUE_TO_STATE.get(value, value)

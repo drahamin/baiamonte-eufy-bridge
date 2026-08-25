@@ -8,7 +8,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import COORDINATOR, DOMAIN
 from .coordinator import EufySecurityDataUpdateCoordinator
 from .entity import EufySecurityEntity
-from .eufy_security_api.const import ProductCommand
+from .eufy_security_api.const import ProductCommand, ProductType
 from .eufy_security_api.metadata import Metadata
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
@@ -62,6 +62,10 @@ class EufySecurityButtonEntity(ButtonEntity, EufySecurityEntity):
         self, coordinator: EufySecurityDataUpdateCoordinator, metadata: Metadata
     ) -> None:
         super().__init__(coordinator, metadata)
+        if self.product.product_type == ProductType.station:
+            self._attr_name = (
+                f"{self.product.name} Station {metadata.command.description}"
+            )
 
     async def async_press(self) -> None:
         """Press the button."""

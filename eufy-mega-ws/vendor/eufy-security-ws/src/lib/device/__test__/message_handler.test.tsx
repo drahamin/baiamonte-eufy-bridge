@@ -17,7 +17,6 @@ const { DeviceCommand } = await import("../command.js");
 const { DeviceEvent } = await import("../event.js");
 const {
   LivestreamAlreadyRunningError,
-  LivestreamNotRunningError,
   DownloadAlreadyRunningError,
   DownloadNotRunningError,
   DownloadOnlyOneAtATimeError,
@@ -572,23 +571,25 @@ describe("DeviceMessageHandler", () => {
       ).rejects.toThrow(UnknownCommandError);
     });
 
-    it("throws LivestreamNotRunningError when not streaming", async () => {
+    it("treats stop as idempotent when not streaming", async () => {
       mockClient = createMockClient(13);
       mockStation.isLiveStreaming.mockReturnValue(false);
 
       await expect(
         DeviceMessageHandler.handle(message, mockDriver, mockClient),
-      ).rejects.toThrow(LivestreamNotRunningError);
+      ).resolves.toEqual({ async: false });
+      expect(mockStation.stopLivestream).not.toHaveBeenCalled();
     });
 
-    it("throws LivestreamNotRunningError when client did not start stream", async () => {
+    it("treats stop as idempotent when the client did not start the stream", async () => {
       mockClient = createMockClient(13);
       mockStation.isLiveStreaming.mockReturnValue(true);
       mockClient.receiveLivestream["DEVICE001"] = false;
 
       await expect(
         DeviceMessageHandler.handle(message, mockDriver, mockClient),
-      ).rejects.toThrow(LivestreamNotRunningError);
+      ).resolves.toEqual({ async: false });
+      expect(mockStation.stopLivestream).not.toHaveBeenCalled();
     });
 
     it("stops station livestream when last client disconnects", async () => {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.3.1 — 2026-08-25
+
+- Make P2P stream stopping idempotent when the camera is already idle.
+- Disambiguate camera and station command buttons on merged device pages and label station
+  connectivity as an on-demand P2P session rather than device availability.
+- Replace the unknown raw event-image URL sensor with a privacy-safe Available/Waiting status.
+
 ## 9.3.0 — 2026-08-25
 
 - Adds a privacy-safe stable device key and property identifier to normal Eufy entities so trusted local dashboards can join related state without serial numbers or editable entity-name assumptions.

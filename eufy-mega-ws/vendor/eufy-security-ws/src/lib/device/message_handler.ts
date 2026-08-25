@@ -9,7 +9,6 @@ import {
   DownloadNotRunningError,
   DownloadOnlyOneAtATimeError,
   LivestreamAlreadyRunningError,
-  LivestreamNotRunningError,
   TalkbackAlreadyRunningError,
   TalkbackNotRunningError,
   TalkbackOnlyOneAtATimeError,
@@ -328,14 +327,15 @@ export class DeviceMessageHandler {
       case DeviceCommand.stopLivestream:
         if (client.schemaVersion >= 2) {
           if (!station.isLiveStreaming(device)) {
-            throw new LivestreamNotRunningError(
-              `Livestream for device ${serialNumber} could not be stopped, because it is not running`,
+            client.receiveLivestream[serialNumber] = false;
+            DeviceMessageHandler.removeStreamingDevice(
+              station.getSerial(),
+              client,
             );
+            return client.schemaVersion >= 13 ? { async: false } : {};
           }
           if (client.receiveLivestream[serialNumber] !== true) {
-            throw new LivestreamNotRunningError(
-              `This client has not requested the start of the live stream for the device ${serialNumber} and therefore cannot request its termination`,
-            );
+            return client.schemaVersion >= 13 ? { async: false } : {};
           }
           if (
             DeviceMessageHandler.streamingDevices[station.getSerial()] !==

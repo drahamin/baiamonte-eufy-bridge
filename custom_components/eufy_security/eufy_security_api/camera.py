@@ -182,6 +182,8 @@ class Camera(Device):
             pass
         else:
             self.p2p_streamer.retry = False
+        if self.stream_status == StreamStatus.IDLE:
+            return
         await self.api.stop_livestream(self.product_type, self.serial_no)
 
     async def start_rtsp_livestream(self) -> bool:

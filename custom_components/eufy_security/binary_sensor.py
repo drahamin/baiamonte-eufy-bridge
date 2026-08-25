@@ -21,6 +21,7 @@ from .coordinator import EufySecurityDataUpdateCoordinator
 from .entity import EufySecurityEntity
 from .eufy_security_api.metadata import Metadata
 from .eufy_security_api.product import Product
+from .eufy_security_api.const import ProductType
 from .eufy_security_api.util import get_child_value
 from .util import get_device_info, get_product_properties_by_filter
 
@@ -88,6 +89,8 @@ class EufySecurityBinarySensor(BinarySensorEntity, EufySecurityEntity):
         self, coordinator: EufySecurityDataUpdateCoordinator, metadata: Metadata
     ) -> None:
         super().__init__(coordinator, metadata)
+        if metadata.name == "connected" and self.product.product_type == ProductType.station:
+            self._attr_name = f"{self.product.name} Station P2P Session Connected"
 
     @property
     def is_on(self):
