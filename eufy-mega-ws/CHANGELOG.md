@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.12 — 2026-08-26
+
+- Correct the HomeBase Professional event path after canarying the current app flow: its
+  `event.t9000.event_data` key is an edge data-center operation handled by the station, not a
+  public Mega event REST route.
+- Send command 10066 the app-exact 999-record payload (`or_and` plus the station identifier) and
+  remove older speculative query fields that caused the Pro not to answer.
+- Keep Mega authentication and inventory native while retrieving saved thumbnails and AI records
+  from the owning Pro without starting camera livestreams.
+
 ## 1.6.11 — 2026-08-26
 
 - Reproduce the current app's Mega `security.edge.event.t9000.event_data` request as the primary

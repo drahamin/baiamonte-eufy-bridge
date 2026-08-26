@@ -86,7 +86,12 @@ const sanitizeHomeBaseProSimStatus = (value: string): Record<string, unknown> =>
   }
 };
 
-export const buildAicEventQueryPayload = (startDate: Date, endDate: Date, count = 100): Record<string, unknown> => ({
+export const buildAicEventQueryPayload = (
+  startDate: Date,
+  endDate: Date,
+  count = 100,
+  stationSerial?: string
+): Record<string, unknown> => ({
   start_date: `${Math.floor(endDate.getTime() / 1000)}`,
   end_date: `${Math.floor(startDate.getTime() / 1000)}`,
   start_id: 0,
@@ -94,11 +99,10 @@ export const buildAicEventQueryPayload = (startDate: Date, endDate: Date, count 
   query: [],
   flag: 0,
   res_unzip: 1,
-  count: Math.max(1, Math.min(200, Math.trunc(count))),
+  count: Math.max(1, Math.min(999, Math.trunc(count))),
   where: [],
-  or: [],
-  table: "history_record_info",
-  need_ai: 1,
+  or_and: [],
+  ...(stationSerial ? { station_sn: stationSerial } : {}),
 });
 import {
   encodePasscode,
@@ -15470,7 +15474,7 @@ export class Station extends TypedEmitter<StationEvents> {
     if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || startDate > endDate) {
       throw new TypeError("Invalid AIC event query date range");
     }
-    const payload = buildAicEventQueryPayload(startDate, endDate, count);
+    const payload = buildAicEventQueryPayload(startDate, endDate, count, this.getSerial());
     rootHTTPLogger.debug("Station database query AIC events - sending command", {
       stationSN: this.getSerial(),
       count: payload.count,

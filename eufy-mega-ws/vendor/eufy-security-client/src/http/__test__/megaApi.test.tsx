@@ -602,23 +602,6 @@ describe("MegaHTTPApi", () => {
       expect(requests.at(-1)!.url).toContain("/app/things/get_product_data_point");
     });
 
-    it("requests the HomeBase Pro event view with the current app envelope", async () => {
-      const response = megaEncryptBody(
-        JSON.stringify({ recordList: [], recordPictureList: [] }),
-        sharedKeyToAesKey(fakeIdentity().sharedKey)
-      );
-      const { api, requests } = await makeApi([
-        { statusCode: 200, body: JSON.stringify({ code: 0, msg: "ok", data: response }) },
-      ]);
-      const payload = { count: 999, start_date: "20", end_date: "10", query: [], where: [], or_and: [] };
-
-      await api.getT9000EventDataDecrypted("T9000-test", payload);
-
-      const sent = JSON.parse(megaDecrypt(requests.at(-1)!.body!, fakeIdentity().sharedKey));
-      expect(sent).toEqual({ station_sn: "T9000-test", payload: JSON.stringify(payload) });
-      expect(requests.at(-1)!.url).toContain("/app/event/t9000/event_data");
-    });
-
     it("uses the official Mega device-relation attribute 7 schema", async () => {
       const response = megaEncryptBody(JSON.stringify({ devices: [] }), sharedKeyToAesKey(fakeIdentity().sharedKey));
       const { api, requests } = await makeApi([

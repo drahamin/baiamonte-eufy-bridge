@@ -23,7 +23,12 @@ describe("HomeBase Professional S1 catalog", () => {
 
   it("builds the current app's descending AIC query payload", () => {
     expect(
-      buildAicEventQueryPayload(new Date("2026-08-25T00:00:00.000Z"), new Date("2026-08-26T00:00:00.000Z"), 500)
+      buildAicEventQueryPayload(
+        new Date("2026-08-25T00:00:00.000Z"),
+        new Date("2026-08-26T00:00:00.000Z"),
+        500,
+        "T9000-test"
+      )
     ).toEqual({
       start_date: "1787702400",
       end_date: "1787616000",
@@ -32,11 +37,10 @@ describe("HomeBase Professional S1 catalog", () => {
       query: [],
       flag: 0,
       res_unzip: 1,
-      count: 200,
+      count: 500,
       where: [],
-      or: [],
-      table: "history_record_info",
-      need_ai: 1,
+      or_and: [],
+      station_sn: "T9000-test",
     });
   });
 });

@@ -234,17 +234,11 @@ export class StationMessageHandler {
           const aicMessage = message as IncomingCommandDatabaseQueryAicEvents;
           const startDate = new Date(aicMessage.startDate);
           const endDate = new Date(aicMessage.endDate);
-          const megaData = await driver.queryMegaT9000EventData(
-            station.getSerial(),
-            startDate,
-            endDate,
-            aicMessage.count,
-          );
-          if (megaData !== undefined) {
-            station.publishDatabaseQueryAicEvents(0, megaData);
-          } else {
-            station.databaseQueryAicEvents(startDate, endDate, aicMessage.count);
-          }
+          // The current app labels this `event.t9000.event_data`, but its `edgeDataCenter`
+          // implementation dispatches the query to the HomeBase database. It is not an
+          // `/app/event/...` Mega REST endpoint. Use the native station command directly with the
+          // app-exact payload; cloud identity and inventory remain on Mega.
+          station.databaseQueryAicEvents(startDate, endDate, aicMessage.count);
           return { async: true };
         } else {
           throw new UnknownCommandError(command);
