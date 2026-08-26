@@ -93,6 +93,13 @@ export interface IncomingCommandDatabaseQueryLatest extends IncomingCommandStati
   command: StationCommand.databaseQueryLatestInfo;
 }
 
+export interface IncomingCommandDatabaseQueryAicEvents extends IncomingCommandStationBase {
+  command: StationCommand.databaseQueryAicEvents;
+  startDate: string;
+  endDate: string;
+  count?: number;
+}
+
 export interface IncomingCommandDatabaseQueryLocal extends IncomingCommandStationBase {
   command: StationCommand.databaseQueryLocal;
   serialNumbers: Array<string>;
@@ -143,6 +150,7 @@ export type IncomingMessageStation =
   | IncomingCommandChime
   | IncomingCommandDownloadImage
   | IncomingCommandDatabaseQueryLatest
+  | IncomingCommandDatabaseQueryAicEvents
   | IncomingCommandDatabaseQueryLocal
   | IncomingCommandDatabaseQueryByDate
   | IncomingCommandDatabaseCountByDate

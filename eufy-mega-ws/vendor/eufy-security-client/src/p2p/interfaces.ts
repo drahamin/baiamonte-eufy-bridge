@@ -64,6 +64,7 @@ export interface P2PClientProtocolEvents {
   "database query latest": (returnCode: DatabaseReturnCode, data: Array<DatabaseQueryLatestInfo>) => void;
   "database query local": (returnCode: DatabaseReturnCode, data: Array<DatabaseQueryLocal>) => void;
   "database query by date": (returnCode: DatabaseReturnCode, data: Array<DatabaseQueryByDate>) => void;
+  "database query aic events": (returnCode: DatabaseReturnCode, data: AicEventData) => void;
   "database count by date": (returnCode: DatabaseReturnCode, data: Array<DatabaseCountByDate>) => void;
   "database delete": (returnCode: DatabaseReturnCode, failedIds: Array<unknown>) => void;
   "sensor status": (channel: number, status: number) => void;
@@ -337,6 +338,26 @@ export interface P2PDatabaseResponse {
   mIntRet: DatabaseReturnCode;
   version: string; //1.1.0.1
   msg: string;
+}
+
+/**
+ * Bounded, read-only projection of the HomeBase Pro AICEventData response.
+ *
+ * Paths remain available only on the authenticated bridge event so Security can
+ * retrieve protected media; they are never copied to ordinary HA state.
+ */
+export interface AicLatestUpdate {
+  device_sn: string;
+  event_count: number;
+  event?: Record<string, unknown>;
+}
+
+export interface AicEventData {
+  record_list: Array<Record<string, unknown>>;
+  eventRecordList: Array<Record<string, unknown>>;
+  recordPictureList: Array<Record<string, unknown>>;
+  evidenceRecordList: Array<Record<string, unknown>>;
+  latest_updates: Array<AicLatestUpdate>;
 }
 
 export interface DatabaseQueryLatestInfoBase {

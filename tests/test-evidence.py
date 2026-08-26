@@ -60,7 +60,55 @@ def test_local_ai_details() -> None:
     assert "crop_path" not in result["crops"][0]
 
 
+def test_homebase_pro_aic_join_and_privacy() -> None:
+    """AIC tables join by record/evidence id and keep paths behind protected routes."""
+    rows = evidence.join_aic_event_data(
+        {
+            "record_list": [
+                {
+                    "record_id": 7,
+                    "evidence_id": "ev-7",
+                    "device_sn": "camera-private",
+                    "station_sn": "station-private",
+                    "device_name": "Dock Camera",
+                    "start_timestamp": 1_700_000_000,
+                    "thumb_path": "/private/thumb.jpg",
+                    "snapshot_cloud": "https://example.invalid/private.jpg",
+                }
+            ],
+            "eventRecordList": [{"record_id": 7, "event_name": "person"}],
+            "recordPictureList": [
+                {"record_id": 7, "detection_type": 2, "crop_path": "/private/crop.jpg"}
+            ],
+            "evidenceRecordList": [
+                {"evidence_id": "ev-7", "evidenceSummarize": "Person at dock"}
+            ],
+            "latest_updates": [
+                {"device_sn": "camera-private", "event_count": 4}
+            ],
+        }
+    )
+    assert len(rows) == 1
+    assert len(rows[0]["events"]) == 1
+    assert len(rows[0]["picture"]) == 1
+    assert len(rows[0]["evidence"]) == 1
+
+    normalized = evidence.normalize_aic_event(rows[0])
+    ai = evidence.aic_ai_details(rows[0])
+    assert normalized["source"] == "homebase_pro_aic"
+    assert normalized["has_thumbnail"] is True
+    assert normalized["ai_categories"] == ["person"]
+    assert normalized["latest_event_count"] == 4
+    assert ai["latest_event_count"] == 4
+    assert ai["crops"][0]["has_image"] is True
+    serialized = repr(ai)
+    assert "/private/" not in serialized
+    assert "camera-private" not in serialized
+    assert "station-private" not in serialized
+
+
 if __name__ == "__main__":
     test_cloud_ai_details()
     test_local_ai_details()
+    test_homebase_pro_aic_join_and_privacy()
     print("Evidence privacy and AI detail tests passed")

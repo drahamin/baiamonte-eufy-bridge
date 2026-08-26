@@ -30,6 +30,7 @@ export interface StationResultTypes {
   [StationCommand.chime]: { async?: boolean };
   [StationCommand.downloadImage]: { async?: boolean };
   [StationCommand.databaseQueryLatestInfo]: { async?: boolean };
+  [StationCommand.databaseQueryAicEvents]: { async?: boolean };
   [StationCommand.databaseQueryLocal]: { async?: boolean };
   [StationCommand.databaseQueryByDate]: { async?: boolean };
   [StationCommand.databaseCountByDate]: { async?: boolean };

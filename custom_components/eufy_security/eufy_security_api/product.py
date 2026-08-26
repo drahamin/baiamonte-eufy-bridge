@@ -192,6 +192,7 @@ class Station(Product):
             api, ProductType.station, serial_no, properties, metadata, commands
         )
         self._database_query_local_future = None
+        self._database_query_aic_events_future = None
         self._database_query_by_date_future = None
         self._image_download_future = None
         self._image_download_file = None
@@ -233,6 +234,30 @@ class Station(Product):
         finally:
             self._database_query_local_future = None
 
+    async def database_query_aic_events(
+        self, start_date: str, end_date: str, count: int = 100
+    ) -> dict:
+        """Return the HomeBase Pro AICEventData view used by the mobile app."""
+        if not (
+            {"database_query_aic_events", "stationDatabaseQueryAicEvents"}
+            & set(self.commands)
+        ):
+            raise ValueError("This HomeBase does not advertise AIC evidence queries")
+        if self._database_query_aic_events_future is not None:
+            raise RuntimeError("A HomeBase AIC evidence query is already running")
+        self._database_query_aic_events_future = (
+            asyncio.get_running_loop().create_future()
+        )
+        try:
+            await self.api.database_query_aic_events(
+                self.serial_no, start_date, end_date, count
+            )
+            return await asyncio.wait_for(
+                self._database_query_aic_events_future, timeout=45
+            )
+        finally:
+            self._database_query_aic_events_future = None
+
     async def database_query_by_date(
         self,
         serial_numbers: list[str],
@@ -268,6 +293,15 @@ class Station(Product):
             and not self._database_query_local_future.done()
         ):
             self._database_query_local_future.set_result(event.data.get("data", []))
+
+    async def _handle_database_query_aic_events(self, event: Event):
+        if (
+            self._database_query_aic_events_future is not None
+            and not self._database_query_aic_events_future.done()
+        ):
+            self._database_query_aic_events_future.set_result(
+                event.data.get("data", {})
+            )
 
     async def _handle_database_query_by_date(self, event: Event):
         if (

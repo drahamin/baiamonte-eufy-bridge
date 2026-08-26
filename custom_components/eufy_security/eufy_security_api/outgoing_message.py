@@ -32,6 +32,7 @@ class OutgoingMessageToParameter(Enum):
     endTimestampMs = "end_timestamp_ms"
     filter = "event_filter"
     maxResults = "max_results"
+    count = "count"
     serialNumbers = "serial_numbers"
     startDate = "start_date"
     endDate = "end_date"
@@ -234,6 +235,13 @@ class OutgoingMessageType(Enum):
         MessageField.EVENT_TYPE: None,
         MessageField.DETECTION_TYPE: None,
         MessageField.STORAGE_TYPE: None,
+    }
+    database_query_aic_events = {
+        MessageField.DUMMY: auto(),
+        MessageField.DOMAIN: EventSourceType.station,
+        MessageField.START_DATE: None,
+        MessageField.END_DATE: None,
+        MessageField.COUNT: None,
     }
     database_query_by_date = {
         MessageField.DUMMY: auto(),

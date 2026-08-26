@@ -1,4 +1,5 @@
 import {
+  AicEventData,
   AudioCodec,
   CommandResult,
   CommandType,
@@ -1086,6 +1087,26 @@ export class EventForwarder {
             data: data,
           },
           18,
+        );
+      },
+    );
+
+    station.on(
+      "database query aic events",
+      (
+        station: Station,
+        returnCode: DatabaseReturnCode,
+        data: AicEventData,
+      ) => {
+        this.forwardEvent(
+          {
+            source: "station",
+            event: StationEvent.databaseQueryAicEvents,
+            serialNumber: station.getSerial(),
+            returnCode,
+            data,
+          },
+          21,
         );
       },
     );

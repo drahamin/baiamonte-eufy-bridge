@@ -10234,6 +10234,7 @@ export enum CommandName {
   StationChime = "stationChime",
   StationDownloadImage = "stationDownloadImage",
   StationDatabaseQueryLatestInfo = "stationDatabaseQueryLatestInfo",
+  StationDatabaseQueryAicEvents = "stationDatabaseQueryAicEvents",
   StationDatabaseQueryLocal = "stationDatabaseQueryLocal",
   StationDatabaseQueryByDate = "stationDatabaseQueryByDate",
   StationDatabaseDelete = "stationDatabaseDelete",
@@ -11032,6 +11033,7 @@ export const StationCommands: Commands = {
   [DeviceType.HOMEBASE_PRO]: [
     CommandName.StationDownloadImage,
     CommandName.StationDatabaseQueryLatestInfo,
+    CommandName.StationDatabaseQueryAicEvents,
   ],
   [DeviceType.HOMEBASE_MINI]: [
     CommandName.StationReboot,

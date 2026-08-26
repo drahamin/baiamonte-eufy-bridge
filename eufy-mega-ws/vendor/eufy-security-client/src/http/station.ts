@@ -74,7 +74,8 @@ const sanitizeHomeBaseProSimStatus = (value: string): Record<string, unknown> =>
     const decoded = JSON.parse(Buffer.from(value, "base64").toString("utf8")) as unknown;
     if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) return {};
     const safe: Record<string, unknown> = {};
-    const allowed = /^(slot|status|state|active|enabled|inserted|present|registered|registration|carrier|operator|network|roaming|signal|band)$/i;
+    const allowed =
+      /^(slot|status|state|active|enabled|inserted|present|registered|registration|carrier|operator|network|roaming|signal|band)$/i;
     for (const [key, item] of Object.entries(decoded as Record<string, unknown>).slice(0, 64)) {
       if (!allowed.test(key)) continue;
       if (["string", "number", "boolean"].includes(typeof item)) safe[key] = item;
@@ -84,6 +85,21 @@ const sanitizeHomeBaseProSimStatus = (value: string): Record<string, unknown> =>
     return {};
   }
 };
+
+export const buildAicEventQueryPayload = (startDate: Date, endDate: Date, count = 100): Record<string, unknown> => ({
+  start_date: `${Math.floor(endDate.getTime() / 1000)}`,
+  end_date: `${Math.floor(startDate.getTime() / 1000)}`,
+  start_id: 0,
+  end_id: 1,
+  query: [],
+  flag: 0,
+  res_unzip: 1,
+  count: Math.max(1, Math.min(200, Math.trunc(count))),
+  where: [],
+  or: [],
+  table: "history_record_info",
+  need_ai: 1,
+});
 import {
   encodePasscode,
   getAdvancedLockTimezone,
@@ -104,6 +120,7 @@ import {
   switchSmartLockNotification,
 } from "./utils";
 import {
+  AicEventData,
   CrossTrackingGroupEntry,
   DatabaseCountByDate,
   DatabaseQueryByDate,
@@ -297,6 +314,9 @@ export class Station extends TypedEmitter<StationEvents> {
     this.p2pSession.on("image download", (file, image) => this.onImageDownload(file, image));
     this.p2pSession.on("tfcard status", (channel, status) => this.onTFCardStatus(channel, status));
     this.p2pSession.on("database query latest", (returnCode, data) => this.onDatabaseQueryLatest(returnCode, data));
+    this.p2pSession.on("database query aic events", (returnCode, data) =>
+      this.onDatabaseQueryAicEvents(returnCode, data)
+    );
     this.p2pSession.on("database query local", (returnCode, data) => this.onDatabaseQueryLocal(returnCode, data));
     this.p2pSession.on("database query by date", (returnCode, data) => this.onDatabaseQueryByDate(returnCode, data));
     this.p2pSession.on("database count by date", (returnCode, data) => this.onDatabaseCountByDate(returnCode, data));
@@ -15439,6 +15459,43 @@ export class Station extends TypedEmitter<StationEvents> {
     );
   }
 
+  /** Query the HomeBase Pro AIC evidence view used by the current mobile app. */
+  public databaseQueryAicEvents(startDate: Date, endDate: Date, count = 100, failureCallback?: () => void): void {
+    const commandData: CommandData = { name: CommandName.StationDatabaseQueryAicEvents };
+    if (!this.hasCommand(commandData.name)) {
+      throw new NotSupportedError("This functionality is not implemented or supported", {
+        context: { commandName: commandData.name, station: this.getSerial() },
+      });
+    }
+    if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || startDate > endDate) {
+      throw new TypeError("Invalid AIC event query date range");
+    }
+    const payload = buildAicEventQueryPayload(startDate, endDate, count);
+    rootHTTPLogger.debug("Station database query AIC events - sending command", {
+      stationSN: this.getSerial(),
+      count: payload.count,
+    });
+    this.p2pSession.sendCommandWithStringPayload(
+      {
+        commandType: CommandType.CMD_SET_PAYLOAD,
+        value: JSON.stringify({
+          account_id: this.rawStation.member.admin_user_id,
+          cmd: CommandType.CMD_DATABASE,
+          mChannel: 0,
+          mValue3: 0,
+          payload: {
+            cmd: CommandType.CMD_DATABASE_QUERY_AIC_EVENTS,
+            payload,
+            table: "history_record_info",
+            transaction: `${Date.now()}`,
+          },
+        }),
+        channel: 0,
+      },
+      { command: commandData, onFailure: failureCallback }
+    );
+  }
+
   public databaseQueryLocal(
     serialNumbers: Array<string>,
     startDate: Date,
@@ -15676,6 +15733,10 @@ export class Station extends TypedEmitter<StationEvents> {
 
   private onDatabaseQueryLatest(returnCode: DatabaseReturnCode, data: Array<DatabaseQueryLatestInfo>): void {
     this.emit("database query latest", this, returnCode, data);
+  }
+
+  private onDatabaseQueryAicEvents(returnCode: DatabaseReturnCode, data: AicEventData): void {
+    this.emit("database query aic events", this, returnCode, data);
   }
 
   private onDatabaseQueryLocal(returnCode: DatabaseReturnCode, data: Array<DatabaseQueryLocal>): void {

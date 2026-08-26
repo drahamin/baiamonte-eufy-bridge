@@ -4,7 +4,7 @@ import { join } from "path";
 
 import { EufySecurity } from "../eufysecurity";
 import { PropertyName } from "../http/types";
-import { normalizeDatabaseLatestInfo } from "../p2p/session";
+import { normalizeAicEventData, normalizeDatabaseLatestInfo } from "../p2p/session";
 
 jest.mock("../logging", () => ({
   rootHTTPLogger: { error: jest.fn(), debug: jest.fn(), info: jest.fn(), warn: jest.fn(), trace: jest.fn() },
@@ -161,5 +161,23 @@ describe("EufySecurity snapshot cache", () => {
         { device_sn: "camera-video", payload: { storage_path: "/mnt/data/video.zxvideo" } },
       ])
     ).toEqual([]);
+  });
+
+  it("normalizes the HomeBase Pro AIC collections and derives latest updates", () => {
+    const result = normalizeAicEventData({
+      record_list: JSON.stringify([
+        { record_id: 1, device_sn: "camera-a", start_timestamp: 100, thumb_path: "/a.jpg" },
+        { record_id: 2, device_sn: "camera-a", start_timestamp: 200, snapshot_cloud: "https://example.invalid/b.jpg" },
+      ]),
+      eventRecordList: JSON.stringify([{ record_id: 2, event_name: "person" }]),
+      recordPictureList: [{ record_id: 2, detection_type: 2, crop_path: "/crop.jpg" }],
+      evidenceRecordList: [{ record_id: 2, evidenceSummarize: "person seen" }],
+    });
+
+    expect(result.record_list).toHaveLength(2);
+    expect(result.eventRecordList).toHaveLength(1);
+    expect(result.recordPictureList).toHaveLength(1);
+    expect(result.evidenceRecordList).toHaveLength(1);
+    expect(result.latest_updates).toEqual([{ device_sn: "camera-a", event_count: 2, event: result.record_list[1] }]);
   });
 });

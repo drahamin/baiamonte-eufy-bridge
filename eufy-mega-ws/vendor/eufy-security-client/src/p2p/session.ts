@@ -119,6 +119,8 @@ import {
   P2PDatabaseQueryLocalHistoryRecordInfo,
   P2PDatabaseQueryLocalRecordCropPictureInfo,
   CustomDataType,
+  AicEventData,
+  AicLatestUpdate,
 } from "./interfaces";
 
 const DATABASE_LATEST_LOCAL_IMAGE_KEYS = [
@@ -160,11 +162,7 @@ const databaseLatestRecords = (value: unknown): Array<Record<string, unknown>> =
   return [];
 };
 
-const findDatabaseLatestString = (
-  value: unknown,
-  keys: readonly string[],
-  depth = 0
-): string | undefined => {
+const findDatabaseLatestString = (value: unknown, keys: readonly string[], depth = 0): string | undefined => {
   const parsed = parseDatabaseValue(value);
   if (parsed === null || typeof parsed !== "object" || depth > 3) return undefined;
   const record = parsed as Record<string, unknown>;
@@ -207,6 +205,128 @@ export const normalizeDatabaseLatestInfo = (value: unknown): Array<DatabaseQuery
       result.push({ device_sn: deviceSN, event_count: eventCount, crop_cloud_path: cloudPath });
     }
   }
+  return result;
+};
+
+const AIC_MAX_RECORDS_PER_COLLECTION = 200;
+const AIC_MAX_PARSE_DEPTH = 6;
+
+const aicObject = (value: unknown): Record<string, unknown> | undefined => {
+  const parsed = parseDatabaseValue(value);
+  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : undefined;
+};
+
+const aicObjects = (value: unknown): Array<Record<string, unknown>> => {
+  const parsed = parseDatabaseValue(value);
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter(
+      (item): item is Record<string, unknown> => item !== null && typeof item === "object" && !Array.isArray(item)
+    )
+    .slice(0, AIC_MAX_RECORDS_PER_COLLECTION);
+};
+
+const aicString = (record: Record<string, unknown>, keys: readonly string[]): string | undefined => {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.length > 0 && value.length <= 4096) return value;
+  }
+  return undefined;
+};
+
+const aicEventTime = (record: Record<string, unknown>): number => {
+  for (const key of ["start_time_millis", "start_timestamp", "start_time", "start_utc", "update_time"]) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) return numeric;
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return 0;
+};
+
+/** Normalize the current iOS AICEventData/queryTables10066 response. */
+export const normalizeAicEventData = (value: unknown): AicEventData => {
+  const result: AicEventData = {
+    record_list: [],
+    eventRecordList: [],
+    recordPictureList: [],
+    evidenceRecordList: [],
+    latest_updates: [],
+  };
+
+  const append = (target: Array<Record<string, unknown>>, records: Array<Record<string, unknown>>): void => {
+    const remaining = AIC_MAX_RECORDS_PER_COLLECTION - target.length;
+    if (remaining > 0) target.push(...records.slice(0, remaining));
+  };
+
+  const visit = (entry: unknown, depth = 0): void => {
+    if (depth > AIC_MAX_PARSE_DEPTH) return;
+    const parsed = parseDatabaseValue(entry);
+    if (Array.isArray(parsed)) {
+      for (const child of parsed.slice(0, AIC_MAX_RECORDS_PER_COLLECTION)) visit(child, depth + 1);
+      return;
+    }
+    const record = aicObject(parsed);
+    if (record === undefined) return;
+
+    const handled = new Set<string>();
+    if (record.record_list !== undefined) {
+      append(result.record_list, aicObjects(record.record_list));
+      handled.add("record_list");
+    }
+    if (record.eventRecordList !== undefined) {
+      append(result.eventRecordList, aicObjects(record.eventRecordList));
+      handled.add("eventRecordList");
+    }
+    if (record.recordPictureList !== undefined) {
+      append(result.recordPictureList, aicObjects(record.recordPictureList));
+      handled.add("recordPictureList");
+    }
+    if (record.evidenceRecordList !== undefined || record.evidence_list !== undefined) {
+      append(result.evidenceRecordList, aicObjects(record.evidenceRecordList ?? record.evidence_list));
+      handled.add("evidenceRecordList");
+      handled.add("evidence_list");
+    }
+
+    const table = aicString(record, ["table_name", "table"]);
+    const payload = aicObjects(record.payload ?? record.data ?? record.records);
+    if (table === "history_record_info") append(result.record_list, payload);
+    else if (table === "event_record_info") append(result.eventRecordList, payload);
+    else if (table === "record_crop_picture_info") append(result.recordPictureList, payload);
+    else if (table === "evidence_record_info") append(result.evidenceRecordList, payload);
+    if (table !== undefined && payload.length > 0) {
+      handled.add("payload");
+      handled.add("data");
+      handled.add("records");
+    }
+
+    for (const key of ["data", "result", "payload", "records", "list"]) {
+      const child = record[key];
+      if (child !== undefined && !handled.has(key)) visit(child, depth + 1);
+    }
+  };
+  visit(value);
+
+  const latestByDevice = new Map<string, { event: Record<string, unknown>; count: number }>();
+  for (const record of result.record_list) {
+    const deviceSN = aicString(record, ["device_sn", "deviceSn", "device_serial"]);
+    if (deviceSN === undefined) continue;
+    const current = latestByDevice.get(deviceSN);
+    if (current === undefined) latestByDevice.set(deviceSN, { event: record, count: 1 });
+    else {
+      current.count++;
+      if (aicEventTime(record) > aicEventTime(current.event)) current.event = record;
+    }
+  }
+  result.latest_updates = Array.from(latestByDevice.entries()).map(
+    ([device_sn, update]): AicLatestUpdate => ({ device_sn, event_count: update.count, event: update.event })
+  );
   return result;
 };
 import { DskKeyResponse, ResultResponse, StationListResponse } from "../http/models";
@@ -3945,7 +4065,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             const str = getNullTerminatedString(data, "utf8");
             rootP2PLogger.debug(`Handle DATA ${P2PDataType[message.dataType]} - CMD_DATABASE :`, {
               stationSN: this.rawStation.station_sn,
-              payload: str,
+              bytes: Buffer.byteLength(str, "utf8"),
             });
             const databaseResponse = parseJSON(str, rootP2PLogger) as P2PDatabaseResponse;
             switch (databaseResponse.cmd) {
@@ -3958,6 +4078,19 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
                   cloudCovers: result.filter((record) => "crop_cloud_path" in record).length,
                 });
                 this.emit("database query latest", databaseResponse.mIntRet, result);
+                break;
+              }
+              case CommandType.CMD_DATABASE_QUERY_AIC_EVENTS: {
+                const result = normalizeAicEventData(databaseResponse.data);
+                rootP2PLogger.debug("Normalized HomeBase Pro AIC evidence", {
+                  stationSN: this.rawStation.station_sn,
+                  records: result.record_list.length,
+                  events: result.eventRecordList.length,
+                  pictures: result.recordPictureList.length,
+                  evidence: result.evidenceRecordList.length,
+                  latestUpdates: result.latest_updates.length,
+                });
+                this.emit("database query aic events", databaseResponse.mIntRet, result);
                 break;
               }
               case CommandType.CMD_DATABASE_COUNT_BY_DATE: {

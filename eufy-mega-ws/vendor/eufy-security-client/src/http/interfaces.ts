@@ -7,6 +7,7 @@ import type { ImageFileExtension } from "image-type" with {
 };
 
 import {
+  AicEventData,
   DatabaseCountByDate,
   DatabaseQueryByDate,
   DatabaseQueryLatestInfo,
@@ -259,6 +260,7 @@ export interface StationEvents {
     returnCode: DatabaseReturnCode,
     data: Array<DatabaseQueryLatestInfo>
   ) => void;
+  "database query aic events": (station: Station, returnCode: DatabaseReturnCode, data: AicEventData) => void;
   "database query local": (station: Station, returnCode: DatabaseReturnCode, data: Array<DatabaseQueryLocal>) => void;
   "database query by date": (
     station: Station,

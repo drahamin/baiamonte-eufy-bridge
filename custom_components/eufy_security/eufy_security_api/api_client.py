@@ -571,6 +571,20 @@ class ApiClient:
             )
         )
 
+    async def database_query_aic_events(
+        self, serial_no: str, start_date: str, end_date: str, count: int = 100
+    ) -> None:
+        """Ask a HomeBase Pro for the current app's AIC evidence collections."""
+        await self._send_message_get_response(
+            OutgoingMessage(
+                OutgoingMessageType.database_query_aic_events,
+                serial_no=serial_no,
+                start_date=start_date,
+                end_date=end_date,
+                count=count,
+            )
+        )
+
     async def database_query_by_date(
         self,
         serial_no: str,

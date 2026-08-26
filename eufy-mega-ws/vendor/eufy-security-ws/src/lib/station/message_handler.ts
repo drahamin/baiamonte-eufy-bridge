@@ -17,6 +17,7 @@ import {
   IncomingCommandDatabaseQueryByDate,
   IncomingCommandDatabaseCountByDate,
   IncomingCommandDatabaseDelete,
+  IncomingCommandDatabaseQueryAicEvents,
 } from "./incoming_message.js";
 import { StationResultTypes } from "./outgoing_message.js";
 import {
@@ -224,6 +225,18 @@ export class StationMessageHandler {
       case StationCommand.databaseQueryLatestInfo:
         if (client.schemaVersion >= 18) {
           station.databaseQueryLatestInfo();
+          return { async: true };
+        } else {
+          throw new UnknownCommandError(command);
+        }
+      case StationCommand.databaseQueryAicEvents:
+        if (client.schemaVersion >= 21) {
+          const aicMessage = message as IncomingCommandDatabaseQueryAicEvents;
+          station.databaseQueryAicEvents(
+            new Date(aicMessage.startDate),
+            new Date(aicMessage.endDate),
+            aicMessage.count,
+          );
           return { async: true };
         } else {
           throw new UnknownCommandError(command);

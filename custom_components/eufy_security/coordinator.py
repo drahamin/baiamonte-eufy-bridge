@@ -32,9 +32,12 @@ from .eufy_security_api.exceptions import (
 )
 from .model import Config
 from .evidence import (
+    aic_ai_details,
     cloud_ai_details,
     event_merge_key,
+    join_aic_event_data,
     local_ai_details,
+    normalize_aic_event,
     normalize_cloud_event,
     normalize_local_event,
 )
@@ -158,7 +161,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         warnings: list[str] = []
         local_stations = []
 
-        if source in {"hybrid", "cloud"}:
+        if source in {"hybrid", "cloud", "latest"}:
             try:
                 raw = await self._api.get_history_events(
                     int(start.timestamp() * 1000),
@@ -182,11 +185,50 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 )
                 warnings.append(f"account_index: {type(exc).__name__}")
 
-        if source in {"hybrid", "local"}:
+        if source in {"hybrid", "local", "latest"}:
             semaphore = asyncio.Semaphore(1)
 
             async def query_station(station):
                 if station_serial and station.serial_no != station_serial:
+                    return [], None, None
+                commands = set(station.commands or [])
+                if {"database_query_aic_events", "stationDatabaseQueryAicEvents"} & commands:
+                    try:
+                        async with semaphore, asyncio.timeout(45):
+                            raw_aic = await station.database_query_aic_events(
+                                start.isoformat(), end.isoformat(), min(max_results, 200)
+                            )
+                        station_events = []
+                        for record in join_aic_event_data(raw_aic):
+                            record["station_sn"] = station.serial_no
+                            raw_device_serial = record.get("device_sn")
+                            if device_serial and raw_device_serial != device_serial:
+                                continue
+                            event = normalize_aic_event(record)
+                            device = self.devices.get(raw_device_serial)
+                            if device is not None:
+                                event["device_name"] = device.name
+                            event["station_name"] = station.name
+                            event["ai"] = aic_ai_details(record)
+                            self._add_ai_image_urls(event)
+                            self._remember_evidence(event["event_id"], "aic", record)
+                            station_events.append(event)
+                        return station_events, station.model, None
+                    except (
+                        RuntimeError,
+                        ValueError,
+                        WebSocketConnectionException,
+                        asyncio.TimeoutError,
+                    ) as exc:
+                        return [], station.model, f"{station.model}: {type(exc).__name__}"
+                    except Exception as exc:
+                        _LOGGER.warning(
+                            "HomeBase %s AIC evidence index unavailable: %s",
+                            station.model,
+                            type(exc).__name__,
+                        )
+                        return [], station.model, f"{station.model}: {type(exc).__name__}"
+                if source == "latest":
                     return [], None, None
                 if "database_query_local" not in (station.commands or []):
                     # Station command capabilities are legacy CommandName values; unlike device
@@ -262,6 +304,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             key = event_merge_key(event)
             if key in merged:
                 current = merged[key]
+                priority = {"account_index": 0, "homebase_local": 1, "homebase_pro_aic": 2}
+                if priority.get(event.get("source"), 0) > priority.get(current.get("source"), 0):
+                    current, event = event, current
+                    merged[key] = current
                 current["source"] = "hybrid"
                 current["ai_categories"] = sorted(
                     set(current.get("ai_categories", []))
@@ -275,7 +321,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                     set(current_ai.get("categories", []))
                     | set(incoming_ai.get("categories", []))
                 )
-                if incoming_ai.get("crops"):
+                if isinstance(incoming_ai.get("crops"), list) and incoming_ai["crops"]:
                     current_ai["crops"] = incoming_ai["crops"]
                 if incoming_ai.get("faces"):
                     current_ai["faces"] = incoming_ai["faces"]
@@ -342,7 +388,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         # The account index includes event metadata for HomeBase-backed cameras
         # without opening dozens of local station database sessions in the
         # background. Full local history remains an explicit panel action.
-        result = await self.search_evidence(source="cloud", days=1, max_results=200)
+        result = await self.search_evidence(source="latest", days=1, max_results=200)
         latest: dict[str, dict] = {}
         for event in result.get("events", []):
             name = self._snapshot_name(event.get("device_name"))
@@ -584,10 +630,26 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 return inline, "image/png"
             station_serial = record.get("station_sn")
             file = record.get("thumb_path")
+        elif source == "aic":
+            history = record.get("history") if isinstance(record.get("history"), dict) else record
+            pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
+            station_serial = record.get("station_sn") or history.get("station_sn") or history.get("aic_sn")
+            file = history.get("thumb_path") or history.get("snapshot_cloud")
+            if not file:
+                file = next(
+                    (
+                        item.get("crop_path") or item.get("thumb_path")
+                        for item in pictures
+                        if isinstance(item, dict) and (item.get("crop_path") or item.get("thumb_path"))
+                    ),
+                    None,
+                )
         else:
             history = record.get("history") if isinstance(record.get("history"), dict) else record
             station_serial = record.get("station_sn") or history.get("station_sn")
             file = history.get("thumb_path")
+        if isinstance(file, str) and file.startswith("https://"):
+            return await self._download_trusted_eufy_image(file)
         station = self.stations.get(station_serial)
         if station is None or not file:
             raise ValueError("This event has no retrievable HomeBase thumbnail")
@@ -598,15 +660,50 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         image_type = picture.get("type") if isinstance(picture.get("type"), dict) else {}
         return data, image_type.get("mime") or "application/octet-stream"
 
+    async def _download_trusted_eufy_image(self, source_url: str) -> tuple[bytes, str]:
+        """Fetch one bounded signed Eufy image without revealing its URL."""
+        parsed = urlparse(source_url)
+        hostname = (parsed.hostname or "").lower()
+        trusted_suffixes = (
+            ".eufylife.com",
+            ".eufy.com",
+            ".anker.com",
+            ".ankercs.com",
+            ".amazonaws.com",
+            ".cloudfront.net",
+        )
+        if parsed.scheme != "https" or not any(
+            hostname == suffix[1:] or hostname.endswith(suffix)
+            for suffix in trusted_suffixes
+        ):
+            raise ValueError("Eufy did not provide a trusted image host")
+        async with self._session.get(
+            source_url,
+            allow_redirects=False,
+            timeout=aiohttp.ClientTimeout(total=20),
+        ) as response:
+            response.raise_for_status()
+            if not response.content_type.startswith("image/"):
+                raise ValueError("Eufy image endpoint did not return an image")
+            if response.content_length and response.content_length > 10 * 1024 * 1024:
+                raise ValueError("Eufy image exceeds 10 MB limit")
+            data = await response.read()
+            if not self._valid_snapshot(data):
+                raise ValueError("Eufy image payload is invalid")
+            return data, response.content_type or "application/octet-stream"
+
     async def evidence_ai_image(self, event_id: str, index: int) -> tuple[bytes, str]:
         """Retrieve a face/crop image without disclosing its cloud or disk location."""
         source, record = self._evidence(event_id)
-        if source == "local":
+        if source in {"local", "aic"}:
             pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
             if index < 0 or index >= len(pictures):
                 raise ValueError("AI crop does not exist")
-            station_serial = record.get("station_sn")
-            file = pictures[index].get("crop_path")
+            history = record.get("history") if isinstance(record.get("history"), dict) else record
+            station_serial = record.get("station_sn") or history.get("station_sn") or history.get("aic_sn")
+            file = pictures[index].get("crop_path") or pictures[index].get("thumb_path")
+            if isinstance(file, str) and file.startswith("https://"):
+                return await self._download_trusted_eufy_image(file)
             station = self.stations.get(station_serial)
             if station is None or not file:
                 raise ValueError("AI crop is not retrievable from this HomeBase")
@@ -649,7 +746,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         if event_id in self._evidence_video_cache:
             return self._evidence_video_cache[event_id]
         source, record = self._evidence(event_id)
-        if source == "local":
+        if source in {"local", "aic"}:
             wrapper = record
             history = record.get("history") if isinstance(record.get("history"), dict) else record
             device_serial = wrapper.get("device_sn") or history.get("device_sn")

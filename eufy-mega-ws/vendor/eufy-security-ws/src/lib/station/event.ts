@@ -1,4 +1,5 @@
 import {
+  AicEventData,
   AlarmEvent,
   CustomData,
   DatabaseCountByDate,
@@ -27,6 +28,7 @@ export enum StationEvent {
   alarmArmDelayEvent = "alarm arm delay event",
   imageDownloaded = "image downloaded",
   databaseQueryLatest = "database query latest",
+  databaseQueryAicEvents = "database query aic events",
   databaseQueryLocal = "database query local",
   databaseQueryByDate = "database query by date",
   databaseCountByDate = "database count by date",
@@ -147,6 +149,14 @@ export interface OutgoingEventStationDatabaseQueryLatest extends OutgoingEventSt
   data: Array<DatabaseQueryLatestInfo>;
 }
 
+export interface OutgoingEventStationDatabaseQueryAicEvents extends OutgoingEventStationBase {
+  source: "station";
+  event: StationEvent.databaseQueryAicEvents;
+  serialNumber: string;
+  returnCode: DatabaseReturnCode;
+  data: AicEventData;
+}
+
 export interface OutgoingEventStationDatabaseQueryLocal extends OutgoingEventStationBase {
   source: "station";
   event: StationEvent.databaseQueryLocal;
@@ -195,6 +205,7 @@ export type OutgoingEventStation =
   | OutgoingEventStationConnectionError
   | OutgoingEventStationImageDownloaded
   | OutgoingEventStationDatabaseQueryLatest
+  | OutgoingEventStationDatabaseQueryAicEvents
   | OutgoingEventStationDatabaseQueryLocal
   | OutgoingEventStationDatabaseQueryByDate
   | OutgoingEventStationDatabaseCountByDate

@@ -182,6 +182,126 @@ def local_ai_details(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Join the Pro's four bounded AIC collections without exposing them."""
+    histories = data.get("record_list") if isinstance(data.get("record_list"), list) else []
+    events = data.get("eventRecordList") if isinstance(data.get("eventRecordList"), list) else []
+    pictures = data.get("recordPictureList") if isinstance(data.get("recordPictureList"), list) else []
+    evidence = data.get("evidenceRecordList") if isinstance(data.get("evidenceRecordList"), list) else []
+    latest = data.get("latest_updates") if isinstance(data.get("latest_updates"), list) else []
+
+    if not histories:
+        histories = [
+            item.get("event")
+            for item in latest[:200]
+            if isinstance(item, dict) and isinstance(item.get("event"), dict)
+        ]
+
+    def matches(history: dict[str, Any], item: dict[str, Any]) -> bool:
+        record_id = history.get("record_id")
+        evidence_id = history.get("evidence_id")
+        return bool(
+            (record_id is not None and item.get("record_id") == record_id)
+            or (evidence_id is not None and item.get("evidence_id") == evidence_id)
+        )
+
+    result = []
+    for history in histories[:200]:
+        if not isinstance(history, dict):
+            continue
+        device_sn = history.get("device_sn")
+        latest_update = next(
+            (
+                item
+                for item in latest[:200]
+                if isinstance(item, dict) and item.get("device_sn") == device_sn
+            ),
+            {},
+        )
+        result.append(
+            {
+                "history": history,
+                "events": [item for item in events[:200] if isinstance(item, dict) and matches(history, item)],
+                "picture": [item for item in pictures[:200] if isinstance(item, dict) and matches(history, item)],
+                "evidence": [item for item in evidence[:200] if isinstance(item, dict) and matches(history, item)],
+                "device_sn": device_sn,
+                "station_sn": history.get("station_sn") or history.get("aic_sn"),
+                "latest_update": latest_update,
+            }
+        )
+    return result
+
+
+def aic_ai_details(record: dict[str, Any]) -> dict[str, Any]:
+    """Return useful Pro AI evidence while filtering transport/account secrets."""
+    history = record.get("history") if isinstance(record.get("history"), dict) else {}
+    pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
+    event_rows = record.get("events") if isinstance(record.get("events"), list) else []
+    evidence_rows = record.get("evidence") if isinstance(record.get("evidence"), list) else []
+    latest_update = record.get("latest_update") if isinstance(record.get("latest_update"), dict) else {}
+    combined = {"history": history, "pictures": pictures, "events": event_rows, "evidence": evidence_rows}
+    categories = _truthy_ai_keys(combined)
+    for picture in pictures:
+        if not isinstance(picture, dict):
+            continue
+        detection = int(picture.get("detection_type") or 0)
+        categories.update(family for bit, family in _DETECTION_BITS.items() if detection & bit)
+    return {
+        "categories": sorted(categories),
+        "analysis": _safe_ai_value(combined) or {},
+        "crops": [
+            {
+                "categories": sorted(_truthy_ai_keys(item)),
+                "recognized": bool(item.get("person_recog_flag")),
+                "quality": item.get("crop_pic_quality"),
+                "event_time": _iso(item.get("event_time")),
+                "has_image": bool(item.get("crop_path") or item.get("thumb_path")),
+            }
+            for item in pictures[:128]
+            if isinstance(item, dict)
+        ],
+        "evidence_items": len(evidence_rows),
+        "event_items": len(event_rows),
+        "latest_event_count": int(latest_update.get("event_count") or 0),
+    }
+
+
+def normalize_aic_event(record: dict[str, Any]) -> dict[str, Any]:
+    """Normalize one joined HomeBase Pro AIC event."""
+    history = record.get("history") if isinstance(record.get("history"), dict) else record
+    pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
+    latest_update = record.get("latest_update") if isinstance(record.get("latest_update"), dict) else {}
+    ai = aic_ai_details(record)
+    event_id = _token(
+        "aic",
+        record.get("station_sn") or history.get("station_sn") or history.get("aic_sn"),
+        record.get("device_sn") or history.get("device_sn"),
+        history.get("record_id"),
+        history.get("evidence_id"),
+        history.get("start_time") or history.get("start_timestamp"),
+    )
+    return {
+        "event_id": event_id,
+        "source": "homebase_pro_aic",
+        "device_name": history.get("device_name") or "Camera",
+        "start": _iso(history.get("start_time_millis") or history.get("start_timestamp") or history.get("start_time")),
+        "end": _iso(history.get("end_time_millis") or history.get("end_timestamp") or history.get("end_time")),
+        "storage": _LOCAL_STORAGE_NAMES.get(history.get("storage_type"), "other"),
+        "video_type": history.get("video_type"),
+        "trigger_type": history.get("trigger_type"),
+        "has_thumbnail": bool(
+            history.get("thumb_path")
+            or history.get("snapshot_cloud")
+            or any(isinstance(item, dict) and (item.get("crop_path") or item.get("thumb_path")) for item in pictures)
+        ),
+        "has_video": bool(history.get("storage_path") or history.get("cloud_path") or history.get("mp4_cloud")),
+        "ai_categories": ai["categories"],
+        "recognized_faces": sum(1 for item in pictures if isinstance(item, dict) and item.get("person_recog_flag")),
+        "ai_crops": len(pictures),
+        "latest_event_count": int(latest_update.get("event_count") or 0),
+    }
+
+
 def normalize_cloud_event(record: dict[str, Any]) -> dict[str, Any]:
     """Normalize the cloud account index without exposing transport secrets."""
     faces = record.get("ai_faces") if isinstance(record.get("ai_faces"), list) else []

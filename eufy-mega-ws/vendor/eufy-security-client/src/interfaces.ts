@@ -11,6 +11,7 @@ import { MegaSession } from "./http/megaApi";
 import { Station } from "./http/station";
 import { DeviceSmartLockMessage } from "./mqtt/model";
 import {
+  AicEventData,
   DatabaseCountByDate,
   DatabaseQueryByDate,
   DatabaseQueryLatestInfo,
@@ -155,6 +156,7 @@ export interface EufySecurityEvents {
     returnCode: DatabaseReturnCode,
     data: Array<DatabaseQueryLatestInfo>
   ) => void;
+  "station database query aic events": (station: Station, returnCode: DatabaseReturnCode, data: AicEventData) => void;
   "station database query local": (
     station: Station,
     returnCode: DatabaseReturnCode,

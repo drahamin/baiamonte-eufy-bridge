@@ -72,6 +72,7 @@ import {
   TFCardStatus,
 } from "./p2p/types";
 import {
+  AicEventData,
   DatabaseCountByDate,
   DatabaseQueryByDate,
   DatabaseQueryLatestInfo,
@@ -804,6 +805,11 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
                   this.onStationDatabaseQueryLatest(station, returnCode, data)
               );
               station.on(
+                "database query aic events",
+                (station: Station, returnCode: DatabaseReturnCode, data: AicEventData) =>
+                  this.onStationDatabaseQueryAicEvents(station, returnCode, data)
+              );
+              station.on(
                 "database query local",
                 (station: Station, returnCode: DatabaseReturnCode, data: Array<DatabaseQueryLocal>) =>
                   this.onStationDatabaseQueryLocal(station, returnCode, data)
@@ -1419,12 +1425,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
   }
 
   private queueDashboardSnapshot(device: Device, value: PropertyValue): void {
-    if (
-      typeof value !== "string" ||
-      value === "" ||
-      !device.hasProperty(PropertyName.DevicePicture)
-    )
-      return;
+    if (typeof value !== "string" || value === "" || !device.hasProperty(PropertyName.DevicePicture)) return;
     if (this.dashboardSnapshotUrls.get(device.getSerial()) === value) return;
     this.dashboardSnapshotUrls.set(device.getSerial(), value);
     this.dashboardSnapshotQueue.push({ device, value });
@@ -3889,6 +3890,36 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
       }
     }
     this.emit("station database query latest", station, returnCode, data);
+  }
+
+  private onStationDatabaseQueryAicEvents(station: Station, returnCode: DatabaseReturnCode, data: AicEventData): void {
+    if (returnCode === DatabaseReturnCode.SUCCESSFUL) {
+      for (const update of data.latest_updates) {
+        const event = update.event;
+        if (event === undefined) continue;
+        const image = [event.thumb_path, event.snapshot_cloud, event.cloud_path].find(
+          (value): value is string => typeof value === "string" && value.length > 0
+        );
+        if (image === undefined) continue;
+        this.getDevice(update.device_sn)
+          .then((device) => {
+            if (device.hasProperty(PropertyName.DevicePictureUrl)) {
+              device.updateProperty(PropertyName.DevicePictureUrl, image, true);
+            }
+            this.queueDashboardSnapshot(device, image);
+          })
+          .catch((err) => {
+            const error = ensureError(err);
+            if (!(error instanceof DeviceNotFoundError)) {
+              rootMainLogger.debug("HomeBase Pro AIC snapshot target unavailable", {
+                error: getError(error),
+                stationSN: station.getSerial(),
+              });
+            }
+          });
+      }
+    }
+    this.emit("station database query aic events", station, returnCode, data);
   }
 
   private onStationDatabaseQueryLocal(

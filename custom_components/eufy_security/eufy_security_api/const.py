@@ -90,6 +90,7 @@ class MessageField(Enum):
 
     # get events
     MAX_RESULTS = "maxResults"
+    COUNT = "count"
     DEVICE_SERIAL_NO = "deviceSN"
     START_TIMESTAMP_MS = "startTimestampMs"
     END_TIMESTAMP_MS = "endTimestampMs"
@@ -127,6 +128,7 @@ class EventNameToHandler(Enum):
     disconnected = "disconnected"
     connection_error = "connection error"
     database_query_local = "database query local"
+    database_query_aic_events = "database query aic events"
     database_query_by_date = "database query by date"
     database_count_by_date = "database count by date"
     image_downloaded = "image downloaded"

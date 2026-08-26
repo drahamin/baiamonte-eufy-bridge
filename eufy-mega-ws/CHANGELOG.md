@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.7 — 2026-08-26
+
+- Reproduce the current iPhone app's HomeBase Professional `AICEventData` database
+  query, including its descending cursor payload and joined history, crop-picture,
+  event, and evidence collections.
+- Feed Pro `latest_updates`, `thumb_path`, and `snapshot_cloud` into the serialized
+  snapshot cache and expose joined AI evidence through Baiamonte Security's protected
+  evidence routes. Daily refresh remains non-live and queries only the cloud index plus
+  AIC-capable stations; legacy S380 history remains an explicit serialized action.
+- Audit current iPhone S380 and camera paths. Existing S380 storage, cross-camera
+  tracking, tracking assistance, camera PTZ/presets, motion tracking, auto-cruise, and
+  NAS controls remain covered. Newly observed camera snapshot-interval command 6453 is
+  identified as research-only until its two payload keys are safely verified.
+
 ## 1.6.6 — 2026-08-26
 
 - Enable the HomeBase Professional S1 read-only latest-record query identified in
