@@ -171,4 +171,33 @@ describe("HTTPApi", () => {
             expect(request).toHaveBeenCalledTimes(3);
         });
     });
+
+    describe("current app dashboard covers", () => {
+        it("chooses the newest timestamp across app cover families", () => {
+            expect(HTTPApi.selectDashboardCover({
+                local_cover_path: "/mnt/local.jpg",
+                local_cover_time: 100,
+                cover_path: "https://example.invalid/newer.jpg",
+                cover_time: 200,
+                image: "https://example.invalid/cached.jpg",
+                image_time: 150,
+            })).toEqual({ path: "https://example.invalid/newer.jpg", time: 200 });
+        });
+
+        it("prefers the HomeBase-local cover when timestamps tie", () => {
+            expect(HTTPApi.selectDashboardCover({
+                local_cover_path: "/mnt/local.jpg",
+                local_cover_time: 200,
+                cover_path: "https://example.invalid/remote.jpg",
+                cover_time: 200,
+            })).toEqual({ path: "/mnt/local.jpg", time: 200 });
+        });
+
+        it("ignores empty and implausibly long paths", () => {
+            expect(HTTPApi.selectDashboardCover({
+                local_cover_path: "",
+                cover_path: "x".repeat(4097),
+            })).toBeUndefined();
+        });
+    });
 });

@@ -158,6 +158,8 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
   private apiTrustDevice = "v1/app/trust_device/add";
   private apiGetStations = "v2/house/station_list";
   private apiGetDevices = "v2/house/device_list";
+  // The current iOS 6.x app uses this endpoint for dashboard cover metadata.
+  private apiGetCurrentDevices = "v3/app/get_devs_list";
   private apiPushCheck = "v1/app/review/app_push_check";
   private apiRegisterPushToken = "v1/apppush/register_push_token";
   private apiSetParameters = "v1/app/upload_devs_params";
@@ -829,6 +831,57 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
     return [];
   }
 
+  /**
+   * Select the same dashboard-image families used by the current iOS app. The returned path is
+   * deliberately folded into the existing `cover_path` field so downstream snapshot loading stays
+   * serialized and uses authenticated HTTP or HomeBase download according to URL/path shape.
+   */
+  public static selectDashboardCover(device: Partial<DeviceListResponse>): { path: string; time: number } | undefined {
+    const candidates = [
+      { path: device.local_cover_path, time: device.local_cover_time, priority: 4 },
+      { path: device.cover_path, time: device.cover_time, priority: 3 },
+      { path: device.image, time: device.image_time, priority: 2 },
+      { path: device.device_thumbnail_path, time: 0, priority: 1 },
+    ]
+      .filter((item): item is { path: string; time: number | undefined; priority: number } =>
+        typeof item.path === "string" && item.path.length > 0 && item.path.length <= 4096
+      )
+      .map((item) => ({
+        path: item.path,
+        time: typeof item.time === "number" && Number.isFinite(item.time) && item.time >= 0 ? item.time : 0,
+        priority: item.priority,
+      }))
+      .sort((left, right) => right.time - left.time || right.priority - left.priority);
+    return candidates.length > 0 ? { path: candidates[0].path, time: candidates[0].time } : undefined;
+  }
+
+  private decodeDeviceListData(data: unknown): Array<DeviceListResponse> {
+    const decoded = typeof data === "string" ? this.decryptAPIData(data) : data;
+    if (Array.isArray(decoded)) return decoded as Array<DeviceListResponse>;
+    if (decoded && typeof decoded === "object") {
+      const record = decoded as Record<string, unknown>;
+      for (const key of ["devices", "device_list", "list"]) {
+        if (Array.isArray(record[key])) return record[key] as Array<DeviceListResponse>;
+      }
+    }
+    return [];
+  }
+
+  private async getCurrentDeviceCovers(data: Record<string, unknown>): Promise<Array<DeviceListResponse>> {
+    try {
+      const response = await this.request({ method: "post", endpoint: this.apiGetCurrentDevices, data });
+      if (response.status !== 200) return [];
+      const result = response.data as ResultResponse;
+      if (result.code !== ResponseErrorCode.CODE_OK || result.data === undefined) return [];
+      return this.decodeDeviceListData(result.data);
+    } catch (err) {
+      rootHTTPLogger.debug("Current app dashboard cover metadata unavailable; using legacy covers", {
+        error: getError(ensureError(err)),
+      });
+      return [];
+    }
+  }
+
   public async getDeviceList(): Promise<Array<DeviceListResponse>> {
     const data = {
       device_sn: "",
@@ -846,7 +899,30 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
         const result: ResultResponse = response.data;
         if (result.code == 0) {
           if (result.data) {
-            const deviceList = this.decryptAPIData(result.data) as Array<DeviceListResponse>;
+            const deviceList = this.decodeDeviceListData(result.data);
+            // iOS 6.0.80 ranks local_cover, cover and cached image fields for its device cards.
+            // Merge only those presentation fields: current inventory can never replace mature
+            // legacy device/P2P/control data.
+            const currentDevices = await this.getCurrentDeviceCovers(data);
+            const currentBySerial = new Map(
+              currentDevices
+                .filter((device) => typeof device.device_sn === "string" && device.device_sn.length > 0)
+                .map((device) => [device.device_sn, device] as const)
+            );
+            let coverCount = 0;
+            for (const device of deviceList) {
+              const current = currentBySerial.get(device.device_sn);
+              if (!current) continue;
+              const cover = HTTPApi.selectDashboardCover(current);
+              if (!cover) continue;
+              device.cover_path = cover.path;
+              device.cover_time = cover.time;
+              coverCount++;
+            }
+            rootHTTPLogger.info("Current app dashboard cover metadata merged", {
+              devices: deviceList.length,
+              covers: coverCount,
+            });
             rootHTTPLogger.debug("Decrypted device list data: %s", JSON.stringify(deviceList, null, 2));
             return deviceList;
           }

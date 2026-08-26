@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.5 — 2026-08-26
+
+- Follow the current eufy iPhone app's dashboard image model by reading its
+  `v3/app/get_devs_list` cover metadata alongside the mature device inventory.
+- Rank `local_cover`, remote `cover`, cached `image`, and device-thumbnail sources
+  by their app timestamps, preferring the HomeBase copy when timestamps tie.
+- Merge image metadata only: controls, P2P credentials, and device capabilities
+  continue to come from the proven inventory, and snapshot retrieval stays serialized.
+
 ## 1.6.4 — 2026-08-26
 
 - Normalize both legacy S380 and newer HomeBase Professional latest-event database

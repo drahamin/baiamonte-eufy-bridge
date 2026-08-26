@@ -210,6 +210,13 @@ export interface DeviceResponse {
   bind_time: number;
   cover_path: string;
   cover_time: number;
+  /** Current app dashboard metadata. Local paths are fetched through the owning HomeBase. */
+  local_cover_path?: string;
+  local_cover_time?: number;
+  /** Current app fallback cache metadata. */
+  image?: string;
+  image_time?: number;
+  device_thumbnail_path?: string;
   local_ip: string;
   language: string;
   sku_number: string;
@@ -257,6 +264,13 @@ export interface DeviceListResponse {
   bt_mac: string;
   cover_path: string;
   cover_time: number;
+  /** Current app dashboard metadata. Local paths are fetched through the owning HomeBase. */
+  local_cover_path?: string;
+  local_cover_time?: number;
+  /** Current app fallback cache metadata. */
+  image?: string;
+  image_time?: number;
+  device_thumbnail_path?: string;
   local_ip: string;
   language: string;
   sku_number: string;
