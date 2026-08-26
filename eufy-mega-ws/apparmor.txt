@@ -42,6 +42,7 @@ profile baiamonte_eufy_bridge flags=(attach_disconnected,mediate_deleted) {
 
     # Receive signals from S6-Overlay
     signal (receive) peer=*_baiamonte_eufy_bridge,
+    signal (send) set=(kill,term,int) peer=*_baiamonte_eufy_bridge,
 
     # Access to options.json and other files within your addon
     /data/** rw,
@@ -58,12 +59,16 @@ profile baiamonte_eufy_bridge flags=(attach_disconnected,mediate_deleted) {
     network inet6 dgram,
     network netlink raw,
 
-    /usr/bin/node rm,
+    /usr/bin/node rmix,
+    /usr/bin/python3{,.*} ix,
     /etc/hosts r,
     /etc/resolv.conf r,
     /etc/nsswitch.conf r,
     /etc/ssl/** r,
     /opt/baiamonte-eufy-dashboard/** r,
+    # Immutable, image-built HomeBase Pro event helper, Python environment,
+    # and pinned eufy SCTP runtime. It inherits this restricted child profile.
+    /opt/baiamonte-pro-events/** rmix,
     /share/baiamonte-eufy/{,**} rwk,
     /usr/src/app/** r,
     /usr/share/icu/** r,
