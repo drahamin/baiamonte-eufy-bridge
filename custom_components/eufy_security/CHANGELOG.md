@@ -1,5 +1,22 @@
 # Changelog
 
+## 9.5.7 — 2026-08-26
+
+- Load camera snapshots independently from the evidence timeline so a slow
+  HomeBase query cannot leave every tile stuck at **Loading latest snapshot**.
+- Do not query local HomeBase databases automatically when the panel opens.
+  Full hybrid history remains available through the explicit **Load events** action.
+- Limit manual local evidence indexing to one HomeBase request at a time and
+  convert individual account/base failures into visible warnings instead of
+  failing the entire timeline.
+- Add a 15-second deadline to every tile request so one unavailable image cannot
+  block the remaining camera queue.
+- Remove scheduled P2P/FFmpeg snapshot capture after it was proven to starve Core
+  on a camera-heavy account. Daily refresh uses the safe account event index,
+  HomeBase-backed event metadata, and cached push images only.
+- Use a neutral status light while checking a camera and improve the narrow-phone
+  action layout.
+
 ## 9.5.6 — 2026-08-26
 
 - Never start live video from Home Assistant camera-image polling or dashboard

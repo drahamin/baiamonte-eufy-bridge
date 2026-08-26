@@ -167,11 +167,14 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                     self._add_ai_image_urls(event)
                     self._remember_evidence(event["event_id"], "cloud", record)
                     events.append(event)
-            except (WebSocketConnectionException, asyncio.TimeoutError) as exc:
+            except Exception as exc:
+                _LOGGER.warning(
+                    "Account evidence index unavailable: %s", type(exc).__name__
+                )
                 warnings.append(f"account_index: {type(exc).__name__}")
 
         if source in {"hybrid", "local"}:
-            semaphore = asyncio.Semaphore(4)
+            semaphore = asyncio.Semaphore(1)
 
             async def query_station(station):
                 if station_serial and station.serial_no != station_serial:
@@ -213,6 +216,13 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                     asyncio.TimeoutError,
                 ) as exc:
                     return [], station.model, f"{station.model}: {type(exc).__name__}"
+                except Exception as exc:
+                    _LOGGER.warning(
+                        "HomeBase %s evidence index unavailable: %s",
+                        station.model,
+                        type(exc).__name__,
+                    )
+                    return [], station.model, f"{station.model}: {type(exc).__name__}"
 
             tasks = [
                 asyncio.create_task(query_station(station))
@@ -228,6 +238,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 try:
                     station_events, station_model, warning = task.result()
                 except asyncio.CancelledError:
+                    continue
+                except Exception as exc:
+                    warnings.append(f"local_index: {type(exc).__name__}")
                     continue
                 events.extend(station_events)
                 if station_model:
@@ -317,7 +330,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def refresh_latest_snapshots(self) -> dict:
         """Select the newest cloud/HomeBase thumbnail for every matching camera."""
-        result = await self.search_evidence(source="hybrid", days=1, max_results=200)
+        # The account index includes event metadata for HomeBase-backed cameras
+        # without opening dozens of local station database sessions in the
+        # background. Full local history remains an explicit panel action.
+        result = await self.search_evidence(source="cloud", days=1, max_results=200)
         latest: dict[str, dict] = {}
         for event in result.get("events", []):
             name = self._snapshot_name(event.get("device_name"))
@@ -360,16 +376,12 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
         if updated:
             self.async_set_updated_data(self.data)
-        live_updated = 0
-        for refresher in list(self.camera_snapshot_refreshers):
-            try:
-                if await refresher():
-                    live_updated += 1
-            except (RuntimeError, ValueError, asyncio.TimeoutError):
-                continue
         return {
             "updated": updated,
-            "scheduled_live_captures": live_updated,
+            # P2P/FFmpeg snapshot capture is deliberately excluded from this
+            # background worker. On camera-heavy accounts it can starve Core and
+            # Supervisor even when sessions are serialized. Live stays explicit.
+            "scheduled_live_captures": 0,
             "indexed_events": len(result.get("events", [])),
             "warnings": result.get("warnings", []),
         }
