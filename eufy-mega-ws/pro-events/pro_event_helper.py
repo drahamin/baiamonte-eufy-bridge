@@ -22,9 +22,11 @@ from typing import Any
 
 import aiohttp
 import websockets
+import aiortc.rtcdtlstransport as aiortc_dtls
 from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 from aiortc.sdp import candidate_from_sdp
 from aiortc.rtcdtlstransport import RTCCertificate
+from OpenSSL import crypto
 
 
 # HomeBase Pro presents an RSA certificate. aiortc defaults to ECDSA-only
@@ -45,6 +47,35 @@ def _compatible_ssl_context(self, srtp_profiles):
 
 
 RTCCertificate._create_ssl_context = _compatible_ssl_context
+
+
+def _validate_raw_peer_identity(self, remote_parameters) -> None:
+    """Validate the Pro certificate fingerprint without strict ASN.1 re-parsing.
+
+    Current HomeBase Pro firmware appends bytes to its otherwise valid DER
+    certificate. OpenSSL completes DTLS and browsers validate the advertised
+    fingerprint, but cryptography's strict X.509 converter rejects the trailing
+    data. Hashing the exact peer DER preserves WebRTC fingerprint validation.
+    """
+    certificate = self._ssl.get_peer_certificate()
+    der = crypto.dump_certificate(crypto.FILETYPE_ASN1, certificate)
+    supported = 0
+    valid = 0
+    for fingerprint in remote_parameters.fingerprints:
+        algorithm = fingerprint.algorithm.lower()
+        digest_name = algorithm.replace("-", "")
+        if digest_name not in {"sha256", "sha384", "sha512"}:
+            continue
+        supported += 1
+        digest = hashlib.new(digest_name, der).hexdigest().upper()
+        value = ":".join(digest[index : index + 2] for index in range(0, len(digest), 2))
+        if fingerprint.value.upper() == value:
+            valid += 1
+    if not supported or valid != supported:
+        self._set_state(aiortc_dtls.State.FAILED)
+
+
+aiortc_dtls.RTCDtlsTransport._validate_peer_identity = _validate_raw_peer_identity
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ORACLE = os.environ.get("BAIAMONTE_SCTP_ORACLE", os.path.join(ROOT, "sctp_oracle.cjs"))

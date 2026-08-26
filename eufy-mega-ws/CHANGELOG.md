@@ -365,6 +365,10 @@
 - Added optional persistent last-event snapshot cache, enabled by default in this add-on.
 - Redacted signed query parameters from final image-fetch errors.
 - Updated packaging for Home Assistant's post-2026.04 local app build format.
+# 1.6.15
+
+- Validate the HomeBase Pro DTLS fingerprint directly from its raw DER certificate, tolerating firmware-added trailing data without weakening peer verification.
+
 # 1.6.14
 
 - Permit the immutable Pro event helper and its pinned Python/SCTP runtime to execute inside the add-on's restricted AppArmor child profile.
