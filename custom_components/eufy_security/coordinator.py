@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
+import json
 import logging
 import os
 import shutil
@@ -63,6 +65,11 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self.camera_snapshot_refreshers = []
         self._daily_snapshot_task: asyncio.Task | None = None
         self._daily_snapshot_unsub = None
+        self._snapshot_cache_task: asyncio.Task | None = None
+        self._snapshot_cache_dirty = False
+        self._snapshot_cache_dir = self.hass.config.path(
+            ".storage", "baiamonte_eufy_snapshots"
+        )
 
     async def initialize(self):
         """Initialize the integration"""
@@ -70,6 +77,8 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             async with asyncio.timeout(180):
                 await self._api.connect()
                 await self._refresh_bridge_status()
+                await self._restore_snapshot_cache()
+                self._schedule_snapshot_cache_write()
                 if (
                     self._daily_snapshot_task is None
                     and self._daily_snapshot_unsub is None
@@ -376,6 +385,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
         if updated:
             self.async_set_updated_data(self.data)
+            self._schedule_snapshot_cache_write()
         return {
             "updated": updated,
             # P2P/FFmpeg snapshot capture is deliberately excluded from this
@@ -397,6 +407,139 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             or content.startswith(b"\x89PNG\r\n\x1a\n")
             or (content.startswith(b"RIFF") and content[8:12] == b"WEBP")
         )
+
+    @callback
+    def async_update_listeners(self) -> None:
+        """Update entities and persist any newly delivered event snapshots."""
+        super().async_update_listeners()
+        self._schedule_snapshot_cache_write()
+
+    @callback
+    def _schedule_snapshot_cache_write(self) -> None:
+        """Coalesce bridge property bursts into one background cache writer."""
+        self._snapshot_cache_dirty = True
+        if self._snapshot_cache_task is None or self._snapshot_cache_task.done():
+            self._snapshot_cache_task = self.hass.async_create_background_task(
+                self._snapshot_cache_writer(),
+                "baiamonte_eufy_snapshot_cache",
+            )
+
+    async def _snapshot_cache_writer(self) -> None:
+        """Atomically persist valid camera snapshots without blocking Core."""
+        try:
+            while self._snapshot_cache_dirty:
+                self._snapshot_cache_dirty = False
+                records = []
+                for device in self.devices.values():
+                    if not getattr(device, "is_camera", False):
+                        continue
+                    try:
+                        content = device.picture_bytes
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if not self._valid_snapshot(content):
+                        continue
+                    picture = device.properties.get("picture") or {}
+                    image_type = picture.get("type") if isinstance(picture, dict) else {}
+                    updated_at = device.image_last_updated
+                    records.append(
+                        (
+                            self._snapshot_cache_key(device.serial_no),
+                            content,
+                            {
+                                "updated_at": (
+                                    updated_at.isoformat() if updated_at else None
+                                ),
+                                "source": device.snapshot_source or "push_cache",
+                                "mime": (
+                                    image_type.get("mime")
+                                    if isinstance(image_type, dict)
+                                    else None
+                                )
+                                or "image/jpeg",
+                            },
+                        )
+                    )
+                await asyncio.to_thread(
+                    self._write_snapshot_records,
+                    self._snapshot_cache_dir,
+                    records,
+                )
+        except (OSError, ValueError) as exc:
+            _LOGGER.warning("Snapshot disk cache write deferred: %s", type(exc).__name__)
+
+    async def _restore_snapshot_cache(self) -> None:
+        """Restore the last valid image for cameras missing one after restart."""
+        restored = 0
+        for device in self.devices.values():
+            if not getattr(device, "is_camera", False):
+                continue
+            cached = await asyncio.to_thread(
+                self._read_snapshot_record,
+                self._snapshot_cache_dir,
+                self._snapshot_cache_key(device.serial_no),
+            )
+            if cached is None:
+                continue
+            content, metadata = cached
+            if not self._valid_snapshot(content):
+                continue
+            current = b""
+            try:
+                current = device.picture_bytes
+            except (KeyError, TypeError, ValueError):
+                pass
+            if self._valid_snapshot(current):
+                if hashlib.sha256(current).digest() != hashlib.sha256(content).digest():
+                    continue
+            else:
+                device.properties["picture"] = {
+                    "data": content,
+                    "type": {"mime": metadata.get("mime") or "image/jpeg"},
+                }
+                restored += 1
+            try:
+                device.image_last_updated = datetime.fromisoformat(
+                    metadata["updated_at"].replace("Z", "+00:00")
+                )
+            except (AttributeError, KeyError, TypeError, ValueError):
+                device.image_last_updated = None
+            device.snapshot_source = f"disk_cache:{metadata.get('source') or 'event'}"
+        if restored:
+            _LOGGER.info("Restored %s durable Eufy camera snapshots", restored)
+
+    @staticmethod
+    def _snapshot_cache_key(serial_no: str) -> str:
+        return hashlib.sha256(str(serial_no).encode("utf-8")).hexdigest()[:32]
+
+    @staticmethod
+    def _write_snapshot_records(cache_dir: str, records: list[tuple]) -> None:
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+        for key, content, metadata in records:
+            image_path = os.path.join(cache_dir, f"{key}.img")
+            metadata_path = os.path.join(cache_dir, f"{key}.json")
+            image_temp = f"{image_path}.tmp"
+            metadata_temp = f"{metadata_path}.tmp"
+            with open(image_temp, "wb") as stream:
+                stream.write(content)
+            with open(metadata_temp, "w", encoding="utf-8") as stream:
+                json.dump(metadata, stream, separators=(",", ":"))
+            os.replace(image_temp, image_path)
+            os.replace(metadata_temp, metadata_path)
+
+    @staticmethod
+    def _read_snapshot_record(cache_dir: str, key: str) -> tuple[bytes, dict] | None:
+        try:
+            with open(os.path.join(cache_dir, f"{key}.img"), "rb") as stream:
+                content = stream.read(10 * 1024 * 1024 + 1)
+            with open(
+                os.path.join(cache_dir, f"{key}.json"),
+                encoding="utf-8",
+            ) as stream:
+                metadata = json.load(stream)
+        except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
+            return None
+        return content, metadata if isinstance(metadata, dict) else {}
 
     @staticmethod
     def _add_ai_image_urls(event: dict) -> None:
@@ -617,6 +760,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             self._daily_snapshot_task.cancel()
             await asyncio.gather(self._daily_snapshot_task, return_exceptions=True)
             self._daily_snapshot_task = None
+        if self._snapshot_cache_task is not None:
+            await asyncio.gather(self._snapshot_cache_task, return_exceptions=True)
+            self._snapshot_cache_task = None
         await self._api.disconnect()
         self._api = None
         await self.async_shutdown()

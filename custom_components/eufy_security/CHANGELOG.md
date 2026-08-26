@@ -1,5 +1,19 @@
 # Changelog
 
+## 9.5.8 — 2026-08-26
+
+- Persist each valid Eufy event snapshot in an atomic, serial-hashed on-disk cache
+  under Home Assistant `.storage`, bounded to one image per camera and 10 MB each.
+- Restore cached camera images and their known timestamps before entities are
+  created, so native Security dashboards and the companion retain previews across
+  independent Core and bridge restarts.
+- Coalesce push/property bursts into one non-blocking cache writer; newer
+  HomeBase/account thumbnails and push event images automatically replace the
+  durable copy without opening live streams.
+- Align Camera and Event Image entities on the same bytes, availability,
+  timestamp, source, and connection state. Missing images now remain honestly
+  unavailable instead of appearing as a synthetic one-pixel placeholder.
+
 ## 9.5.7 — 2026-08-26
 
 - Load camera snapshots independently from the evidence timeline so a slow

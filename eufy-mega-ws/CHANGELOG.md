@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.2 — 2026-08-26
+
+- Download authenticated `cover_path` dashboard thumbnails used by the official
+  Eufy Security home screen and publish them as canonical camera pictures instead
+  of ignoring valid cloud picture URLs.
+- Bound dashboard-thumbnail startup work to two downloads at a time with a short
+  inter-request gap, validate image type and size, and feed successful results
+  into the existing persistent snapshot cache without exposing source URLs.
+
 ## 1.6.1 — 2026-08-25
 
 - Hydrate HomeBase Professional modem firmware and privacy-sanitized SIM-slot status from the

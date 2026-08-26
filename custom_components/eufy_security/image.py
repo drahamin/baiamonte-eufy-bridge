@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import logging
 from datetime import datetime
 
@@ -15,11 +14,6 @@ from .entity import EufySecurityEntity
 from .eufy_security_api.metadata import Metadata
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
-_EMPTY_EVENT_IMAGE = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
-)
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -59,10 +53,10 @@ class EufySecurityImage(ImageEntity, EufySecurityEntity):
         return self.product.image_last_updated
 
     async def async_image(self) -> bytes | None:
-        """Return bytes of image."""
+        """Return the same canonical cached bytes as the camera entity."""
         if self.product.picture_base64 is not None:
             self._last_image = self.product.picture_bytes
-        return self._last_image or _EMPTY_EVENT_IMAGE
+        return self._last_image
 
     @property
     def extra_state_attributes(self):
@@ -70,4 +64,12 @@ class EufySecurityImage(ImageEntity, EufySecurityEntity):
         return {
             **EufySecurityEntity.extra_state_attributes.fget(self),
             "event_image_available": self.product.picture_base64 is not None,
+            "snapshot_available": self.product.picture_base64 is not None,
+            "snapshot_updated_at": (
+                self.product.image_last_updated.isoformat()
+                if self.product.image_last_updated
+                else None
+            ),
+            "snapshot_source": self.product.snapshot_source,
+            "connected": bool(self.product.properties.get("connected", True)),
         }

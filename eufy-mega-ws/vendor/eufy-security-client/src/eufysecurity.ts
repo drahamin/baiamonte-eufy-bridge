@@ -113,7 +113,7 @@ import { InvalidPropertyError } from "./http/error";
 import { ServerPushEvent } from "./push/types";
 import { MQTTService } from "./mqtt/service";
 import { TalkbackStream } from "./p2p/talkback";
-import { getRandomPhoneModel, hexStringScheduleToSchedule, randomNumber } from "./http/utils";
+import { getImage, getRandomPhoneModel, hexStringScheduleToSchedule, randomNumber } from "./http/utils";
 import {
   Logger,
   dummyLogger,
@@ -142,6 +142,9 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
 
   private cameraMaxLivestreamSeconds = 30;
   private cameraStationLivestreamTimeout: Map<string, NodeJS.Timeout> = new Map<string, NodeJS.Timeout>();
+  private dashboardSnapshotQueue: Array<{ device: Device; url: string }> = [];
+  private dashboardSnapshotActive = 0;
+  private dashboardSnapshotUrls: Map<string, string> = new Map<string, string>();
 
   private pushService!: PushNotificationService;
   private mqttService!: MQTTService;
@@ -541,6 +544,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     const serial = device.getSerial();
     if (serial && !Object.keys(this.devices).includes(serial)) {
       this.restoreCachedSnapshot(device);
+      this.queueDashboardSnapshot(device, device.getPropertyValue(PropertyName.DevicePictureUrl));
       this.devices[serial] = device;
       this.emit("device added", device);
 
@@ -1410,6 +1414,55 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     } catch (err) {
       const error = ensureError(err);
       rootMainLogger.error("WritePersistentData Error", { error: getError(error) });
+    }
+  }
+
+  private queueDashboardSnapshot(device: Device, value: PropertyValue): void {
+    if (
+      typeof value !== "string" ||
+      value === "" ||
+      !isValidUrl(value) ||
+      !device.hasProperty(PropertyName.DevicePicture)
+    )
+      return;
+    if (this.dashboardSnapshotUrls.get(device.getSerial()) === value) return;
+    this.dashboardSnapshotUrls.set(device.getSerial(), value);
+    this.dashboardSnapshotQueue.push({ device, url: value });
+    this.drainDashboardSnapshotQueue();
+  }
+
+  private drainDashboardSnapshotQueue(): void {
+    while (this.dashboardSnapshotActive < 2 && this.dashboardSnapshotQueue.length > 0) {
+      const item = this.dashboardSnapshotQueue.shift();
+      if (!item) return;
+      this.dashboardSnapshotActive++;
+      getImage(this.api, item.device.getSerial(), item.url)
+        .then((picture) => {
+          if (
+            Buffer.isBuffer(picture.data) &&
+            picture.data.length > 0 &&
+            picture.data.length <= this.SNAPSHOT_CACHE_MAX_BYTES &&
+            picture.type.mime.startsWith("image/")
+          ) {
+            item.device.updateProperty(PropertyName.DevicePicture, picture, true);
+            rootMainLogger.debug("Loaded authenticated dashboard snapshot", {
+              deviceSN: item.device.getSerial(),
+              bytes: picture.data.length,
+            });
+          }
+        })
+        .catch((err) => {
+          this.dashboardSnapshotUrls.delete(item.device.getSerial());
+          const error = ensureError(err);
+          rootMainLogger.debug("Dashboard snapshot unavailable", {
+            error: getError(error),
+            deviceSN: item.device.getSerial(),
+          });
+        })
+        .finally(() => {
+          this.dashboardSnapshotActive--;
+          setTimeout(() => this.drainDashboardSnapshotQueue(), 250);
+        });
     }
   }
 
@@ -2940,6 +2993,8 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
                 ready: ready,
               });
             });
+        } else {
+          this.queueDashboardSnapshot(device, value);
         }
       }
     } catch (err) {
