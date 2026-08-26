@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.11 — 2026-08-26
+
+- Reproduce the current app's Mega `security.edge.event.t9000.event_data` request as the primary
+  HomeBase Professional event source, including its descending 999-record window and `recordList`
+  response spelling.
+- Route Pro event records and picture metadata through the existing schema-21 AIC event so Security
+  can cache latest covers for SoloCam E42 and doorbell models without opening live streams.
+- Retain the local P2P AIC query only as a compatibility fallback when the Mega event service is
+  unavailable.
+
 ## 1.6.10 — 2026-08-26
 
 - Keep the ingress dashboard alive when a HomeBase Pro AIC evidence query times out or its WebSocket

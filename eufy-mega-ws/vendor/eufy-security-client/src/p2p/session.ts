@@ -285,9 +285,10 @@ export const normalizeAicEventData = (value: unknown): AicEventData => {
     if (record === undefined) return;
 
     const handled = new Set<string>();
-    if (record.record_list !== undefined) {
-      append(result.record_list, aicObjects(record.record_list));
+    if (record.record_list !== undefined || record.recordList !== undefined) {
+      append(result.record_list, aicObjects(record.record_list ?? record.recordList));
       handled.add("record_list");
+      handled.add("recordList");
     }
     if (record.eventRecordList !== undefined) {
       append(result.eventRecordList, aicObjects(record.eventRecordList));

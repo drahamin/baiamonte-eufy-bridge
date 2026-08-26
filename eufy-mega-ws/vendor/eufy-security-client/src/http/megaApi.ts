@@ -1042,4 +1042,22 @@ export class MegaHTTPApi {
     if (!productCode || productCode.length > 64) throw new Error("productCode must be 1-64 characters");
     return this.callDecrypted("things", "/app/things/get_product_data_point", { code: productCode });
   }
+
+  /**
+   * HomeBase Professional event-data view used by the current Security app.
+   *
+   * The app routes `security.edge.event.t9000.event_data` through the Mega event cluster and sends
+   * the database query as a JSON string beside the station serial. This supplies `recordList`,
+   * `recordPictureList`, and the related AI collections used for dashboard camera covers.
+   */
+  public async getT9000EventDataDecrypted(
+    stationSerial: string,
+    payload: Record<string, unknown>
+  ): Promise<unknown> {
+    if (!stationSerial || stationSerial.length > 128) throw new Error("invalid station serial");
+    return this.callDecrypted("event", "/app/event/t9000/event_data", {
+      station_sn: stationSerial,
+      payload: JSON.stringify(payload),
+    });
+  }
 }

@@ -86,6 +86,7 @@ import {
   CrossTrackingGroupEntry,
 } from "./p2p/interfaces";
 import { CommandResult, StorageInfoBodyHB3 } from "./p2p/models";
+import { normalizeAicEventData } from "./p2p/session";
 import {
   generateSerialnumber,
   generateUDID,
@@ -1164,6 +1165,24 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
       rootMainLogger.info(
         `Automatic retrieval of data from the cloud has been deactivated (config pollingIntervalMinutes: ${this.config.pollingIntervalMinutes})`
       );
+  }
+
+  /** Return the current app's Mega HomeBase Pro event view, or undefined for P2P fallback. */
+  public async queryMegaT9000EventData(
+    stationSerial: string,
+    startDate: Date,
+    endDate: Date,
+    count = 999
+  ): Promise<AicEventData | undefined> {
+    try {
+      const value = await this.megaTransition.queryT9000EventData(stationSerial, startDate, endDate, count);
+      return normalizeAicEventData(value);
+    } catch (err) {
+      rootMainLogger.warn("Mega HomeBase Pro event query unavailable; using P2P fallback", {
+        error: getError(ensureError(err)),
+      });
+      return undefined;
+    }
   }
 
   private async augmentNativeMegaDevices(): Promise<void> {

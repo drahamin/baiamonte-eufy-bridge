@@ -191,4 +191,17 @@ describe("EufySecurity snapshot cache", () => {
 
     expect(result.latest_updates).toEqual([{ channel: 4, event_count: 2, event: result.record_list[1] }]);
   });
+
+  it("normalizes the current Mega event service recordList spelling", () => {
+    const result = normalizeAicEventData({
+      data: {
+        recordList: [{ record_id: 3, device_sn: "camera-mega", start_time_millis: 300, thumb_path: "/mega.jpg" }],
+        recordPictureList: [{ record_id: 3, crop_path: "/mega-crop.jpg" }],
+      },
+    });
+
+    expect(result.record_list).toHaveLength(1);
+    expect(result.recordPictureList).toHaveLength(1);
+    expect(result.latest_updates[0]).toMatchObject({ device_sn: "camera-mega", event_count: 1 });
+  });
 });

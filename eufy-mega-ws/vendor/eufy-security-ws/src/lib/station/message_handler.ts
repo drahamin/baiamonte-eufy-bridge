@@ -232,11 +232,19 @@ export class StationMessageHandler {
       case StationCommand.databaseQueryAicEvents:
         if (client.schemaVersion >= 21) {
           const aicMessage = message as IncomingCommandDatabaseQueryAicEvents;
-          station.databaseQueryAicEvents(
-            new Date(aicMessage.startDate),
-            new Date(aicMessage.endDate),
+          const startDate = new Date(aicMessage.startDate);
+          const endDate = new Date(aicMessage.endDate);
+          const megaData = await driver.queryMegaT9000EventData(
+            station.getSerial(),
+            startDate,
+            endDate,
             aicMessage.count,
           );
+          if (megaData !== undefined) {
+            station.publishDatabaseQueryAicEvents(0, megaData);
+          } else {
+            station.databaseQueryAicEvents(startDate, endDate, aicMessage.count);
+          }
           return { async: true };
         } else {
           throw new UnknownCommandError(command);

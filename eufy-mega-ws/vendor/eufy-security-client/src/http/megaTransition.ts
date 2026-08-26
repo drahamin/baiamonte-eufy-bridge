@@ -694,6 +694,33 @@ export class MegaTransition {
     return this.megaApi;
   }
 
+  /** Query the current app's read-only HomeBase Pro event window through Mega. */
+  public async queryT9000EventData(
+    stationSerial: string,
+    startDate: Date,
+    endDate: Date,
+    count = 999
+  ): Promise<unknown> {
+    if (!this.megaLoggedIn) throw new Error("Mega is not authenticated");
+    if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || startDate > endDate)
+      throw new Error("invalid event date range");
+    const boundedCount = Math.max(1, Math.min(999, Math.trunc(count)));
+    const payload = {
+      count: boundedCount,
+      end_date: `${Math.floor(startDate.getTime() / 1000)}`,
+      start_date: `${Math.floor(endDate.getTime() / 1000)}`,
+      start_id: 0,
+      end_id: 1,
+      query: [],
+      flag: 0,
+      res_unzip: 1,
+      where: [],
+      or_and: [],
+      station_sn: stationSerial,
+    };
+    return (await this.getMegaApi()).getT9000EventDataDecrypted(stationSerial, payload);
+  }
+
   /**
    * Register the FCM token on the v6 backend, best-effort. No-ops with a log when there is no valid
    * v6 session yet (not-yet-migrated account); a v6 failure is swallowed so legacy push is unaffected.

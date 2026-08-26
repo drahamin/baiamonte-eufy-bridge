@@ -15739,6 +15739,11 @@ export class Station extends TypedEmitter<StationEvents> {
     this.emit("database query aic events", this, returnCode, data);
   }
 
+  /** Publish a Mega event-data result through the same station event as the P2P fallback. */
+  public publishDatabaseQueryAicEvents(returnCode: DatabaseReturnCode, data: AicEventData): void {
+    this.onDatabaseQueryAicEvents(returnCode, data);
+  }
+
   private onDatabaseQueryLocal(returnCode: DatabaseReturnCode, data: Array<DatabaseQueryLocal>): void {
     this.emit("database query local", this, returnCode, data);
   }

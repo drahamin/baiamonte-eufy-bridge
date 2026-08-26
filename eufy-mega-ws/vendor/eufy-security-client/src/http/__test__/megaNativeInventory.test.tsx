@@ -57,6 +57,33 @@ describe("native Mega inventory augmentation", () => {
     expect(translateNativeMegaDevice({ device_sn: "x", device_model: "T87A0", category: "security" })).toBeUndefined();
   });
 
+  it("builds the current app's descending HomeBase Pro Mega event window", async () => {
+    const transition = new MegaTransition(host);
+    const getT9000EventDataDecrypted = jest.fn().mockResolvedValue({ recordList: [] });
+    (transition as any).megaLoggedIn = true;
+    (transition as any).getMegaApi = jest.fn(async () => ({ getT9000EventDataDecrypted }));
+
+    await transition.queryT9000EventData(
+      "T9000-test",
+      new Date("2026-08-25T00:00:00.000Z"),
+      new Date("2026-08-26T00:00:00.000Z")
+    );
+
+    expect(getT9000EventDataDecrypted).toHaveBeenCalledWith("T9000-test", {
+      count: 999,
+      end_date: "1787616000",
+      start_date: "1787702400",
+      start_id: 0,
+      end_id: 1,
+      query: [],
+      flag: 0,
+      res_unzip: 1,
+      where: [],
+      or_and: [],
+      station_sn: "T9000-test",
+    });
+  });
+
   it("fetches a catalog once for every distinct account product code and tolerates failures", async () => {
     const transition = new MegaTransition(host);
     const getProductDataPointsDecrypted = jest
