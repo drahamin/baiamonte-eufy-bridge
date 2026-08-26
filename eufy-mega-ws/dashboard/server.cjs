@@ -50,7 +50,24 @@ function bridgeSession(schemaVersion, onState) {
     const pending = new Map();
     const eventWaiters = [];
     let sequence = 0;
-    const timer = setTimeout(() => { socket.terminate(); reject(new Error("Bridge query timed out")); }, 45000);
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      for (const waiter of eventWaiters.splice(0)) {
+        clearTimeout(waiter.timeout);
+        waiter.no(new Error("Bridge session closed"));
+      }
+      for (const waiter of pending.values()) waiter.no(new Error("Bridge session closed"));
+      pending.clear();
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.close();
+      callback(value);
+    };
+    const timer = setTimeout(() => {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.terminate();
+      finish(reject, new Error("Bridge query timed out"));
+    }, 50000);
     const send = (command, body = {}) => new Promise((yes, no) => {
       const messageId = `dashboard-${++sequence}`;
       pending.set(messageId, { yes, no });
@@ -84,13 +101,9 @@ function bridgeSession(schemaVersion, onState) {
       if (message.messageId === "state") {
         try {
           const result = await onState(message.result.state, send, waitForEvent);
-          clearTimeout(timer);
-          socket.close();
-          resolve(result);
+          finish(resolve, result);
         } catch (error) {
-          clearTimeout(timer);
-          socket.close();
-          reject(error);
+          finish(reject, error);
         }
         return;
       }
@@ -99,7 +112,10 @@ function bridgeSession(schemaVersion, onState) {
       pending.delete(message.messageId);
       message.success ? waiter.yes(message.result) : waiter.no(new Error(message.errorCode || "Bridge error"));
     });
-    socket.on("error", reject);
+    socket.on("error", (error) => finish(reject, error));
+    socket.on("close", () => {
+      if (!settled) finish(reject, new Error("Bridge connection closed"));
+    });
   });
 }
 
@@ -123,18 +139,31 @@ async function refreshAicSummary() {
       }
       const end = new Date();
       const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
-      const eventPromise = waitForEvent((message) =>
-        message.source === "station"
-        && message.event === "database query aic events"
-        && message.serialNumber === station.serialNumber
-      );
-      await send("station.database_query_aic_events", {
-        serialNumber: station.serialNumber,
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
-        count: 100,
-      });
-      const event = await eventPromise;
+      let event;
+      try {
+        const eventPromise = waitForEvent((message) =>
+          message.source === "station"
+          && message.event === "database query aic events"
+          && message.serialNumber === station.serialNumber
+        );
+        // Attach a rejection handler before sending so a command failure cannot
+        // leave a later event-wait timeout as an unhandled rejection.
+        const guardedEventPromise = eventPromise.then(
+          (matchedEvent) => ({ matchedEvent }),
+          () => ({ matchedEvent: undefined }),
+        );
+        await send("station.database_query_aic_events", {
+          serialNumber: station.serialNumber,
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          count: 100,
+        });
+        event = (await guardedEventPromise).matchedEvent;
+        if (!event) throw new Error("AIC event unavailable");
+      } catch (_error) {
+        summaries.push({ model: station.model, supported: true, outcome: "timed_out_or_unavailable" });
+        continue;
+      }
       const data = event.data && typeof event.data === "object" ? event.data : {};
       const records = Array.isArray(data.record_list) ? data.record_list : [];
       const updates = Array.isArray(data.latest_updates) ? data.latest_updates : [];

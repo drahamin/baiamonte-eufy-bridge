@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.10 — 2026-08-26
+
+- Keep the ingress dashboard alive when a HomeBase Pro AIC evidence query times out or its WebSocket
+  session closes, and return an identifier-free unavailable result instead of leaking an unhandled
+  event-wait rejection.
+
 ## 1.6.9 — 2026-08-26
 
 - Add a bounded, read-only HomeBase Professional AIC diagnostic action to the
