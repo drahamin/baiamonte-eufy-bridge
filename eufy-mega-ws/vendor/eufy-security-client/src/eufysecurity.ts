@@ -142,9 +142,10 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
 
   private cameraMaxLivestreamSeconds = 30;
   private cameraStationLivestreamTimeout: Map<string, NodeJS.Timeout> = new Map<string, NodeJS.Timeout>();
-  private dashboardSnapshotQueue: Array<{ device: Device; url: string }> = [];
+  private dashboardSnapshotQueue: Array<{ device: Device; value: string }> = [];
   private dashboardSnapshotActive = 0;
   private dashboardSnapshotUrls: Map<string, string> = new Map<string, string>();
+  private dashboardSnapshotTimer?: NodeJS.Timeout;
 
   private pushService!: PushNotificationService;
   private mqttService!: MQTTService;
@@ -1421,22 +1422,52 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     if (
       typeof value !== "string" ||
       value === "" ||
-      !isValidUrl(value) ||
       !device.hasProperty(PropertyName.DevicePicture)
     )
       return;
     if (this.dashboardSnapshotUrls.get(device.getSerial()) === value) return;
     this.dashboardSnapshotUrls.set(device.getSerial(), value);
-    this.dashboardSnapshotQueue.push({ device, url: value });
-    this.drainDashboardSnapshotQueue();
+    this.dashboardSnapshotQueue.push({ device, value });
+    if (this.dashboardSnapshotTimer === undefined) {
+      this.dashboardSnapshotTimer = setTimeout(() => {
+        this.dashboardSnapshotTimer = undefined;
+        this.drainDashboardSnapshotQueue();
+      }, 10_000);
+    }
   }
 
   private drainDashboardSnapshotQueue(): void {
-    while (this.dashboardSnapshotActive < 2 && this.dashboardSnapshotQueue.length > 0) {
+    while (this.dashboardSnapshotActive < 1 && this.dashboardSnapshotQueue.length > 0) {
       const item = this.dashboardSnapshotQueue.shift();
       if (!item) return;
       this.dashboardSnapshotActive++;
-      getImage(this.api, item.device.getSerial(), item.url)
+      const finished = (): void => {
+        this.dashboardSnapshotActive--;
+        setTimeout(() => this.drainDashboardSnapshotQueue(), 1_250);
+      };
+      if (!isValidUrl(item.value)) {
+        this.getStation(item.device.getStationSerial())
+          .then((station: Station) => {
+            if (station.isConnected() && station.hasCommand(CommandName.StationDownloadImage)) {
+              station.downloadImage(item.value);
+              rootMainLogger.debug("Requested HomeBase dashboard snapshot", {
+                deviceSN: item.device.getSerial(),
+                stationSN: station.getSerial(),
+              });
+            }
+          })
+          .catch((err) => {
+            this.dashboardSnapshotUrls.delete(item.device.getSerial());
+            const error = ensureError(err);
+            rootMainLogger.debug("HomeBase dashboard snapshot unavailable", {
+              error: getError(error),
+              deviceSN: item.device.getSerial(),
+            });
+          })
+          .finally(finished);
+        continue;
+      }
+      getImage(this.api, item.device.getSerial(), item.value)
         .then((picture) => {
           if (
             Buffer.isBuffer(picture.data) &&
@@ -1459,10 +1490,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
             deviceSN: item.device.getSerial(),
           });
         })
-        .finally(() => {
-          this.dashboardSnapshotActive--;
-          setTimeout(() => this.drainDashboardSnapshotQueue(), 250);
-        });
+        .finally(finished);
     }
   }
 
@@ -2975,27 +3003,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
       ) {
         device.setCustomPropertyValue(PropertyName.DeviceRTSPStreamUrl, "");
       } else if (name === PropertyName.DevicePictureUrl && value !== "") {
-        if (!isValidUrl(value as string)) {
-          this.getStation(device.getStationSerial())
-            .then((station: Station) => {
-              if (station.hasCommand(CommandName.StationDownloadImage)) {
-                station.downloadImage(value as string);
-              }
-            })
-            .catch((err) => {
-              const error = ensureError(err);
-              rootMainLogger.error(`Device property changed error - station download image`, {
-                error: getError(error),
-                deviceSN: device.getSerial(),
-                stationSN: device.getStationSerial(),
-                propertyName: name,
-                propertyValue: value,
-                ready: ready,
-              });
-            });
-        } else {
-          this.queueDashboardSnapshot(device, value);
-        }
+        this.queueDashboardSnapshot(device, value);
       }
     } catch (err) {
       const error = ensureError(err);

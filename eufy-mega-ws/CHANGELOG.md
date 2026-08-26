@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.3 — 2026-08-26
+
+- Populate initial non-URL `cover_path` values through the owning HomeBase; the
+  prior handler saw only later property changes and missed the official app's
+  already-present startup cards.
+- Delay cover retrieval ten seconds for station readiness and issue strictly one
+  image request every 1.25 seconds. This path uses HomeBase thumbnail download,
+  never livestream or FFmpeg.
+
 ## 1.6.2 — 2026-08-26
 
 - Download authenticated `cover_path` dashboard thumbnails used by the official

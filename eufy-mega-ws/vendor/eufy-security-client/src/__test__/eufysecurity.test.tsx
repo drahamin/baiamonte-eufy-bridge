@@ -101,4 +101,32 @@ describe("EufySecurity snapshot cache", () => {
     ).not.toThrow();
     expect(device.setCustomPropertyValue).not.toHaveBeenCalled();
   });
+
+  it("queues an initial HomeBase cover path without opening a stream", async () => {
+    jest.useFakeTimers();
+    const downloadImage = jest.fn();
+    const station = {
+      isConnected: jest.fn().mockReturnValue(true),
+      hasCommand: jest.fn().mockReturnValue(true),
+      downloadImage,
+      getSerial: () => "station",
+    };
+    Object.assign(security as unknown as Record<string, unknown>, {
+      dashboardSnapshotQueue: [],
+      dashboardSnapshotActive: 0,
+      dashboardSnapshotUrls: new Map(),
+      getStation: jest.fn().mockResolvedValue(station),
+    });
+    const device = {
+      getSerial: () => "camera",
+      getStationSerial: () => "station",
+      hasProperty: jest.fn().mockReturnValue(true),
+    };
+
+    (security as any).queueDashboardSnapshot(device, "/mnt/data/cover.jpg");
+    await jest.advanceTimersByTimeAsync(10_000);
+
+    expect(downloadImage).toHaveBeenCalledWith("/mnt/data/cover.jpg");
+    jest.useRealTimers();
+  });
 });
