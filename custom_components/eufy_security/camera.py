@@ -10,7 +10,7 @@ from homeassistant.components import ffmpeg
 from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.components.ffmpeg import DATA_FFMPEG
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
@@ -26,6 +26,7 @@ from .eufy_security_api.exceptions import (
     WebSocketConnectionException,
 )
 from .eufy_security_api.metadata import Metadata
+from .snapshot import is_valid_snapshot, product_snapshot_bytes
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -121,12 +122,9 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
 
         # camera image
         self._last_url = None
-        self._last_image = None
+        self._last_image = product_snapshot_bytes(self.product)
         self.product.stream_stopped_listener = self._stop_hass_streaming
         self._scheduled_snapshot_lock = asyncio.Lock()
-        if self.product.picture_base64 is not None:
-            self._last_image = self.product.picture_bytes
-
         # ffmpeg entities
         self.ffmpeg = self.coordinator.hass.data[DATA_FFMPEG]
 
@@ -213,11 +211,12 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         """
         commands = set(self.product.commands or [])
         snapshot_updated_at = self.product.image_last_updated
+        snapshot = product_snapshot_bytes(self.product, self._last_image)
         return {
             **super().extra_state_attributes,
             "model": self.product.model,
             "connected": bool(self.product.properties.get("connected", True)),
-            "snapshot_available": self.product.picture_base64 is not None,
+            "snapshot_available": snapshot is not None,
             "snapshot_updated_at": (
                 snapshot_updated_at.isoformat() if snapshot_updated_at else None
             ),
@@ -252,9 +251,21 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         turn on a camera or create a P2P session; live video is an explicit user
         action handled by the livestream services.
         """
-        if self.product.picture_base64 is not None:
-            self._last_image = self.product.picture_bytes
+        snapshot = product_snapshot_bytes(self.product, self._last_image)
+        if snapshot is not None:
+            self._last_image = snapshot
         return self._last_image
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Keep a verified frame and invalidate failed frontend image responses."""
+        snapshot = product_snapshot_bytes(self.product, self._last_image)
+        if snapshot is not None and snapshot != self._last_image:
+            self._last_image = snapshot
+            # The camera proxy URL is tokenized. Rotate it as soon as the frame
+            # changes so iOS/Android dashboards do not retain an earlier 404.
+            self.async_update_token()
+        super()._handle_coordinator_update()
 
     async def async_refresh_stale_snapshot(self) -> bool:
         """Capture one frame when every non-live source is more than a day old."""
@@ -289,7 +300,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                             )
                     if frame is None:
                         await asyncio.sleep(0.5)
-                if not frame:
+                if not is_valid_snapshot(frame):
                     return False
                 self._last_image = frame
                 self.product.properties["picture"] = {

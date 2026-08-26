@@ -41,6 +41,7 @@ from .evidence import (
     normalize_cloud_event,
     normalize_local_event,
 )
+from .snapshot import is_valid_snapshot
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -475,11 +476,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
     @staticmethod
     def _valid_snapshot(content: bytes) -> bool:
-        return 1000 < len(content) <= 10 * 1024 * 1024 and (
-            content.startswith(b"\xff\xd8\xff")
-            or content.startswith(b"\x89PNG\r\n\x1a\n")
-            or (content.startswith(b"RIFF") and content[8:12] == b"WEBP")
-        )
+        return is_valid_snapshot(content)
 
     @callback
     def async_update_listeners(self) -> None:

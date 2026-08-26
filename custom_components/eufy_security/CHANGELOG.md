@@ -1,5 +1,11 @@
 # Changelog
 
+## 9.6.1 — 2026-08-26
+
+- Keep the last verified camera and image frame when a device emits an empty or
+  malformed picture update, and rotate Home Assistant's camera-proxy token as soon
+  as a valid frame changes so mobile dashboards retry previously blank previews.
+
 ## 9.6.0 — 2026-08-26
 
 - Resolve HomeBase Professional evidence to cameras by station channel when current
