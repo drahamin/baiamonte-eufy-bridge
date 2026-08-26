@@ -63,8 +63,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
     async def initialize(self):
         """Initialize the integration"""
         try:
-            await self._api.connect()
-            await self._refresh_bridge_status()
+            async with asyncio.timeout(180):
+                await self._api.connect()
+                await self._refresh_bridge_status()
         except CaptchaRequiredException as exc:
             self.config.captcha_id = exc.captcha_id
             self.config.captcha_img = exc.captcha_img
@@ -76,6 +77,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             raise ConfigEntryNotReady() from exc
         except WebSocketConnectionException as exc:
             raise ConfigEntryNotReady() from exc
+        except asyncio.TimeoutError as exc:
+            raise ConfigEntryNotReady(
+                "Baiamonte eufy Bridge inventory did not finish within three minutes"
+            ) from exc
 
     @property
     def platforms(self):
@@ -125,22 +130,25 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         local_stations = []
 
         if source in {"hybrid", "cloud"}:
-            raw = await self._api.get_history_events(
-                int(start.timestamp() * 1000),
-                int(end.timestamp() * 1000),
-                {
-                    "stationSN": station_serial,
-                    "deviceSN": device_serial,
-                    "storageType": 0,
-                },
-                max_results,
-            )
-            for record in raw:
-                event = normalize_cloud_event(record)
-                event["ai"] = cloud_ai_details(record)
-                self._add_ai_image_urls(event)
-                self._remember_evidence(event["event_id"], "cloud", record)
-                events.append(event)
+            try:
+                raw = await self._api.get_history_events(
+                    int(start.timestamp() * 1000),
+                    int(end.timestamp() * 1000),
+                    {
+                        "stationSN": station_serial,
+                        "deviceSN": device_serial,
+                        "storageType": 0,
+                    },
+                    max_results,
+                )
+                for record in raw:
+                    event = normalize_cloud_event(record)
+                    event["ai"] = cloud_ai_details(record)
+                    self._add_ai_image_urls(event)
+                    self._remember_evidence(event["event_id"], "cloud", record)
+                    events.append(event)
+            except (WebSocketConnectionException, asyncio.TimeoutError) as exc:
+                warnings.append(f"account_index: {type(exc).__name__}")
 
         if source in {"hybrid", "local"}:
             for station in self.stations.values():

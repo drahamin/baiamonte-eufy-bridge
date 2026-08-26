@@ -135,51 +135,62 @@ class ApiClient:
         )
 
     async def _get_products(self, product_type: ProductType, products: list) -> dict:
-        response = {}
-        for serial_no in products:
-            product: Product = None
-            properties = await self._get_properties(product_type, serial_no)
-            metadata = await self._get_metadata(product_type, serial_no)
-            commands = await self._get_commands(product_type, serial_no)
+        """Build product inventory with bounded bridge request concurrency."""
+        semaphore = asyncio.Semaphore(4)
 
-            if product_type == ProductType.device:
-                if ProductCommand.start_livestream.name in commands:
-                    is_rtsp_streaming = await self._get_is_rtsp_streaming(
-                        product_type, serial_no
-                    )
-                    is_p2p_streaming = await self._get_is_p2p_streaming(
-                        product_type, serial_no
-                    )
-                    voices = await self._get_voices(product_type, serial_no)
-                    product = Camera(
-                        self,
-                        serial_no,
-                        properties,
-                        metadata,
-                        commands,
-                        self._config,
-                        is_rtsp_streaming,
-                        is_p2p_streaming,
-                        voices,
-                    )
-                else:
-                    product = Device(self, serial_no, properties, metadata, commands)
-            else:
-                properties[MessageField.CONNECTED.value] = await self._get_is_connected(
+        async def build_product(serial_no: str):
+            async with semaphore:
+                return serial_no, await self._build_product(product_type, serial_no)
+
+        entries = await asyncio.gather(
+            *(build_product(serial_no) for serial_no in products)
+        )
+        return dict(entries)
+
+    async def _build_product(self, product_type: ProductType, serial_no: str):
+        """Build one product from bridge properties, metadata and commands."""
+        product: Product = None
+        properties = await self._get_properties(product_type, serial_no)
+        metadata = await self._get_metadata(product_type, serial_no)
+        commands = await self._get_commands(product_type, serial_no)
+
+        if product_type == ProductType.device:
+            if ProductCommand.start_livestream.name in commands:
+                is_rtsp_streaming = await self._get_is_rtsp_streaming(
                     product_type, serial_no
                 )
-                metadata[MessageField.CONNECTED.value] = {
-                    "key": MessageField.CONNECTED.value,
-                    "name": MessageField.CONNECTED.value,
-                    "label": "Connected",
-                    "readable": True,
-                    "writeable": False,
-                    "type": "boolean",
-                }
-                product = Station(self, serial_no, properties, metadata, commands)
+                is_p2p_streaming = await self._get_is_p2p_streaming(
+                    product_type, serial_no
+                )
+                voices = await self._get_voices(product_type, serial_no)
+                product = Camera(
+                    self,
+                    serial_no,
+                    properties,
+                    metadata,
+                    commands,
+                    self._config,
+                    is_rtsp_streaming,
+                    is_p2p_streaming,
+                    voices,
+                )
+            else:
+                product = Device(self, serial_no, properties, metadata, commands)
+        else:
+            properties[MessageField.CONNECTED.value] = await self._get_is_connected(
+                product_type, serial_no
+            )
+            metadata[MessageField.CONNECTED.value] = {
+                "key": MessageField.CONNECTED.value,
+                "name": MessageField.CONNECTED.value,
+                "label": "Connected",
+                "readable": True,
+                "writeable": False,
+                "type": "boolean",
+            }
+            product = Station(self, serial_no, properties, metadata, commands)
 
-            response[serial_no] = product
-        return response
+        return product
 
     async def set_captcha_and_connect(self, captcha_id: str, captcha_input: str):
         """Set captcha set products"""

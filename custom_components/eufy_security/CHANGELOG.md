@@ -1,5 +1,19 @@
 # Changelog
 
+## 9.5.1 — 2026-08-25
+
+- Load camera snapshots automatically in a single-file queue with a two-second gap. Manual
+  refreshes share the same one-at-a-time gate, while live streams remain explicit, preventing a
+  large camera inventory from saturating P2P.
+- Degrade an unavailable account index to the compatible local HomeBase index with a visible
+  warning instead of failing the entire evidence query.
+- Start and stop the Eufy P2P session around dashboard live view, instead of asking Home
+  Assistant to play an idle camera source.
+- Migrate the legacy `no_stream_in_hass` option off so native HLS video is available on existing
+  Miami and Baiamonte entries.
+- Discover large camera inventories through a four-at-a-time bridge queue and abandon a wedged
+  inventory after three minutes, preventing Eufy setup from blocking Home Assistant startup.
+
 ## 9.5.0 — 2026-08-25
 
 - Add an authenticated Baiamonte Eufy Security application with a responsive DVR-style live

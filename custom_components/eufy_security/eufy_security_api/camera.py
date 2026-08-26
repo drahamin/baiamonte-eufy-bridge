@@ -6,7 +6,11 @@ from enum import Enum
 
 from .const import GO2RTC_RTSP_PORT, STREAM_TIMEOUT_SECONDS, MessageField
 from .event import Event
-from .exceptions import CameraRTSPStreamNotEnabled, CameraRTSPStreamNotSupported
+from .exceptions import (
+    CameraRTSPStreamNotEnabled,
+    CameraRTSPStreamNotSupported,
+    WebSocketConnectionException,
+)
 from .p2p_streamer import P2PStreamer
 from .product import Device
 
@@ -209,13 +213,23 @@ class Camera(Device):
 
         _LOGGER.debug(f"async_restart_livestream - start - {self.p2p_streamer.retry}")
         if self.stream_status != StreamStatus.IDLE:
-            await self.stop_livestream(is_internal=True)
+            try:
+                await self.stop_livestream(is_internal=True)
+            except WebSocketConnectionException:
+                self.stream_status = StreamStatus.IDLE
+                self.stream_debug = "warning - bridge did not acknowledge stream cleanup"
+                _LOGGER.warning("Bridge did not acknowledge expired stream cleanup")
 
         if self.p2p_streamer.retry is True:
             _LOGGER.debug(
                 f"async_restart_livestream - start live stream start - {self.p2p_streamer.retry}"
             )
-            await self.start_livestream()
+            try:
+                await self.start_livestream()
+            except WebSocketConnectionException:
+                self.stream_status = StreamStatus.IDLE
+                self.stream_debug = "warning - bridge did not acknowledge stream retry"
+                _LOGGER.warning("Bridge did not acknowledge livestream retry")
             _LOGGER.debug(
                 f"async_restart_livestream - start live stream end - {self.p2p_streamer.retry}"
             )

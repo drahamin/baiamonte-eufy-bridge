@@ -20,6 +20,7 @@ from .coordinator import EufySecurityDataUpdateCoordinator
 from .entity import EufySecurityEntity
 from .eufy_security_api.camera import StreamProvider, StreamStatus
 from .eufy_security_api.const import STREAM_SLEEP_SECONDS, STREAM_TIMEOUT_SECONDS
+from .eufy_security_api.exceptions import WebSocketConnectionException
 from .eufy_security_api.metadata import Metadata
 from .eufy_security_api.util import wait_for_value_to_equal
 
@@ -254,7 +255,13 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                     )
             finally:
                 if started_here:
-                    await self.product.stop_livestream()
+                    try:
+                        async with asyncio.timeout(STREAM_TIMEOUT_SECONDS):
+                            await self.product.stop_livestream()
+                    except (asyncio.TimeoutError, WebSocketConnectionException):
+                        _LOGGER.warning(
+                            "Camera snapshot cleanup timed out; releasing the HTTP request"
+                        )
 
         _LOGGER.debug("Camera image result empty=%s", self._last_image is None)
         if self._last_image is not None:

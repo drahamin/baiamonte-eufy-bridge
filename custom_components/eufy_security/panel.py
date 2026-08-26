@@ -23,7 +23,7 @@ async def register_panel(hass: HomeAssistant) -> None:
         hass,
         frontend_url_path=PANEL_PATH,
         webcomponent_name="baiamonte-eufy-security-panel",
-        module_url="/baiamonte_eufy_assets/evidence-panel.js?v=9.5.0",
+        module_url="/baiamonte_eufy_assets/evidence-panel.js?v=9.5.1",
         sidebar_title="Baiamonte Eufy Security",
         sidebar_icon="mdi:cctv",
         require_admin=False,

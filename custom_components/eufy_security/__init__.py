@@ -113,10 +113,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Adopt an existing Eufy Security entry without changing entity identities."""
-    if config_entry.version > 2:
+    if config_entry.version > 3:
         return False
-    if config_entry.version < 2 or config_entry.title != NAME:
-        hass.config_entries.async_update_entry(config_entry, title=NAME, version=2)
+    if config_entry.version < 3 or config_entry.title != NAME:
+        options = dict(config_entry.options)
+        if config_entry.version < 3:
+            # The authenticated DVR panel uses Home Assistant's native HLS endpoint.
+            # Older installations commonly carried this legacy CPU-saving switch.
+            options["no_stream_in_hass"] = False
+        hass.config_entries.async_update_entry(
+            config_entry, title=NAME, version=3, options=options
+        )
         _LOGGER.info("Migrated the existing Eufy Security entry to %s", NAME)
     return True
 
