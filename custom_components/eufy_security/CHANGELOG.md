@@ -1,5 +1,13 @@
 # Changelog
 
+## 9.6.2 — 2026-08-26
+
+- Add an explicit **Capture camera snapshot** entity action that obtains one frame
+  through a bounded P2P session, always stops the session, and notifies the
+  coordinator so the verified frame is token-rotated and durably cached.
+- Keep dashboard image requests non-live and preserve the previous image whenever
+  a camera cannot deliver a replacement frame.
+
 ## 9.6.1 — 2026-08-26
 
 - Keep the last verified camera and image frame when a device emits an empty or

@@ -57,6 +57,9 @@ async def async_setup_entry(
     platform = entity_platform.async_get_current_platform()
     platform.async_register_entity_service("generate_image", {}, "_generate_image")
     platform.async_register_entity_service(
+        "capture_snapshot", {}, "_capture_snapshot"
+    )
+    platform.async_register_entity_service(
         "start_p2p_livestream", {}, "_start_livestream"
     )
     platform.async_register_entity_service(
@@ -267,10 +270,14 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             self.async_update_token()
         super()._handle_coordinator_update()
 
-    async def async_refresh_stale_snapshot(self) -> bool:
-        """Capture one frame when every non-live source is more than a day old."""
+    async def async_refresh_stale_snapshot(self, *, force: bool = False) -> bool:
+        """Capture one bounded frame when requested or every source is stale."""
         updated_at = self.product.image_last_updated
-        if updated_at is not None and datetime.now(timezone.utc) - updated_at < timedelta(hours=24):
+        if (
+            not force
+            and updated_at is not None
+            and datetime.now(timezone.utc) - updated_at < timedelta(hours=24)
+        ):
             return False
         if self.is_streaming or not {
             "start_livestream",
@@ -308,8 +315,13 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                     "type": {"mime": "image/jpeg"},
                 }
                 self.product.image_last_updated = datetime.now(timezone.utc)
-                self.product.snapshot_source = "scheduled_live_capture"
-                self.async_write_ha_state()
+                self.product.snapshot_source = (
+                    "explicit_live_capture" if force else "scheduled_live_capture"
+                )
+                # Notify every camera/cache listener, rotate the camera token and
+                # persist the verified frame. A direct entity state write does not
+                # exercise the coordinator's durable snapshot cache.
+                self.coordinator.async_update_listeners()
                 return True
             except (
                 asyncio.TimeoutError,
@@ -422,6 +434,15 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
 
     async def _generate_image(self) -> None:
         await self.async_camera_image()
+
+    async def _capture_snapshot(self) -> None:
+        """Capture and persist one frame after an explicit user action."""
+        if await self.async_refresh_stale_snapshot(force=True):
+            return
+        raise ServiceValidationError(
+            f"{self.product.name} did not deliver a snapshot; "
+            "its prior image was preserved"
+        )
 
     async def _async_quick_response(self, voice_id: int) -> None:
         await self.product.quick_response(voice_id)
