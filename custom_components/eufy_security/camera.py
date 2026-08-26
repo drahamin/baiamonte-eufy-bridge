@@ -115,6 +115,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         self._last_url = None
         self._last_image = None
         self._snapshot_lock = asyncio.Lock()
+        self._stream_start_lock = asyncio.Lock()
         if self.product.picture_base64 is not None:
             self._last_image = self.product.picture_bytes
 
@@ -147,6 +148,17 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
     async def async_create_stream(self):
         if self.coordinator.config.no_stream_in_hass is True:
             return None
+        async with self._stream_start_lock:
+            if self.is_streaming is False:
+                commands = set(self.product.commands or [])
+                if not {"start_livestream", "stop_livestream"}.issubset(commands):
+                    return None
+                if await self.product.start_livestream() is False:
+                    return None
+                if not await wait_for_value_to_equal(
+                    self.product.__dict__, "stream_status", StreamStatus.STREAMING
+                ):
+                    return None
         return await super().async_create_stream()
 
     async def _start_hass_streaming(self):

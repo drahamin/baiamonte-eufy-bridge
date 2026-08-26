@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.5.2 — 2026-08-25
+
+- Start Eufy P2P automatically when Home Assistant's native camera player requests HLS, fixing
+  blank video in standard Miami camera cards as well as the companion DVR page.
+- Contain expired stream-retry failures so a missing bridge acknowledgement cannot escape from a
+  background task or delay camera HTTP cleanup.
+
 ## 9.5.1 — 2026-08-25
 
 - Load camera snapshots automatically in a single-file queue with a two-second gap. Manual
