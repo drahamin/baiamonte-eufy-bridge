@@ -1,5 +1,34 @@
 # Changelog
 
+## 9.5.6 — 2026-08-26
+
+- Never start live video from Home Assistant camera-image polling or dashboard
+  loading. Tiles show the newest available snapshot; interactive P2P starts only
+  from **Live**, while the daily stale-image fallback may capture one bounded frame.
+- Prevent Home Assistant's automatic stream probe from starting P2P as well;
+  native playback may attach only after a user has explicitly opened a source.
+- Automatically build a 24-hour hybrid account/HomeBase evidence index and choose
+  each camera's newest matching event thumbnail first, falling back to its cached
+  push snapshot before the scheduled one-frame capture fallback is considered.
+- Query HomeBase snapshot indexes through a four-wide, per-endpoint bounded queue
+  with a 45-second overall deadline, so offline storage does not hold the UI.
+- Advertise Eufy camera entities as snapshot-only to native HA cards, preventing
+  their background `play_stream` probes; the companion's **Live** action remains.
+- Overlay each snapshot with green/current, amber/stale-or-unknown, or red/offline
+  status and expose the precise snapshot age in its tooltip.
+- Refresh the hybrid cloud/HomeBase thumbnail index every 24 hours (first pass is
+  delayed five minutes after startup), validate image bytes, and update camera
+  snapshots before considering a camera wake-up.
+- If every non-live source is missing or older than 24 hours, refresh cameras
+  strictly one at a time with a short P2P session, capture one frame, and stop it
+  immediately under hard start/capture/cleanup deadlines.
+
+## 9.5.5 — 2026-08-26
+
+- Bound MJPEG media startup and always stop its Eufy P2P source when the browser
+  disconnects or a camera opens without delivering playable bytes. A missing
+  model-specific media path can now fail one tile without wedging Home Assistant.
+
 ## 9.5.4 — 2026-08-26
 
 - Keep companion proxy sessions separate from Home Assistant's persistent stream

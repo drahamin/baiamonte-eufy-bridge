@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from datetime import datetime, timedelta, timezone
 
 from haffmpeg.camera import CameraMjpeg
 from homeassistant.components import ffmpeg
@@ -19,13 +20,12 @@ from .const import COORDINATOR, DOMAIN, Schema
 from .coordinator import EufySecurityDataUpdateCoordinator
 from .entity import EufySecurityEntity
 from .eufy_security_api.camera import StreamProvider, StreamStatus
-from .eufy_security_api.const import STREAM_SLEEP_SECONDS, STREAM_TIMEOUT_SECONDS
+from .eufy_security_api.const import STREAM_TIMEOUT_SECONDS
 from .eufy_security_api.exceptions import (
     FailedCommandException,
     WebSocketConnectionException,
 )
 from .eufy_security_api.metadata import Metadata
-from .eufy_security_api.util import wait_for_value_to_equal
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -46,6 +46,9 @@ async def async_setup_entry(
 
     entities = [
         EufySecurityCamera(coordinator, metadata) for metadata in product_properties
+    ]
+    coordinator.camera_snapshot_refreshers = [
+        entity.async_refresh_stale_snapshot for entity in entities
     ]
     async_add_entities(entities)
 
@@ -111,15 +114,16 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
     ) -> None:
         Camera.__init__(self)
         EufySecurityEntity.__init__(self, coordinator, metadata)
-        self._attr_supported_features = CameraEntityFeature.STREAM
+        # Native camera cards probe STREAM automatically.  The companion owns the
+        # explicit Live action, so advertise snapshot-only behavior to HA itself.
+        self._attr_supported_features = CameraEntityFeature(0)
         self._attr_name = f"{self.product.name}"
 
         # camera image
         self._last_url = None
         self._last_image = None
-        self._snapshot_lock = asyncio.Lock()
-        self._stream_start_lock = asyncio.Lock()
         self.product.stream_stopped_listener = self._stop_hass_streaming
+        self._scheduled_snapshot_lock = asyncio.Lock()
         if self.product.picture_base64 is not None:
             self._last_image = self.product.picture_bytes
 
@@ -133,47 +137,51 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         return self.product.stream_url
 
     async def handle_async_mjpeg_stream(self, request):
-        """this is probabaly triggered by user request, turn on"""
+        """Proxy one bounded live session and always release its Eufy source."""
         stream_source = await self.stream_source()
         if stream_source is None:
             return await super().handle_async_mjpeg_stream(request)
         stream = CameraMjpeg(self.ffmpeg.binary)
-        await stream.open_camera(stream_source)
         try:
+            async with asyncio.timeout(STREAM_TIMEOUT_SECONDS):
+                await stream.open_camera(stream_source)
             return await async_aiohttp_proxy_stream(
                 self.hass,
                 request,
                 await stream.get_reader(),
                 self.ffmpeg.ffmpeg_stream_content_type,
             )
+        except asyncio.TimeoutError as exc:
+            raise ServiceValidationError(
+                f"{self.product.model} opened P2P but delivered no playable media"
+            ) from exc
         finally:
             await stream.close()
+            if (
+                self.product.stream_provider == StreamProvider.P2P
+                and self.is_streaming
+            ):
+                try:
+                    async with asyncio.timeout(8):
+                        await self.product.stop_livestream()
+                except (
+                    asyncio.TimeoutError,
+                    FailedCommandException,
+                    WebSocketConnectionException,
+                ):
+                    self.product.stream_status = StreamStatus.IDLE
+                    await self._stop_hass_streaming()
+                    _LOGGER.warning(
+                        "Camera proxy cleanup was not acknowledged; source released locally"
+                    )
 
     async def async_create_stream(self):
+        """Create HA playback only for a source the user already started."""
         if self.coordinator.config.no_stream_in_hass is True:
             return None
-        async with self._stream_start_lock:
-            if self.is_streaming is False:
-                commands = set(self.product.commands or [])
-                if not {"start_livestream", "stop_livestream"}.issubset(commands):
-                    return None
-                if await self.product.start_livestream() is False:
-                    return None
-                if not await wait_for_value_to_equal(
-                    self.product.__dict__, "stream_status", StreamStatus.STREAMING
-                ):
-                    return None
+        if self.is_streaming is False:
+            return None
         return await super().async_create_stream()
-
-    async def _start_hass_streaming(self):
-        await wait_for_value_to_equal(
-            self.product.__dict__, "stream_status", StreamStatus.STREAMING
-        )
-        await self._stop_hass_streaming()
-        await self.async_create_stream()
-        if self.stream is not None:
-            await self.stream.start()
-        await self.async_camera_image()
 
     async def _stop_hass_streaming(self):
         if self.stream is not None:
@@ -204,9 +212,16 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         controls that the connected camera does not advertise.
         """
         commands = set(self.product.commands or [])
+        snapshot_updated_at = self.product.image_last_updated
         return {
             **super().extra_state_attributes,
             "model": self.product.model,
+            "connected": bool(self.product.properties.get("connected", True)),
+            "snapshot_available": self.product.picture_base64 is not None,
+            "snapshot_updated_at": (
+                snapshot_updated_at.isoformat() if snapshot_updated_at else None
+            ),
+            "snapshot_source": getattr(self.product, "snapshot_source", None),
             "capabilities": {
                 "streaming": bool(
                     {"start_livestream", "stop_livestream"} & commands
@@ -228,96 +243,81 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             "stream_debug": self.product.stream_debug,
         }
 
-    async def _get_image_from_stream_url(self, width, height):
-        while True:
-            result = await ffmpeg.async_get_image(
-                self.hass, await self.stream_source(), width=width, height=height
-            )
-            if result is not None:
-                _LOGGER.debug(f"_get_image_from_stream_url - received {len(result)}")
-                return result
-            _LOGGER.debug(f"_get_image_from_stream_url - is_empty {result is None}")
-            await asyncio.sleep(STREAM_SLEEP_SECONDS)
-
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Return a cached frame and opportunistically refresh one camera at a time."""
+        """Return only the latest cached Eufy event frame.
+
+        Camera cards and dashboards poll this method automatically.  They must never
+        turn on a camera or create a P2P session; live video is an explicit user
+        action handled by the livestream services.
+        """
         if self.product.picture_base64 is not None:
             self._last_image = self.product.picture_bytes
-            return self._last_image
+        return self._last_image
 
-        # A device page can ask dozens of camera entities for thumbnails in one
-        # render.  Never queue those requests: the first camera may refresh while
-        # the others return cached data and retry on Home Assistant's next poll.
-        snapshot_semaphore = self.coordinator.camera_snapshot_semaphore
-        if snapshot_semaphore.locked():
-            return self._last_image
+    async def async_refresh_stale_snapshot(self) -> bool:
+        """Capture one frame when every non-live source is more than a day old."""
+        updated_at = self.product.image_last_updated
+        if updated_at is not None and datetime.now(timezone.utc) - updated_at < timedelta(hours=24):
+            return False
+        if self.is_streaming or not {
+            "start_livestream",
+            "stop_livestream",
+        }.issubset(set(self.product.commands or [])):
+            return False
 
-        async with snapshot_semaphore:
-            # An event image may have arrived while this request waited for the
-            # account-wide capture slot.
-            if self.product.picture_base64 is not None:
-                self._last_image = self.product.picture_bytes
-                return self._last_image
-
-            return await self._async_refresh_camera_image(width, height)
-
-    async def _async_refresh_camera_image(
-        self, width: int | None = None, height: int | None = None
-    ) -> bytes | None:
-        """Capture one bounded P2P frame without failing the camera HTTP request."""
-        async with self._snapshot_lock:
-            _LOGGER.debug("Camera image requested; streaming=%s", self.is_streaming)
-            started_here = False
-            if (
-                self.is_streaming is False
-                and "start_livestream" in self.product.commands
-                and "stop_livestream" in self.product.commands
-            ):
-                try:
-                    started_here = await self.product.start_livestream()
-                except FailedCommandException as exc:
-                    if exc.error_code != "device_livestream_already_running":
-                        _LOGGER.warning(
-                            "Camera snapshot start was rejected: %s", exc.error_code
-                        )
-                    return self._last_image
-                if started_here:
-                    await wait_for_value_to_equal(
-                        self.product.__dict__,
-                        "stream_status",
-                        StreamStatus.STREAMING,
-                    )
-
+        async with self._scheduled_snapshot_lock:
+            started = False
             try:
-                if self.is_streaming is True:
-                    with contextlib.suppress(asyncio.TimeoutError):
-                        self._last_image = await asyncio.wait_for(
-                            self._get_image_from_stream_url(width, height),
-                            STREAM_TIMEOUT_SECONDS,
-                        )
-                    _LOGGER.debug(
-                        "Camera image capture empty=%s", self._last_image is None
-                    )
+                async with asyncio.timeout(STREAM_TIMEOUT_SECONDS):
+                    started = await self.product.start_livestream()
+                if not started:
+                    return False
+
+                frame = None
+                deadline = asyncio.get_running_loop().time() + STREAM_TIMEOUT_SECONDS
+                while frame is None and asyncio.get_running_loop().time() < deadline:
+                    if self.is_streaming:
+                        with contextlib.suppress(asyncio.TimeoutError):
+                            frame = await asyncio.wait_for(
+                                ffmpeg.async_get_image(
+                                    self.hass,
+                                    await self.stream_source(),
+                                ),
+                                timeout=4,
+                            )
+                    if frame is None:
+                        await asyncio.sleep(0.5)
+                if not frame:
+                    return False
+                self._last_image = frame
+                self.product.properties["picture"] = {
+                    "data": frame,
+                    "type": {"mime": "image/jpeg"},
+                }
+                self.product.image_last_updated = datetime.now(timezone.utc)
+                self.product.snapshot_source = "scheduled_live_capture"
+                self.async_write_ha_state()
+                return True
+            except (
+                asyncio.TimeoutError,
+                FailedCommandException,
+                WebSocketConnectionException,
+            ):
+                return False
             finally:
-                if started_here:
+                if started:
                     try:
-                        async with asyncio.timeout(STREAM_TIMEOUT_SECONDS):
+                        async with asyncio.timeout(8):
                             await self.product.stop_livestream()
                     except (
                         asyncio.TimeoutError,
                         FailedCommandException,
                         WebSocketConnectionException,
                     ):
-                        _LOGGER.warning(
-                            "Camera snapshot cleanup timed out; releasing the HTTP request"
-                        )
-
-        _LOGGER.debug("Camera image result empty=%s", self._last_image is None)
-        if self._last_image is not None:
-            _LOGGER.debug("Camera image result bytes=%s", len(self._last_image))
-        return self._last_image
+                        self.product.stream_status = StreamStatus.IDLE
+                        await self._stop_hass_streaming()
 
     async def _start_livestream(self) -> None:
         """Start a P2P source for the bounded camera proxy request."""

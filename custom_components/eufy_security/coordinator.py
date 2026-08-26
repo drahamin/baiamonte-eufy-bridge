@@ -14,7 +14,8 @@ from datetime import datetime, timedelta, timezone
 import aiohttp
 from homeassistant.components.persistent_notification import async_create
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.core import CoreState, Event, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import aiohttp_client
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -56,14 +57,12 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self._session = aiohttp_client.async_get_clientsession(self.hass)
         self._api = ApiClient(self.config, self._session, self._on_error)
         self._reload_pending = False
-        # Camera cards can request every thumbnail at the same time.  Eufy stations
-        # do not tolerate parallel P2P setup well, so permit one opportunistic
-        # snapshot capture for the whole account while the remaining cards return
-        # their cached event image immediately.
-        self.camera_snapshot_semaphore = asyncio.Semaphore(1)
         self.last_bridge_error: str | None = None
         self._evidence_records: dict[str, dict] = {}
         self._evidence_video_cache: dict[str, bytes] = {}
+        self.camera_snapshot_refreshers = []
+        self._daily_snapshot_task: asyncio.Task | None = None
+        self._daily_snapshot_unsub = None
 
     async def initialize(self):
         """Initialize the integration"""
@@ -71,6 +70,22 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             async with asyncio.timeout(180):
                 await self._api.connect()
                 await self._refresh_bridge_status()
+                if (
+                    self._daily_snapshot_task is None
+                    and self._daily_snapshot_unsub is None
+                ):
+                    if self.hass.state == CoreState.running:
+                        self._start_daily_snapshot_task()
+                    else:
+                        # Do not create the long-lived sleeper during integration
+                        # setup: HA waits for setup-created tasks before declaring
+                        # startup complete.
+                        self._daily_snapshot_unsub = (
+                            self.hass.bus.async_listen_once(
+                                EVENT_HOMEASSISTANT_STARTED,
+                                self._async_home_assistant_started,
+                            )
+                        )
         except CaptchaRequiredException as exc:
             self.config.captcha_id = exc.captcha_id
             self.config.captcha_img = exc.captcha_img
@@ -156,28 +171,31 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 warnings.append(f"account_index: {type(exc).__name__}")
 
         if source in {"hybrid", "local"}:
-            for station in self.stations.values():
+            semaphore = asyncio.Semaphore(4)
+
+            async def query_station(station):
                 if station_serial and station.serial_no != station_serial:
-                    continue
+                    return [], None, None
                 if "database_query_local" not in (station.commands or []):
                     # Station command capabilities are legacy CommandName values; unlike device
                     # commands, schema 21 does not snake-case them.
                     if "stationDatabaseQueryLocal" not in (station.commands or []):
-                        continue
+                        return [], None, None
                 serial_numbers = [device_serial] if device_serial else [
                     device.serial_no
                     for device in self.devices.values()
                     if device.properties.get("stationSerialNumber") == station.serial_no
                 ]
                 if not serial_numbers:
-                    continue
-                local_stations.append(station.model)
+                    return [], None, None
                 try:
-                    raw = await station.database_query_local(
-                        serial_numbers,
-                        start.strftime("%Y%m%d"),
-                        end.strftime("%Y%m%d"),
-                    )
+                    async with semaphore, asyncio.timeout(15):
+                        raw = await station.database_query_local(
+                            serial_numbers,
+                            start.strftime("%Y%m%d"),
+                            end.strftime("%Y%m%d"),
+                        )
+                    station_events = []
                     for record in raw:
                         event = normalize_local_event(record)
                         device = self.devices.get(record.get("device_sn"))
@@ -186,9 +204,36 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         event["ai"] = local_ai_details(record)
                         self._add_ai_image_urls(event)
                         self._remember_evidence(event["event_id"], "local", record)
-                        events.append(event)
-                except (RuntimeError, ValueError, asyncio.TimeoutError) as exc:
-                    warnings.append(f"{station.model}: {type(exc).__name__}")
+                        station_events.append(event)
+                    return station_events, station.model, None
+                except (
+                    RuntimeError,
+                    ValueError,
+                    WebSocketConnectionException,
+                    asyncio.TimeoutError,
+                ) as exc:
+                    return [], station.model, f"{station.model}: {type(exc).__name__}"
+
+            tasks = [
+                asyncio.create_task(query_station(station))
+                for station in self.stations.values()
+            ]
+            done, pending = await asyncio.wait(tasks, timeout=45)
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+                warnings.append(f"local_index: {len(pending)} endpoint timeout")
+            for task in done:
+                try:
+                    station_events, station_model, warning = task.result()
+                except asyncio.CancelledError:
+                    continue
+                events.extend(station_events)
+                if station_model:
+                    local_stations.append(station_model)
+                if warning:
+                    warnings.append(warning)
 
         merged: dict[tuple, dict] = {}
         for event in events:
@@ -237,6 +282,109 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self._evidence_records[event_id] = {"source": source, "record": record}
         while len(self._evidence_records) > 500:
             self._evidence_records.pop(next(iter(self._evidence_records)))
+
+    async def _daily_snapshot_loop(self) -> None:
+        """Refresh non-live snapshots daily without delaying Home Assistant startup."""
+        try:
+            await asyncio.sleep(300)
+            while True:
+                try:
+                    async with asyncio.timeout(10 * 60):
+                        await self.refresh_latest_snapshots()
+                except (asyncio.TimeoutError, RuntimeError, WebSocketConnectionException) as exc:
+                    _LOGGER.warning(
+                        "Daily non-live snapshot refresh was deferred: %s",
+                        type(exc).__name__,
+                    )
+                await asyncio.sleep(24 * 60 * 60)
+        except asyncio.CancelledError:
+            return
+
+    @callback
+    def _async_home_assistant_started(self, _event: Event) -> None:
+        """Start snapshot maintenance only after bootstrap has completed."""
+        self._daily_snapshot_unsub = None
+        self._start_daily_snapshot_task()
+
+    @callback
+    def _start_daily_snapshot_task(self) -> None:
+        """Create the lifecycle-managed daily snapshot worker."""
+        if self._daily_snapshot_task is None:
+            self._daily_snapshot_task = self.hass.async_create_background_task(
+                self._daily_snapshot_loop(),
+                "baiamonte_eufy_daily_snapshot_refresh",
+            )
+
+    async def refresh_latest_snapshots(self) -> dict:
+        """Select the newest cloud/HomeBase thumbnail for every matching camera."""
+        result = await self.search_evidence(source="hybrid", days=1, max_results=200)
+        latest: dict[str, dict] = {}
+        for event in result.get("events", []):
+            name = self._snapshot_name(event.get("device_name"))
+            if name and event.get("thumbnail_url") and name not in latest:
+                latest[name] = event
+
+        updated = 0
+        for device in self.devices.values():
+            candidates = [
+                event
+                for name, event in latest.items()
+                if name == self._snapshot_name(device.name)
+                or name in self._snapshot_name(device.name)
+                or self._snapshot_name(device.name) in name
+            ]
+            if not candidates:
+                continue
+            event = candidates[0]
+            try:
+                async with asyncio.timeout(15):
+                    content, content_type = await self.evidence_thumbnail(
+                        event["event_id"]
+                    )
+            except (ValueError, RuntimeError, asyncio.TimeoutError):
+                continue
+            if not self._valid_snapshot(content):
+                continue
+            device.properties["picture"] = {
+                "data": content,
+                "type": {"mime": content_type},
+            }
+            try:
+                device.image_last_updated = datetime.fromisoformat(
+                    event["start"].replace("Z", "+00:00")
+                )
+            except (AttributeError, TypeError, ValueError):
+                device.image_last_updated = datetime.now(timezone.utc)
+            device.snapshot_source = event.get("source") or "hybrid_index"
+            updated += 1
+
+        if updated:
+            self.async_set_updated_data(self.data)
+        live_updated = 0
+        for refresher in list(self.camera_snapshot_refreshers):
+            try:
+                if await refresher():
+                    live_updated += 1
+            except (RuntimeError, ValueError, asyncio.TimeoutError):
+                continue
+        return {
+            "updated": updated,
+            "scheduled_live_captures": live_updated,
+            "indexed_events": len(result.get("events", [])),
+            "warnings": result.get("warnings", []),
+        }
+
+    @staticmethod
+    def _snapshot_name(value) -> str:
+        return "".join(character for character in str(value or "").lower() if character.isalnum())
+
+    @staticmethod
+    def _valid_snapshot(content: bytes) -> bool:
+        return 1000 < len(content) <= 10 * 1024 * 1024 and (
+            content.startswith(b"\xff\xd8\xff")
+            or content.startswith(b"\x89PNG\r\n\x1a\n")
+            or (content.startswith(b"RIFF") and content[8:12] == b"WEBP")
+        )
 
     @staticmethod
     def _add_ai_image_urls(event: dict) -> None:
@@ -450,6 +598,13 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def disconnect(self):
         """disconnect from api"""
+        if self._daily_snapshot_unsub is not None:
+            self._daily_snapshot_unsub()
+            self._daily_snapshot_unsub = None
+        if self._daily_snapshot_task is not None:
+            self._daily_snapshot_task.cancel()
+            await asyncio.gather(self._daily_snapshot_task, return_exceptions=True)
+            self._daily_snapshot_task = None
         await self._api.disconnect()
         self._api = None
         await self.async_shutdown()

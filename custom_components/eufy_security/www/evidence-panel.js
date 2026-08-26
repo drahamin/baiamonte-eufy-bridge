@@ -119,6 +119,10 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
     } finally {
       this._cameraRegistryLoading = false;
       this.render();
+      if (!this._autoEventsStarted) {
+        this._autoEventsStarted = true;
+        setTimeout(() => void this.loadEvents(), 0);
+      }
     }
   }
 
@@ -132,6 +136,36 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
         return text.includes("eufy") || text.includes("homebase") || text.includes("dock");
       })
       .sort((a, b) => (a.attributes?.friendly_name || a.entity_id).localeCompare(b.attributes?.friendly_name || b.entity_id));
+  }
+
+  latestEvidenceSnapshot(camera) {
+    const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const cameraNames = [
+      camera.attributes?.friendly_name,
+      camera.entity_id.replace(/^camera\./, ""),
+    ].map(normalize).filter(Boolean);
+    const event = this._events.find((event) => {
+      if (!event.thumbnail_url) return false;
+      const eventName = normalize(event.device_name);
+      return cameraNames.some((name) => name === eventName || name.includes(eventName) || eventName.includes(name));
+    });
+    return event ? { url: event.thumbnail_url, updatedAt: event.start, source: event.source } : null;
+  }
+
+  snapshotStatus(camera, evidenceSnapshot) {
+    const connected = camera.state !== "unavailable" && camera.attributes?.connected !== false;
+    const available = Boolean(evidenceSnapshot?.url || camera.attributes?.snapshot_available);
+    const updatedAt = evidenceSnapshot?.updatedAt || camera.attributes?.snapshot_updated_at;
+    if (!connected || !available) {
+      return { state: "down", label: !connected ? "Camera offline" : "No snapshot available" };
+    }
+    if (!updatedAt) return { state: "stale", label: "Camera online · snapshot age unknown" };
+    const ageMs = Math.max(0, Date.now() - new Date(updatedAt).getTime());
+    const minutes = Math.floor(ageMs / 60000);
+    const age = minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago` : `${Math.floor(minutes / 60)}h ago`;
+    return ageMs <= 60 * 60 * 1000
+      ? { state: "current", label: `Camera online · snapshot ${age}` }
+      : { state: "stale", label: `Camera online · snapshot stale (${age})` };
   }
 
   moreInfo(entityId) {
@@ -244,8 +278,13 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
     button.disabled = true;
     button.textContent = "Loading…";
     try {
-      const path = `/api/camera_proxy/${encodeURIComponent(entityId)}?token=${encodeURIComponent(token)}`;
-      const response = await this._hass.fetchWithAuth(path);
+      const cachedPath = `/api/camera_proxy/${encodeURIComponent(entityId)}?token=${encodeURIComponent(token)}`;
+      let path = card.dataset.snapshot || cachedPath;
+      let response = await this._hass.fetchWithAuth(path);
+      if (!response.ok && path !== cachedPath) {
+        path = cachedPath;
+        response = await this._hass.fetchWithAuth(path);
+      }
       if (!response.ok) throw new Error(`Snapshot returned ${response.status}`);
       const url = URL.createObjectURL(await response.blob());
       this._objectUrls.push(url);
@@ -253,8 +292,14 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       image.alt = this._hass.states[entityId]?.attributes?.friendly_name || entityId;
       image.src = url;
       card.querySelector(".camera-preview").replaceChildren(image);
+      card.querySelector(".snapshot-status")?.classList.remove("down");
       button.textContent = "Refresh";
     } catch (_error) {
+      const status = card.querySelector(".snapshot-status");
+      if (status) {
+        status.className = "snapshot-status down";
+        status.title = "Snapshot unavailable";
+      }
       button.textContent = "Retry snapshot";
     } finally {
       button.disabled = false;
@@ -304,14 +349,16 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       </article>`;
     }).join("");
     const live = cameras.map((camera) => {
-      return `<article class="camera" data-entity="${esc(camera.entity_id)}">
-        <div class="camera-preview"><span class="camera-placeholder">Camera idle</span></div>
-        <div class="camera-foot"><strong>${esc(camera.attributes?.friendly_name || camera.entity_id)}</strong><div><button class="snapshot-button">Snapshot</button><button class="live-button">Live</button><button class="more-button">Controls</button></div></div>
+      const evidenceSnapshot = this.latestEvidenceSnapshot(camera);
+      const status = this.snapshotStatus(camera, evidenceSnapshot);
+      return `<article class="camera" data-entity="${esc(camera.entity_id)}" data-snapshot="${esc(evidenceSnapshot?.url || "")}">
+        <div class="camera-preview"><span class="snapshot-status ${status.state}" title="${esc(status.label)}" aria-label="${esc(status.label)}"></span><span class="camera-placeholder">Loading latest snapshot…</span></div>
+        <div class="camera-foot"><strong>${esc(camera.attributes?.friendly_name || camera.entity_id)}</strong><div><button class="snapshot-button">Latest snapshot</button><button class="live-button">Live</button><button class="more-button">Controls</button></div></div>
       </article>`;
     }).join("");
     this.shadowRoot.innerHTML = `<style>
       :host{display:block;min-height:100%;background:var(--primary-background-color);color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,system-ui);padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-      *{box-sizing:border-box}main{max-width:1500px;margin:auto;padding:20px}.hero{display:flex;justify-content:space-between;gap:18px;align-items:end;margin-bottom:18px}h1{font-size:clamp(25px,4vw,42px);margin:0}.sub{color:var(--secondary-text-color);margin:6px 0 0}.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.field{display:grid;gap:5px;color:var(--secondary-text-color);font-size:13px}select,button{font:inherit}select,.load{height:42px;border-radius:11px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);padding:0 14px}.load{background:var(--primary-color);color:var(--text-primary-color);border:0;font-weight:700;cursor:pointer}.section{margin:24px 0 10px}.section h2{margin:0 0 4px}.live{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.camera{padding:0;border:1px solid var(--divider-color);border-radius:16px;overflow:hidden;background:var(--card-background-color);color:var(--primary-text-color)}.camera-preview{width:100%;aspect-ratio:16/9;display:grid;place-items:center;background:#05070a}.camera-preview img{width:100%;height:100%;object-fit:cover;display:block}.camera-placeholder{color:#8e98a9;font-size:13px}.camera-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px}.camera-foot button,.video-load{border:0;border-radius:9px;padding:8px 10px;margin-left:5px;background:color-mix(in srgb,var(--primary-color) 16%,var(--card-background-color));color:var(--primary-color);font-weight:700;cursor:pointer}.events{display:grid;gap:14px}.event-card{display:grid;grid-template-columns:minmax(260px,40%) 1fr;border:1px solid var(--divider-color);border-radius:17px;overflow:hidden;background:var(--card-background-color)}.media{position:relative;background:#05070a;min-height:180px;display:grid;place-items:center}.media img,.media video{width:100%;height:100%;max-height:430px;object-fit:contain}.media .video-load{position:absolute;bottom:12px;left:12px;background:rgba(12,18,28,.86);color:#fff}.nomedia{color:#99a2b3}.event-copy{padding:16px;min-width:0}.event-head{display:flex;justify-content:space-between;gap:10px}.event-head time,.event-copy p{color:var(--secondary-text-color);font-size:13px}.chips{display:flex;flex-wrap:wrap;gap:6px;margin:11px 0}.chips span{padding:4px 8px;border-radius:999px;background:color-mix(in srgb,var(--primary-color) 15%,transparent);color:var(--primary-color);font-size:12px;font-weight:700}.ai-images{display:flex;gap:8px;overflow:auto;margin:8px 0}.ai-images figure{margin:0;min-width:84px}.ai-images img{width:84px;height:84px;object-fit:cover;border-radius:10px;background:#05070a}.ai-images figcaption{font-size:11px;color:var(--secondary-text-color);max-width:84px}details{border-top:1px solid var(--divider-color);padding-top:10px}summary{cursor:pointer;font-weight:650}pre{white-space:pre-wrap;word-break:break-word;color:var(--secondary-text-color);font-size:12px}.status{padding:24px;border:1px dashed var(--divider-color);border-radius:15px;color:var(--secondary-text-color)}.error{color:var(--error-color)}
+      *{box-sizing:border-box}main{max-width:1500px;margin:auto;padding:20px}.hero{display:flex;justify-content:space-between;gap:18px;align-items:end;margin-bottom:18px}h1{font-size:clamp(25px,4vw,42px);margin:0}.sub{color:var(--secondary-text-color);margin:6px 0 0}.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.field{display:grid;gap:5px;color:var(--secondary-text-color);font-size:13px}select,button{font:inherit}select,.load{height:42px;border-radius:11px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);padding:0 14px}.load{background:var(--primary-color);color:var(--text-primary-color);border:0;font-weight:700;cursor:pointer}.section{margin:24px 0 10px}.section h2{margin:0 0 4px}.live{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.camera{padding:0;border:1px solid var(--divider-color);border-radius:16px;overflow:hidden;background:var(--card-background-color);color:var(--primary-text-color)}.camera-preview{position:relative;width:100%;aspect-ratio:16/9;display:grid;place-items:center;background:#05070a}.camera-preview img{width:100%;height:100%;object-fit:cover;display:block}.snapshot-status{position:absolute;z-index:2;top:10px;right:10px;width:13px;height:13px;border:2px solid #fff;border-radius:50%;background:#ff3b4f;box-shadow:0 1px 7px #000}.snapshot-status.current{background:#39d98a}.snapshot-status.stale{background:#ffb020}.snapshot-status.down{background:#ff3b4f}.camera-placeholder{color:#8e98a9;font-size:13px}.camera-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px}.camera-foot button,.video-load{border:0;border-radius:9px;padding:8px 10px;margin-left:5px;background:color-mix(in srgb,var(--primary-color) 16%,var(--card-background-color));color:var(--primary-color);font-weight:700;cursor:pointer}.events{display:grid;gap:14px}.event-card{display:grid;grid-template-columns:minmax(260px,40%) 1fr;border:1px solid var(--divider-color);border-radius:17px;overflow:hidden;background:var(--card-background-color)}.media{position:relative;background:#05070a;min-height:180px;display:grid;place-items:center}.media img,.media video{width:100%;height:100%;max-height:430px;object-fit:contain}.media .video-load{position:absolute;bottom:12px;left:12px;background:rgba(12,18,28,.86);color:#fff}.nomedia{color:#99a2b3}.event-copy{padding:16px;min-width:0}.event-head{display:flex;justify-content:space-between;gap:10px}.event-head time,.event-copy p{color:var(--secondary-text-color);font-size:13px}.chips{display:flex;flex-wrap:wrap;gap:6px;margin:11px 0}.chips span{padding:4px 8px;border-radius:999px;background:color-mix(in srgb,var(--primary-color) 15%,transparent);color:var(--primary-color);font-size:12px;font-weight:700}.ai-images{display:flex;gap:8px;overflow:auto;margin:8px 0}.ai-images figure{margin:0;min-width:84px}.ai-images img{width:84px;height:84px;object-fit:cover;border-radius:10px;background:#05070a}.ai-images figcaption{font-size:11px;color:var(--secondary-text-color);max-width:84px}details{border-top:1px solid var(--divider-color);padding-top:10px}summary{cursor:pointer;font-weight:650}pre{white-space:pre-wrap;word-break:break-word;color:var(--secondary-text-color);font-size:12px}.status{padding:24px;border:1px dashed var(--divider-color);border-radius:15px;color:var(--secondary-text-color)}.error{color:var(--error-color)}
       .protected-image-load{border:0;border-radius:9px;padding:9px 12px;background:rgba(12,18,28,.86);color:#fff;font-weight:700;cursor:pointer}
       @media(max-width:720px){main{padding:14px}.hero{align-items:start;display:grid}.event-card{grid-template-columns:1fr}.live{grid-template-columns:1fr}.event-head{display:grid}}
     </style><main>

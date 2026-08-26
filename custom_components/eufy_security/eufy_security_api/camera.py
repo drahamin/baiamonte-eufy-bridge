@@ -70,6 +70,7 @@ class Camera(Device):
         self.config = config
         self.voices = voices
         self.image_last_updated = None
+        self.snapshot_source = "push_cache" if self.picture_base64 is not None else None
 
         self.stream_future = None
         self.stream_checker = None
@@ -356,7 +357,10 @@ class Camera(Device):
     @property
     def picture_bytes(self):
         """Returns picture bytes in base64 format"""
-        return bytearray(self.picture_base64["data"]["data"])
+        value = self.picture_base64["data"]
+        if isinstance(value, dict):
+            value = value.get("data", [])
+        return bytes(value)
 
     def set_stream_provider(self, stream_provider: StreamProvider) -> None:
         """Set stream provider for camera instance"""
@@ -386,3 +390,4 @@ class Camera(Device):
 
         if event.data[MessageField.NAME.value] == MessageField.PICTURE.value:
             self.image_last_updated = datetime.datetime.now(datetime.timezone.utc)
+            self.snapshot_source = "push_event"
