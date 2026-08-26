@@ -48,6 +48,7 @@ function bridgeSession(schemaVersion, onState) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(`ws://${bridgeHost}:${bridgePort}`, { handshakeTimeout: 8000 });
     const pending = new Map();
+    const eventWaiters = [];
     let sequence = 0;
     const timer = setTimeout(() => { socket.terminate(); reject(new Error("Bridge query timed out")); }, 45000);
     const send = (command, body = {}) => new Promise((yes, no) => {
@@ -55,16 +56,34 @@ function bridgeSession(schemaVersion, onState) {
       pending.set(messageId, { yes, no });
       socket.send(JSON.stringify({ messageId, command, ...body }));
     });
+    const waitForEvent = (predicate) => new Promise((yes, no) => {
+      const timeout = setTimeout(() => {
+        const index = eventWaiters.findIndex((item) => item.yes === yes);
+        if (index >= 0) eventWaiters.splice(index, 1);
+        no(new Error("Bridge event timed out"));
+      }, 40000);
+      eventWaiters.push({ predicate, yes, timeout });
+    });
     socket.on("open", () => {
       socket.send(JSON.stringify({ messageId: "schema", command: "set_api_schema", schemaVersion }));
       socket.send(JSON.stringify({ messageId: "state", command: "start_listening" }));
     });
     socket.on("message", async (raw) => {
       const message = JSON.parse(raw.toString());
+      if (message.type === "event") {
+        for (let index = eventWaiters.length - 1; index >= 0; index--) {
+          const waiter = eventWaiters[index];
+          if (!waiter.predicate(message)) continue;
+          eventWaiters.splice(index, 1);
+          clearTimeout(waiter.timeout);
+          waiter.yes(message);
+        }
+        return;
+      }
       if (message.type !== "result") return;
       if (message.messageId === "state") {
         try {
-          const result = await onState(message.result.state, send);
+          const result = await onState(message.result.state, send, waitForEvent);
           clearTimeout(timer);
           socket.close();
           resolve(result);
@@ -81,6 +100,65 @@ function bridgeSession(schemaVersion, onState) {
       message.success ? waiter.yes(message.result) : waiter.no(new Error(message.errorCode || "Bridge error"));
     });
     socket.on("error", reject);
+  });
+}
+
+async function refreshAicSummary() {
+  return bridgeSession(21, async (state, send, waitForEvent) => {
+    const stations = [];
+    for (const station of state.stations || []) {
+      const serialNumber = typeof station === "string" ? station : station.serialNumber;
+      const properties = typeof station === "string"
+        ? (await send("station.get_properties", { serialNumber })).properties || {}
+        : station;
+      if (properties.model === "T9000") stations.push({ serialNumber, model: properties.model });
+    }
+    const summaries = [];
+    for (const station of stations) {
+      const commands = (await send("station.get_commands", { serialNumber: station.serialNumber })).commands || [];
+      const supported = commands.includes("stationDatabaseQueryAicEvents") || commands.includes("database_query_aic_events");
+      if (!supported) {
+        summaries.push({ model: station.model, supported: false });
+        continue;
+      }
+      const end = new Date();
+      const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+      const eventPromise = waitForEvent((message) =>
+        message.source === "station"
+        && message.event === "database query aic events"
+        && message.serialNumber === station.serialNumber
+      );
+      await send("station.database_query_aic_events", {
+        serialNumber: station.serialNumber,
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        count: 100,
+      });
+      const event = await eventPromise;
+      const data = event.data && typeof event.data === "object" ? event.data : {};
+      const records = Array.isArray(data.record_list) ? data.record_list : [];
+      const updates = Array.isArray(data.latest_updates) ? data.latest_updates : [];
+      const hasAny = (record, keys) => keys.some((key) => record && record[key] !== undefined && record[key] !== null && record[key] !== "");
+      summaries.push({
+        model: station.model,
+        supported: true,
+        returnCode: event.returnCode,
+        records: records.length,
+        events: Array.isArray(data.eventRecordList) ? data.eventRecordList.length : 0,
+        pictures: Array.isArray(data.recordPictureList) ? data.recordPictureList.length : 0,
+        evidence: Array.isArray(data.evidenceRecordList) ? data.evidenceRecordList.length : 0,
+        latestUpdates: updates.length,
+        serialIdentified: records.filter((item) => hasAny(item, ["device_sn", "deviceSn", "device_serial", "deviceSerial"])).length,
+        channelIdentified: records.filter((item) => hasAny(item, ["device_channel", "deviceChannel", "channel", "mChannel"])).length,
+        thumbnails: records.filter((item) => hasAny(item, ["thumb_path", "thumbPath", "snapshot_cloud", "snapshotCloud"])).length,
+        recordings: records.filter((item) => hasAny(item, ["storage_path", "storagePath", "cloud_path", "cloudPath", "mp4_cloud", "mp4Cloud"])).length,
+        recordShape: safeValueShape(records),
+        eventShape: safeValueShape(Array.isArray(data.eventRecordList) ? data.eventRecordList : []),
+        pictureShape: safeValueShape(Array.isArray(data.recordPictureList) ? data.recordPictureList : []),
+        evidenceShape: safeValueShape(Array.isArray(data.evidenceRecordList) ? data.evidenceRecordList : []),
+      });
+    }
+    return { queriedAt: new Date().toISOString(), liveStreamsStarted: 0, stations: summaries };
   });
 }
 
@@ -334,6 +412,16 @@ http.createServer(async (request, response) => {
   if (pathname.endsWith("/api/status")) {
     response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
     response.end(JSON.stringify(await currentStatus()));
+    return;
+  }
+  if (pathname.endsWith("/api/aic-refresh-summary") && request.method === "POST") {
+    try {
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      response.end(JSON.stringify(await refreshAicSummary()));
+    } catch (error) {
+      response.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "AIC query unavailable" }));
+    }
     return;
   }
   if (pathname.endsWith("/health")) {

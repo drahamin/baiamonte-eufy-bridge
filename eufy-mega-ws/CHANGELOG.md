@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.9 — 2026-08-26
+
+- Add a bounded, read-only HomeBase Professional AIC diagnostic action to the
+  bridge dashboard API. It reports collection counts, field names/types, and
+  serial/channel/media coverage only; record values, identifiers, paths, URLs,
+  recognition data, and live video are excluded.
+
 ## 1.6.8 — 2026-08-26
 
 - Correlate HomeBase Professional AIC events by camera serial or station channel,
