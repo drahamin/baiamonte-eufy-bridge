@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.4 — 2026-08-26
+
+- Read HomeBase Pro snapshot fields from history, `latest_update`, and nested
+  `latest_update.event` records, including camel-case firmware spellings.
+- Prefer the Pro's signed cloud snapshot and fall back across local thumbnail and
+  crop paths instead of failing after the first unavailable source.
+
 ## 9.6.3 — 2026-08-26
 
 - Resolve a renamed HomeBase Pro doorbell snapshot when the current account has

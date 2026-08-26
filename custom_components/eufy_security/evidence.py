@@ -244,7 +244,12 @@ def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:
                 for item in latest[:200]
                 if isinstance(item, dict)
                 and (
-                    (
+                    matches(history, item)
+                    or (
+                        isinstance(item.get("event"), dict)
+                        and matches(history, item["event"])
+                    )
+                    or (
                         device_sn is not None
                         and (
                             _aic_device_serial(item) == device_sn
@@ -323,6 +328,11 @@ def normalize_aic_event(record: dict[str, Any]) -> dict[str, Any]:
     history = record.get("history") if isinstance(record.get("history"), dict) else record
     pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
     latest_update = record.get("latest_update") if isinstance(record.get("latest_update"), dict) else {}
+    latest_event = (
+        latest_update.get("event")
+        if isinstance(latest_update.get("event"), dict)
+        else {}
+    )
     ai = aic_ai_details(record)
     event_id = _token(
         "aic",
@@ -343,6 +353,24 @@ def normalize_aic_event(record: dict[str, Any]) -> dict[str, Any]:
         "trigger_type": _field(history, "trigger_type", "triggerType"),
         "has_thumbnail": bool(
             _field(history, "thumb_path", "thumbPath", "snapshot_cloud", "snapshotCloud")
+            or _field(
+                latest_update,
+                "thumb_path",
+                "thumbPath",
+                "snapshot_cloud",
+                "snapshotCloud",
+                "thumbnail_path",
+                "thumbnailPath",
+            )
+            or _field(
+                latest_event,
+                "thumb_path",
+                "thumbPath",
+                "snapshot_cloud",
+                "snapshotCloud",
+                "thumbnail_path",
+                "thumbnailPath",
+            )
             or any(isinstance(item, dict) and _field(item, "crop_path", "cropPath", "thumb_path", "thumbPath") for item in pictures)
         ),
         "has_video": bool(_field(history, "storage_path", "storagePath", "cloud_path", "cloudPath", "mp4_cloud", "mp4Cloud")),

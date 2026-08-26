@@ -137,9 +137,36 @@ def test_homebase_pro_channel_only_and_camel_case_records() -> None:
     assert normalized["start"].startswith("2023-")
 
 
+def test_homebase_pro_latest_update_supplies_thumbnail() -> None:
+    """The Pro may put the only usable snapshot on latest_update.event."""
+    rows = evidence.join_aic_event_data(
+        {
+            "record_list": [
+                {
+                    "record_id": 11,
+                    "device_channel": 2,
+                    "start_timestamp": 1_700_000_200,
+                }
+            ],
+            "latest_updates": [
+                {
+                    "record_id": 11,
+                    "event": {
+                        "record_id": 11,
+                        "snapshotCloud": "https://example.invalid/latest.jpg",
+                    },
+                }
+            ],
+        }
+    )
+    assert rows[0]["latest_update"]["event"]["snapshotCloud"].endswith("latest.jpg")
+    assert evidence.normalize_aic_event(rows[0])["has_thumbnail"] is True
+
+
 if __name__ == "__main__":
     test_cloud_ai_details()
     test_local_ai_details()
     test_homebase_pro_aic_join_and_privacy()
     test_homebase_pro_channel_only_and_camel_case_records()
+    test_homebase_pro_latest_update_supplies_thumbnail()
     print("Evidence privacy and AI detail tests passed")

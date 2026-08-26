@@ -690,22 +690,63 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         elif source == "aic":
             history = record.get("history") if isinstance(record.get("history"), dict) else record
             pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
+            latest_update = (
+                record.get("latest_update")
+                if isinstance(record.get("latest_update"), dict)
+                else {}
+            )
+            latest_event = (
+                latest_update.get("event")
+                if isinstance(latest_update.get("event"), dict)
+                else {}
+            )
             station_serial = record.get("station_sn") or self._record_field(
                 history, "station_sn", "stationSn", "aic_sn", "aicSn"
             )
-            file = self._record_field(
-                history, "thumb_path", "thumbPath", "snapshot_cloud", "snapshotCloud"
-            )
-            if not file:
-                file = next(
-                    (
-                        self._record_field(item, "crop_path", "cropPath", "thumb_path", "thumbPath")
-                        for item in pictures
-                        if isinstance(item, dict)
-                        and self._record_field(item, "crop_path", "cropPath", "thumb_path", "thumbPath")
-                    ),
-                    None,
-                )
+            # Prefer the Pro's signed cloud snapshot, then try its local thumbnail
+            # and crop paths. Current firmware can put these fields on history,
+            # latest_update, or latest_update.event.
+            sources = (history, latest_update, latest_event, *pictures)
+            files = []
+            for names in (
+                ("snapshot_cloud", "snapshotCloud"),
+                ("thumb_path", "thumbPath", "thumbnail_path", "thumbnailPath"),
+                ("crop_path", "cropPath"),
+            ):
+                for item in sources:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = self._record_field(item, *names)
+                    if candidate and candidate not in files:
+                        files.append(candidate)
+            last_error = None
+            for candidate in files:
+                if isinstance(candidate, str) and candidate.startswith("https://"):
+                    try:
+                        return await self._download_trusted_eufy_image(candidate)
+                    except (ValueError, RuntimeError, aiohttp.ClientError) as exc:
+                        last_error = exc
+            station = self.stations.get(station_serial)
+            if station is not None:
+                for candidate in files:
+                    if not isinstance(candidate, str) or candidate.startswith("https://"):
+                        continue
+                    try:
+                        picture = await station.download_image(candidate)
+                        data = self._buffer_bytes(picture.get("data"))
+                        if not data:
+                            continue
+                        image_type = (
+                            picture.get("type")
+                            if isinstance(picture.get("type"), dict)
+                            else {}
+                        )
+                        return data, image_type.get("mime") or "application/octet-stream"
+                    except (ValueError, RuntimeError, WebSocketConnectionException) as exc:
+                        last_error = exc
+            if last_error is not None:
+                raise ValueError("HomeBase thumbnail sources were unavailable") from last_error
+            raise ValueError("This event has no retrievable HomeBase thumbnail")
         else:
             history = record.get("history") if isinstance(record.get("history"), dict) else record
             station_serial = record.get("station_sn") or history.get("station_sn")
