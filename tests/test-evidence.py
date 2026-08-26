@@ -107,8 +107,39 @@ def test_homebase_pro_aic_join_and_privacy() -> None:
     assert "station-private" not in serialized
 
 
+def test_homebase_pro_channel_only_and_camel_case_records() -> None:
+    """Newer Pro firmware can identify cameras by channel and camel-case fields."""
+    rows = evidence.join_aic_event_data(
+        {
+            "recordList": [
+                {
+                    "recordId": 9,
+                    "deviceChannel": 4,
+                    "startTimestamp": 1_700_000_100,
+                    "snapshotCloud": "https://example.invalid/private.jpg",
+                }
+            ],
+            "record_picture_list": [
+                {"recordId": 9, "detection_type": 2, "cropPath": "/private/crop.jpg"}
+            ],
+            "latest_updates": [
+                {"channel": 4, "eventCount": 3}
+            ],
+        }
+    )
+    assert len(rows) == 1
+    assert rows[0]["device_sn"] is None
+    assert rows[0]["device_channel"] == 4
+    assert len(rows[0]["picture"]) == 1
+    normalized = evidence.normalize_aic_event(rows[0])
+    assert normalized["has_thumbnail"] is True
+    assert normalized["latest_event_count"] == 3
+    assert normalized["start"].startswith("2023-")
+
+
 if __name__ == "__main__":
     test_cloud_ai_details()
     test_local_ai_details()
     test_homebase_pro_aic_join_and_privacy()
+    test_homebase_pro_channel_only_and_camel_case_records()
     print("Evidence privacy and AI detail tests passed")

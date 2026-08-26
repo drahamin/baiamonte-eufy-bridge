@@ -45,6 +45,29 @@ _PRIVATE_FIELD = re.compile(
 )
 
 
+def _field(record: dict[str, Any], *names: str) -> Any:
+    """Return the first populated spelling of a bounded database field."""
+    for name in names:
+        value = record.get(name)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _aic_device_serial(record: dict[str, Any]) -> str | None:
+    value = _field(record, "device_sn", "deviceSn", "device_serial", "deviceSerial")
+    return str(value)[:128] if value not in (None, "") else None
+
+
+def _aic_channel(record: dict[str, Any]) -> int | None:
+    value = _field(record, "device_channel", "deviceChannel", "channel", "mChannel")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if 0 <= parsed <= 255 else None
+
+
 def _iso(value: Any) -> str | None:
     """Return a bounded UTC timestamp from seconds, milliseconds, or ISO text."""
     if value in (None, ""):
@@ -184,10 +207,14 @@ def local_ai_details(record: dict[str, Any]) -> dict[str, Any]:
 
 def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:
     """Join the Pro's four bounded AIC collections without exposing them."""
-    histories = data.get("record_list") if isinstance(data.get("record_list"), list) else []
-    events = data.get("eventRecordList") if isinstance(data.get("eventRecordList"), list) else []
-    pictures = data.get("recordPictureList") if isinstance(data.get("recordPictureList"), list) else []
-    evidence = data.get("evidenceRecordList") if isinstance(data.get("evidenceRecordList"), list) else []
+    histories_value = data.get("record_list", data.get("recordList"))
+    events_value = data.get("eventRecordList", data.get("event_record_list"))
+    pictures_value = data.get("recordPictureList", data.get("record_picture_list"))
+    evidence_value = data.get("evidenceRecordList", data.get("evidence_record_list"))
+    histories = histories_value if isinstance(histories_value, list) else []
+    events = events_value if isinstance(events_value, list) else []
+    pictures = pictures_value if isinstance(pictures_value, list) else []
+    evidence = evidence_value if isinstance(evidence_value, list) else []
     latest = data.get("latest_updates") if isinstance(data.get("latest_updates"), list) else []
 
     if not histories:
@@ -198,23 +225,47 @@ def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:
         ]
 
     def matches(history: dict[str, Any], item: dict[str, Any]) -> bool:
-        record_id = history.get("record_id")
-        evidence_id = history.get("evidence_id")
+        record_id = _field(history, "record_id", "recordId")
+        evidence_id = _field(history, "evidence_id", "evidenceId")
         return bool(
-            (record_id is not None and item.get("record_id") == record_id)
-            or (evidence_id is not None and item.get("evidence_id") == evidence_id)
+            (record_id is not None and _field(item, "record_id", "recordId") == record_id)
+            or (evidence_id is not None and _field(item, "evidence_id", "evidenceId") == evidence_id)
         )
 
     result = []
     for history in histories[:200]:
         if not isinstance(history, dict):
             continue
-        device_sn = history.get("device_sn")
+        device_sn = _aic_device_serial(history)
+        device_channel = _aic_channel(history)
         latest_update = next(
             (
                 item
                 for item in latest[:200]
-                if isinstance(item, dict) and item.get("device_sn") == device_sn
+                if isinstance(item, dict)
+                and (
+                    (
+                        device_sn is not None
+                        and (
+                            _aic_device_serial(item) == device_sn
+                            or (
+                                isinstance(item.get("event"), dict)
+                                and _aic_device_serial(item["event"]) == device_sn
+                            )
+                        )
+                    )
+                    or (
+                        device_sn is None
+                        and device_channel is not None
+                        and (
+                            _aic_channel(item) == device_channel
+                            or (
+                                isinstance(item.get("event"), dict)
+                                and _aic_channel(item["event"]) == device_channel
+                            )
+                        )
+                    )
+                )
             ),
             {},
         )
@@ -225,7 +276,8 @@ def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:
                 "picture": [item for item in pictures[:200] if isinstance(item, dict) and matches(history, item)],
                 "evidence": [item for item in evidence[:200] if isinstance(item, dict) and matches(history, item)],
                 "device_sn": device_sn,
-                "station_sn": history.get("station_sn") or history.get("aic_sn"),
+                "device_channel": device_channel,
+                "station_sn": _field(history, "station_sn", "stationSn", "aic_sn", "aicSn"),
                 "latest_update": latest_update,
             }
         )
@@ -255,14 +307,14 @@ def aic_ai_details(record: dict[str, Any]) -> dict[str, Any]:
                 "recognized": bool(item.get("person_recog_flag")),
                 "quality": item.get("crop_pic_quality"),
                 "event_time": _iso(item.get("event_time")),
-                "has_image": bool(item.get("crop_path") or item.get("thumb_path")),
+                "has_image": bool(_field(item, "crop_path", "cropPath", "thumb_path", "thumbPath")),
             }
             for item in pictures[:128]
             if isinstance(item, dict)
         ],
         "evidence_items": len(evidence_rows),
         "event_items": len(event_rows),
-        "latest_event_count": int(latest_update.get("event_count") or 0),
+        "latest_event_count": int(_field(latest_update, "event_count", "eventCount") or 0),
     }
 
 
@@ -276,29 +328,28 @@ def normalize_aic_event(record: dict[str, Any]) -> dict[str, Any]:
         "aic",
         record.get("station_sn") or history.get("station_sn") or history.get("aic_sn"),
         record.get("device_sn") or history.get("device_sn"),
-        history.get("record_id"),
-        history.get("evidence_id"),
-        history.get("start_time") or history.get("start_timestamp"),
+        _field(history, "record_id", "recordId"),
+        _field(history, "evidence_id", "evidenceId"),
+        _field(history, "start_time", "startTime", "start_timestamp", "startTimestamp"),
     )
     return {
         "event_id": event_id,
         "source": "homebase_pro_aic",
         "device_name": history.get("device_name") or "Camera",
-        "start": _iso(history.get("start_time_millis") or history.get("start_timestamp") or history.get("start_time")),
-        "end": _iso(history.get("end_time_millis") or history.get("end_timestamp") or history.get("end_time")),
-        "storage": _LOCAL_STORAGE_NAMES.get(history.get("storage_type"), "other"),
-        "video_type": history.get("video_type"),
-        "trigger_type": history.get("trigger_type"),
+        "start": _iso(_field(history, "start_time_millis", "startTimeMillis", "start_timestamp", "startTimestamp", "start_time", "startTime")),
+        "end": _iso(_field(history, "end_time_millis", "endTimeMillis", "end_timestamp", "endTimestamp", "end_time", "endTime")),
+        "storage": _LOCAL_STORAGE_NAMES.get(_field(history, "storage_type", "storageType"), "other"),
+        "video_type": _field(history, "video_type", "videoType"),
+        "trigger_type": _field(history, "trigger_type", "triggerType"),
         "has_thumbnail": bool(
-            history.get("thumb_path")
-            or history.get("snapshot_cloud")
-            or any(isinstance(item, dict) and (item.get("crop_path") or item.get("thumb_path")) for item in pictures)
+            _field(history, "thumb_path", "thumbPath", "snapshot_cloud", "snapshotCloud")
+            or any(isinstance(item, dict) and _field(item, "crop_path", "cropPath", "thumb_path", "thumbPath") for item in pictures)
         ),
-        "has_video": bool(history.get("storage_path") or history.get("cloud_path") or history.get("mp4_cloud")),
+        "has_video": bool(_field(history, "storage_path", "storagePath", "cloud_path", "cloudPath", "mp4_cloud", "mp4Cloud")),
         "ai_categories": ai["categories"],
         "recognized_faces": sum(1 for item in pictures if isinstance(item, dict) and item.get("person_recog_flag")),
         "ai_crops": len(pictures),
-        "latest_event_count": int(latest_update.get("event_count") or 0),
+        "latest_event_count": int(_field(latest_update, "event_count", "eventCount") or 0),
     }
 
 

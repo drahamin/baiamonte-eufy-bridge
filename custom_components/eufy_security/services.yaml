@@ -83,6 +83,10 @@ refresh_homebase_storage:
       selector:
         text:
 
+refresh_snapshots:
+  name: Refresh latest Eufy snapshots
+  description: Refresh camera cards from the account and HomeBase Professional event indexes. This never starts live video.
+
 ptz:
   name: Central PTZ Service
   description: Call PTZ command for supported PTZ cameras

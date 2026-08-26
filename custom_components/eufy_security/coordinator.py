@@ -202,10 +202,22 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         for record in join_aic_event_data(raw_aic):
                             record["station_sn"] = station.serial_no
                             raw_device_serial = record.get("device_sn")
+                            device = self.devices.get(raw_device_serial)
+                            if device is None and record.get("device_channel") is not None:
+                                channel = record["device_channel"]
+                                matches = [
+                                    candidate
+                                    for candidate in self.devices.values()
+                                    if candidate.properties.get("stationSerialNumber") == station.serial_no
+                                    and self._device_channel(candidate) == channel
+                                ]
+                                if len(matches) == 1:
+                                    device = matches[0]
+                                    raw_device_serial = device.serial_no
+                                    record["device_sn"] = raw_device_serial
                             if device_serial and raw_device_serial != device_serial:
                                 continue
                             event = normalize_aic_event(record)
-                            device = self.devices.get(raw_device_serial)
                             if device is not None:
                                 event["device_name"] = device.name
                             event["station_name"] = station.name
@@ -354,7 +366,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
     async def _daily_snapshot_loop(self) -> None:
         """Refresh non-live snapshots daily without delaying Home Assistant startup."""
         try:
-            await asyncio.sleep(300)
+            # Let inventory settle, then use one bounded index query to populate
+            # app-style event images. This path never starts a livestream.
+            await asyncio.sleep(60)
             while True:
                 try:
                     async with asyncio.timeout(10 * 60):
@@ -445,6 +459,19 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
     @staticmethod
     def _snapshot_name(value) -> str:
         return "".join(character for character in str(value or "").lower() if character.isalnum())
+
+    @staticmethod
+    def _device_channel(device) -> int | None:
+        """Return the camera channel across current and legacy bridge spellings."""
+        for key in ("deviceChannel", "device_channel", "channel"):
+            value = device.properties.get(key)
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= parsed <= 255:
+                return parsed
+        return None
 
     @staticmethod
     def _valid_snapshot(content: bytes) -> bool:
@@ -619,6 +646,15 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 return b""
         return b""
 
+    @staticmethod
+    def _record_field(record: dict, *names: str):
+        """Return the first populated spelling from a HomeBase database row."""
+        for name in names:
+            value = record.get(name)
+            if value not in (None, ""):
+                return value
+        return None
+
     async def evidence_thumbnail(self, event_id: str) -> tuple[bytes, str]:
         """Retrieve an event thumbnail through the authenticated bridge session."""
         source, record = self._evidence(event_id)
@@ -633,14 +669,19 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         elif source == "aic":
             history = record.get("history") if isinstance(record.get("history"), dict) else record
             pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
-            station_serial = record.get("station_sn") or history.get("station_sn") or history.get("aic_sn")
-            file = history.get("thumb_path") or history.get("snapshot_cloud")
+            station_serial = record.get("station_sn") or self._record_field(
+                history, "station_sn", "stationSn", "aic_sn", "aicSn"
+            )
+            file = self._record_field(
+                history, "thumb_path", "thumbPath", "snapshot_cloud", "snapshotCloud"
+            )
             if not file:
                 file = next(
                     (
-                        item.get("crop_path") or item.get("thumb_path")
+                        self._record_field(item, "crop_path", "cropPath", "thumb_path", "thumbPath")
                         for item in pictures
-                        if isinstance(item, dict) and (item.get("crop_path") or item.get("thumb_path"))
+                        if isinstance(item, dict)
+                        and self._record_field(item, "crop_path", "cropPath", "thumb_path", "thumbPath")
                     ),
                     None,
                 )
@@ -700,8 +741,12 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             if index < 0 or index >= len(pictures):
                 raise ValueError("AI crop does not exist")
             history = record.get("history") if isinstance(record.get("history"), dict) else record
-            station_serial = record.get("station_sn") or history.get("station_sn") or history.get("aic_sn")
-            file = pictures[index].get("crop_path") or pictures[index].get("thumb_path")
+            station_serial = record.get("station_sn") or self._record_field(
+                history, "station_sn", "stationSn", "aic_sn", "aicSn"
+            )
+            file = self._record_field(
+                pictures[index], "crop_path", "cropPath", "thumb_path", "thumbPath"
+            )
             if isinstance(file, str) and file.startswith("https://"):
                 return await self._download_trusted_eufy_image(file)
             station = self.stations.get(station_serial)

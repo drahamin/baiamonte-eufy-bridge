@@ -180,4 +180,15 @@ describe("EufySecurity snapshot cache", () => {
     expect(result.evidenceRecordList).toHaveLength(1);
     expect(result.latest_updates).toEqual([{ device_sn: "camera-a", event_count: 2, event: result.record_list[1] }]);
   });
+
+  it("derives Pro latest updates from station channels when camera serials are omitted", () => {
+    const result = normalizeAicEventData({
+      record_list: [
+        { record_id: 1, device_channel: "4", start_timestamp: 100, thumb_path: "/old.jpg" },
+        { record_id: 2, deviceChannel: 4, start_timestamp: 200, snapshot_cloud: "https://example.invalid/new.jpg" },
+      ],
+    });
+
+    expect(result.latest_updates).toEqual([{ channel: 4, event_count: 2, event: result.record_list[1] }]);
+  });
 });

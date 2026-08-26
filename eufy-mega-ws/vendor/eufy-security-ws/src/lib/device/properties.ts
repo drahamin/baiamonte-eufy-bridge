@@ -20,6 +20,8 @@ export interface DevicePropertiesSchema0 {
   hardwareVersion: string;
   softwareVersion: string;
   type: number;
+  /** Read-only station channel used to correlate HomeBase Pro AIC records. */
+  deviceChannel?: number;
   stationSerialNumber: string;
   battery: number;
   batteryTemperature: number;
@@ -362,6 +364,7 @@ export const dumpDeviceProperties = (
       PropertyName.SoftwareVersion,
     ) as string,
     type: device.getPropertyValue(PropertyName.Type) as number,
+    deviceChannel: device.getChannel(),
     stationSerialNumber: device.getPropertyValue(
       PropertyName.DeviceStationSN,
     ) as string,

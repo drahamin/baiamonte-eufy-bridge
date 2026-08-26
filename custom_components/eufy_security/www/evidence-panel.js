@@ -19,6 +19,7 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
     this._snapshotBusy = false;
     this._days = 1;
     this._source = "hybrid";
+    this._snapshotIndexPromise = null;
   }
 
   set hass(value) {
@@ -100,6 +101,31 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
     } finally {
       this._loading = false;
       this.render();
+    }
+  }
+
+  async refreshSnapshots(button) {
+    if (!this._hass || this._snapshotIndexPromise) return;
+    button.disabled = true;
+    button.textContent = "Refreshing…";
+    this._snapshotIndexPromise = this._hass.callWS({
+      type: "call_service",
+      domain: "eufy_security",
+      service: "refresh_snapshots",
+      service_data: {},
+      return_response: true,
+    });
+    try {
+      const response = await this._snapshotIndexPromise;
+      const result = response?.response ?? response;
+      button.textContent = `${result?.updated || 0} refreshed`;
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      this.render();
+    } catch (_error) {
+      button.textContent = "Refresh failed — retry";
+      button.disabled = false;
+    } finally {
+      this._snapshotIndexPromise = null;
     }
   }
 
@@ -368,13 +394,14 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       @media(max-width:720px){main{padding:14px}.hero{align-items:start;display:grid}.event-card{grid-template-columns:1fr}.live{grid-template-columns:1fr}.event-head{display:grid}.camera-foot{align-items:start;display:grid}.camera-foot>div{justify-content:flex-start}.camera-foot strong{padding:3px 0}}
     </style><main>
       <div class="hero"><div><h1>Baiamonte Eufy Security</h1><p class="sub">HomeBase DVR, live cameras, prior events, snapshots, and complete useful AI evidence.</p></div>
-      <div class="toolbar"><label class="field">History<select id="days"><option value="1" ${this._days === 1 ? "selected" : ""}>24 hours</option><option value="3" ${this._days === 3 ? "selected" : ""}>3 days</option><option value="7" ${this._days === 7 ? "selected" : ""}>7 days</option><option value="14" ${this._days === 14 ? "selected" : ""}>14 days</option><option value="31" ${this._days === 31 ? "selected" : ""}>31 days</option></select></label><label class="field">Index<select id="source"><option value="hybrid" ${this._source === "hybrid" ? "selected" : ""}>Cloud + HomeBase</option><option value="cloud" ${this._source === "cloud" ? "selected" : ""}>Account cloud</option><option value="local" ${this._source === "local" ? "selected" : ""}>HomeBase local</option></select></label><button class="load" id="load">${this._loading ? "Loading…" : "Load events"}</button></div></div>
+      <div class="toolbar"><label class="field">History<select id="days"><option value="1" ${this._days === 1 ? "selected" : ""}>24 hours</option><option value="3" ${this._days === 3 ? "selected" : ""}>3 days</option><option value="7" ${this._days === 7 ? "selected" : ""}>7 days</option><option value="14" ${this._days === 14 ? "selected" : ""}>14 days</option><option value="31" ${this._days === 31 ? "selected" : ""}>31 days</option></select></label><label class="field">Index<select id="source"><option value="hybrid" ${this._source === "hybrid" ? "selected" : ""}>Cloud + HomeBase</option><option value="cloud" ${this._source === "cloud" ? "selected" : ""}>Account cloud</option><option value="local" ${this._source === "local" ? "selected" : ""}>HomeBase local</option></select></label><button class="load" id="refresh-snapshots">Refresh snapshots</button><button class="load" id="load">${this._loading ? "Loading…" : "Load events"}</button></div></div>
       <section class="section"><h2>Live DVR view</h2><p class="sub">${cameras.length} Eufy cameras. Phone view runs one live camera; wide displays support up to four. Feeds stop after five minutes or when this tab is hidden. Controls opens native streaming, PTZ, presets and device actions.</p></section>
       <div class="live">${live || '<div class="status">Waiting for Eufy camera entities.</div>'}</div>
       <section class="section"><h2>Evidence timeline</h2><p class="sub">${this._summary ? `${this._summary.count || 0} indexed events · ${(this._summary.local_homebase_models || []).join(", ") || "account index"}${(this._summary.warnings || []).length ? ` · fallback: ${(this._summary.warnings || []).join(", ")}` : ""}` : "Choose a window and load prior events."}</p></section>
       <div class="events">${this._error ? `<div class="status error">${esc(this._error)}</div>` : this._loading ? '<div class="status">Querying the authenticated account and HomeBase indexes…</div>' : events || '<div class="status">No events loaded.</div>'}</div>
     </main>`;
     this.shadowRoot.querySelector("#load")?.addEventListener("click", () => this.loadEvents());
+    this.shadowRoot.querySelector("#refresh-snapshots")?.addEventListener("click", (event) => this.refreshSnapshots(event.currentTarget));
     this.shadowRoot.querySelectorAll(".video-load").forEach((button) => button.addEventListener("click", () => this.loadVideo(button)));
     this.shadowRoot.querySelectorAll(".protected-image-load").forEach((button) => button.addEventListener("click", () => this.loadProtectedImage(button)));
     this.shadowRoot.querySelectorAll(".camera").forEach((card) => {

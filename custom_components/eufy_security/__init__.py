@@ -65,6 +65,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             call.data.get("station_serial", "")
         )
 
+    async def handle_refresh_snapshots(call: ServiceCall) -> dict:
+        """Refresh app-style cloud/Pro event snapshots without opening live video."""
+        return await _coordinator(hass).refresh_latest_snapshots()
+
     hass.services.async_register(DOMAIN, "force_sync", handle_force_sync)
     hass.services.async_register(
         DOMAIN,
@@ -94,6 +98,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "refresh_homebase_storage",
         handle_refresh_storage,
         schema=vol.Schema({vol.Optional("station_serial", default=""): cv.string}),
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "refresh_snapshots",
+        handle_refresh_snapshots,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

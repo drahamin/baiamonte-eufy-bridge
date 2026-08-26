@@ -1,5 +1,26 @@
 # Changelog
 
+## 9.6.0 — 2026-08-26
+
+- Resolve HomeBase Professional evidence to cameras by station channel when current
+  firmware omits a camera serial, covering the four T8173 cameras, dock camera, and
+  Office Doorbell pattern observed in Miami.
+- Add a coalesced **Refresh snapshots** action to the companion page and an
+  authenticated aggregate diagnostic endpoint. Both use cloud/Pro event indexes,
+  refresh the durable cache, and explicitly start zero live streams.
+- Run the first safe index refresh one minute after startup, then every 24 hours.
+  Preserve all existing staggered tile loads and bounded image validation.
+- Accept both snake-case and camel-case AIC fields for event IDs, channels,
+  timestamps, thumbnail/cloud paths, AI crops, and saved recordings.
+
+## 9.5.9 — 2026-08-26
+
+- Integrate the current iPhone HomeBase Professional AIC event collections into
+  hybrid history, protected thumbnails/video, complete useful AI evidence, and
+  the serialized snapshot cache.
+- Prefer Pro AIC evidence over older account/local duplicates while keeping complex
+  AI objects in the dashboard rather than unsafe scalar Home Assistant entities.
+
 ## 9.5.8 — 2026-08-26
 
 - Persist each valid Eufy event snapshot in an atomic, serial-hashed on-disk cache

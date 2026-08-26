@@ -347,7 +347,9 @@ export interface P2PDatabaseResponse {
  * retrieve protected media; they are never copied to ordinary HA state.
  */
 export interface AicLatestUpdate {
-  device_sn: string;
+  device_sn?: string;
+  /** Some Pro firmware identifies a camera only by its station channel. */
+  channel?: number;
   event_count: number;
   event?: Record<string, unknown>;
 }

@@ -250,6 +250,15 @@ const aicEventTime = (record: Record<string, unknown>): number => {
   return 0;
 };
 
+const aicChannel = (record: Record<string, unknown>): number | undefined => {
+  for (const key of ["device_channel", "deviceChannel", "channel", "mChannel"]) {
+    const value = record[key];
+    const parsed = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+    if (typeof parsed === "number" && Number.isInteger(parsed) && parsed >= 0 && parsed <= 255) return parsed;
+  }
+  return undefined;
+};
+
 /** Normalize the current iOS AICEventData/queryTables10066 response. */
 export const normalizeAicEventData = (value: unknown): AicEventData => {
   const result: AicEventData = {
@@ -313,19 +322,29 @@ export const normalizeAicEventData = (value: unknown): AicEventData => {
   };
   visit(value);
 
-  const latestByDevice = new Map<string, { event: Record<string, unknown>; count: number }>();
+  const latestByDevice = new Map<
+    string,
+    { event: Record<string, unknown>; count: number; device_sn?: string; channel?: number }
+  >();
   for (const record of result.record_list) {
-    const deviceSN = aicString(record, ["device_sn", "deviceSn", "device_serial"]);
-    if (deviceSN === undefined) continue;
-    const current = latestByDevice.get(deviceSN);
-    if (current === undefined) latestByDevice.set(deviceSN, { event: record, count: 1 });
+    const deviceSN = aicString(record, ["device_sn", "deviceSn", "device_serial", "deviceSerial"]);
+    const channel = aicChannel(record);
+    const identity = deviceSN !== undefined ? `serial:${deviceSN}` : channel !== undefined ? `channel:${channel}` : undefined;
+    if (identity === undefined) continue;
+    const current = latestByDevice.get(identity);
+    if (current === undefined) latestByDevice.set(identity, { event: record, count: 1, device_sn: deviceSN, channel });
     else {
       current.count++;
       if (aicEventTime(record) > aicEventTime(current.event)) current.event = record;
     }
   }
-  result.latest_updates = Array.from(latestByDevice.entries()).map(
-    ([device_sn, update]): AicLatestUpdate => ({ device_sn, event_count: update.count, event: update.event })
+  result.latest_updates = Array.from(latestByDevice.values()).map(
+    (update): AicLatestUpdate => ({
+      ...(update.device_sn !== undefined ? { device_sn: update.device_sn } : {}),
+      ...(update.channel !== undefined ? { channel: update.channel } : {}),
+      event_count: update.count,
+      event: update.event,
+    })
   );
   return result;
 };

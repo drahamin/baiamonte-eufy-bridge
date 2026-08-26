@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.8 — 2026-08-26
+
+- Correlate HomeBase Professional AIC events by camera serial or station channel,
+  matching current firmware that omits a serial from some E42/T8173, dock-camera,
+  and doorbell history rows.
+- Accept current snake-case and camel-case AIC device, timestamp, thumbnail, cloud,
+  crop, and recording fields. Channel resolution is exposed read-only to Security;
+  it does not authorize controls or start live video.
+
 ## 1.6.7 — 2026-08-26
 
 - Reproduce the current iPhone app's HomeBase Professional `AICEventData` database

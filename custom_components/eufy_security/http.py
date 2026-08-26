@@ -120,8 +120,37 @@ class EvidenceAIImageView(HomeAssistantView):
         )
 
 
+class SnapshotRefreshDiagnosticsView(HomeAssistantView):
+    """Run one authenticated, non-live snapshot-index refresh and report totals."""
+
+    url = "/api/baiamonte_eufy/diagnostics/snapshot-refresh"
+    name = "api:baiamonte_eufy:diagnostics:snapshot-refresh"
+    requires_auth = True
+
+    def __init__(self, coordinator_getter) -> None:
+        self._coordinator_getter = coordinator_getter
+
+    async def get(self, request: web.Request) -> web.Response:
+        try:
+            result = await self._coordinator_getter(
+                request.app[KEY_HASS]
+            ).refresh_latest_snapshots()
+        except (RuntimeError, asyncio.TimeoutError) as exc:
+            raise web.HTTPConflict(text=type(exc).__name__) from exc
+        return web.json_response(
+            {
+                "updated": int(result.get("updated", 0)),
+                "indexed_events": int(result.get("indexed_events", 0)),
+                "warnings": list(result.get("warnings", []))[:16],
+                "live_streams_started": 0,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+
 def register_evidence_views(hass: HomeAssistant, coordinator_getter) -> None:
     """Register the protected media routes once."""
     hass.http.register_view(EvidenceThumbnailView(coordinator_getter))
     hass.http.register_view(EvidenceVideoView(coordinator_getter))
     hass.http.register_view(EvidenceAIImageView(coordinator_getter))
+    hass.http.register_view(SnapshotRefreshDiagnosticsView(coordinator_getter))

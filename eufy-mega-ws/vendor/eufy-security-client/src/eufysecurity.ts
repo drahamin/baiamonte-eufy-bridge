@@ -3897,11 +3897,24 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
       for (const update of data.latest_updates) {
         const event = update.event;
         if (event === undefined) continue;
-        const image = [event.thumb_path, event.snapshot_cloud, event.cloud_path].find(
+        const image = [
+          event.thumb_path,
+          event.thumbPath,
+          event.snapshot_cloud,
+          event.snapshotCloud,
+          event.cloud_path,
+          event.cloudPath,
+        ].find(
           (value): value is string => typeof value === "string" && value.length > 0
         );
         if (image === undefined) continue;
-        this.getDevice(update.device_sn)
+        const target = update.device_sn !== undefined
+          ? this.getDevice(update.device_sn)
+          : update.channel !== undefined
+            ? this.getStationDevice(station.getSerial(), update.channel)
+            : undefined;
+        if (target === undefined) continue;
+        target
           .then((device) => {
             if (device.hasProperty(PropertyName.DevicePictureUrl)) {
               device.updateProperty(PropertyName.DevicePictureUrl, image, true);
