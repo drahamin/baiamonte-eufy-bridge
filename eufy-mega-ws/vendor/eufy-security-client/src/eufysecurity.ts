@@ -3862,13 +3862,18 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
         ) {
           this.getDevice(element.device_sn)
             .then((device) => {
-              const raw = device.getRawDevice();
+              let coverPath: string | undefined;
               if ("crop_local_path" in element) {
-                raw.cover_path = (element as DatabaseQueryLatestInfoLocal).crop_local_path;
+                coverPath = (element as DatabaseQueryLatestInfoLocal).crop_local_path;
               } else if ("crop_cloud_path" in element) {
-                raw.cover_path = (element as DatabaseQueryLatestInfoCloud).crop_cloud_path;
+                coverPath = (element as DatabaseQueryLatestInfoCloud).crop_cloud_path;
               }
-              device.update(raw);
+              if (coverPath) {
+                if (device.hasProperty(PropertyName.DevicePictureUrl)) {
+                  device.updateProperty(PropertyName.DevicePictureUrl, coverPath, true);
+                }
+                this.queueDashboardSnapshot(device, coverPath);
+              }
             })
             .catch((err) => {
               const error = ensureError(err);

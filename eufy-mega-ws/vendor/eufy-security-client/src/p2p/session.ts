@@ -108,7 +108,6 @@ import {
   P2PVideoMessageState,
   StreamTimeoutOptions,
   P2PDatabaseResponse,
-  P2PDatabaseQueryLatestInfoResponse,
   P2PDatabaseDeleteResponse,
   DatabaseQueryLatestInfo,
   DatabaseCountByDate,
@@ -121,6 +120,95 @@ import {
   P2PDatabaseQueryLocalRecordCropPictureInfo,
   CustomDataType,
 } from "./interfaces";
+
+const DATABASE_LATEST_LOCAL_IMAGE_KEYS = [
+  "crop_hb3_path",
+  "crop_local_path",
+  "cover_path",
+  "thumb_path",
+  "thumbnail_path",
+  "snapshot_path",
+] as const;
+const DATABASE_LATEST_CLOUD_IMAGE_KEYS = [
+  "crop_cloud_path",
+  "snapshot_cloud",
+  "thumbnail_url",
+  "picture_url",
+  "pic_url",
+] as const;
+
+const parseDatabaseValue = (value: unknown): unknown => {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
+const databaseLatestRecords = (value: unknown): Array<Record<string, unknown>> => {
+  const parsed = parseDatabaseValue(value);
+  if (Array.isArray(parsed))
+    return parsed.filter((entry): entry is Record<string, unknown> => entry !== null && typeof entry === "object");
+  if (parsed !== null && typeof parsed === "object") {
+    const record = parsed as Record<string, unknown>;
+    for (const key of ["records", "list", "result", "data"]) {
+      const nested = databaseLatestRecords(record[key]);
+      if (nested.length > 0) return nested;
+    }
+  }
+  return [];
+};
+
+const findDatabaseLatestString = (
+  value: unknown,
+  keys: readonly string[],
+  depth = 0
+): string | undefined => {
+  const parsed = parseDatabaseValue(value);
+  if (parsed === null || typeof parsed !== "object" || depth > 3) return undefined;
+  const record = parsed as Record<string, unknown>;
+  for (const key of keys) {
+    if (typeof record[key] === "string" && record[key] !== "") return record[key] as string;
+  }
+  for (const nested of Object.values(record)) {
+    const result = findDatabaseLatestString(nested, keys, depth + 1);
+    if (result !== undefined) return result;
+  }
+  return undefined;
+};
+
+const findDatabaseLatestNumber = (value: unknown, keys: readonly string[], depth = 0): number | undefined => {
+  const parsed = parseDatabaseValue(value);
+  if (parsed === null || typeof parsed !== "object" || depth > 3) return undefined;
+  const record = parsed as Record<string, unknown>;
+  for (const key of keys) {
+    if (record[key] !== undefined && Number.isFinite(Number(record[key]))) return Number(record[key]);
+  }
+  for (const nested of Object.values(record)) {
+    const result = findDatabaseLatestNumber(nested, keys, depth + 1);
+    if (result !== undefined) return result;
+  }
+  return undefined;
+};
+
+export const normalizeDatabaseLatestInfo = (value: unknown): Array<DatabaseQueryLatestInfo> => {
+  const result: Array<DatabaseQueryLatestInfo> = [];
+  for (const record of databaseLatestRecords(value)) {
+    const deviceSN = findDatabaseLatestString(record, ["device_sn", "deviceSn", "device_serial", "serialNumber"]);
+    if (deviceSN === undefined) continue;
+    const payload = parseDatabaseValue(record.payload) ?? record;
+    const eventCount = findDatabaseLatestNumber(payload, ["event_count", "eventCount"]) ?? 0;
+    const localPath = findDatabaseLatestString(payload, DATABASE_LATEST_LOCAL_IMAGE_KEYS);
+    const cloudPath = findDatabaseLatestString(payload, DATABASE_LATEST_CLOUD_IMAGE_KEYS);
+    if (localPath !== undefined) {
+      result.push({ device_sn: deviceSN, event_count: eventCount, crop_local_path: localPath });
+    } else if (cloudPath !== undefined) {
+      result.push({ device_sn: deviceSN, event_count: eventCount, crop_cloud_path: cloudPath });
+    }
+  }
+  return result;
+};
 import { DskKeyResponse, ResultResponse, StationListResponse } from "../http/models";
 import { HTTPApi } from "../http/api";
 import { Device } from "../http/device";
@@ -3862,25 +3950,13 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             const databaseResponse = parseJSON(str, rootP2PLogger) as P2PDatabaseResponse;
             switch (databaseResponse.cmd) {
               case CommandType.CMD_DATABASE_QUERY_LATEST_INFO: {
-                let data: Array<P2PDatabaseQueryLatestInfoResponse> = [];
-                if (databaseResponse.data !== undefined && (databaseResponse.data as unknown as string) !== "[]")
-                  data = databaseResponse.data as Array<P2PDatabaseQueryLatestInfoResponse>;
-                const result: Array<DatabaseQueryLatestInfo> = [];
-                for (const record of data) {
-                  if (record.payload.crop_hb3_path !== "") {
-                    result.push({
-                      device_sn: record.device_sn,
-                      event_count: record.payload.event_count,
-                      crop_local_path: record.payload.crop_hb3_path,
-                    });
-                  } else {
-                    result.push({
-                      device_sn: record.device_sn,
-                      event_count: record.payload.event_count,
-                      crop_cloud_path: record.payload.crop_cloud_path,
-                    });
-                  }
-                }
+                const result = normalizeDatabaseLatestInfo(databaseResponse.data);
+                rootP2PLogger.debug("Normalized HomeBase latest-event covers", {
+                  stationSN: this.rawStation.station_sn,
+                  records: result.length,
+                  localCovers: result.filter((record) => "crop_local_path" in record).length,
+                  cloudCovers: result.filter((record) => "crop_cloud_path" in record).length,
+                });
                 this.emit("database query latest", databaseResponse.mIntRet, result);
                 break;
               }

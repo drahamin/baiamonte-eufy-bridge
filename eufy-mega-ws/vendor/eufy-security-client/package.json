@@ -1,6 +1,6 @@
 {
   "name": "eufy-security-client",
-  "version": "4.1.1-mega.15",
+  "version": "4.1.1-mega.16",
   "description": "Client to communicate with Eufy-Security devices",
   "author": {
     "name": "bropat",

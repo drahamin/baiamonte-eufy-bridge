@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.4 — 2026-08-26
+
+- Normalize both legacy S380 and newer HomeBase Professional latest-event database
+  envelopes, including nested/string payloads and current local/cloud thumbnail names.
+- Feed each validated latest-event cover into the camera picture property and the
+  persistent cache. Retrieval remains one image at a time and never opens livestreams.
+- Ignore empty and video-only database records instead of treating them as snapshots,
+  and log only aggregate cover counts for diagnostics.
+
 ## 1.6.3 — 2026-08-26
 
 - Populate initial non-URL `cover_path` values through the owning HomeBase; the

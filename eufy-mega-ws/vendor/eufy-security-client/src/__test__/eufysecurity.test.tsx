@@ -4,6 +4,7 @@ import { join } from "path";
 
 import { EufySecurity } from "../eufysecurity";
 import { PropertyName } from "../http/types";
+import { normalizeDatabaseLatestInfo } from "../p2p/session";
 
 jest.mock("../logging", () => ({
   rootHTTPLogger: { error: jest.fn(), debug: jest.fn(), info: jest.fn(), warn: jest.fn(), trace: jest.fn() },
@@ -128,5 +129,37 @@ describe("EufySecurity snapshot cache", () => {
 
     expect(downloadImage).toHaveBeenCalledWith("/mnt/data/cover.jpg");
     jest.useRealTimers();
+  });
+
+  it("normalizes current and legacy HomeBase latest-cover record shapes", () => {
+    expect(
+      normalizeDatabaseLatestInfo([
+        {
+          device_sn: "camera-local",
+          payload: { event_count: 2, crop_hb3_path: "/mnt/data/local.jpg", crop_cloud_path: "" },
+        },
+        {
+          deviceSn: "camera-cloud",
+          payload: JSON.stringify({ eventCount: 3, snapshot_cloud: "https://example.invalid/cloud.jpg" }),
+        },
+        {
+          device_serial: "camera-new-local",
+          result: { latest: { event_count: 4, thumbnail_path: "/mnt/data/new-local.jpg" } },
+        },
+      ])
+    ).toEqual([
+      { device_sn: "camera-local", event_count: 2, crop_local_path: "/mnt/data/local.jpg" },
+      { device_sn: "camera-cloud", event_count: 3, crop_cloud_path: "https://example.invalid/cloud.jpg" },
+      { device_sn: "camera-new-local", event_count: 4, crop_local_path: "/mnt/data/new-local.jpg" },
+    ]);
+  });
+
+  it("does not emit empty or video-only HomeBase records as snapshots", () => {
+    expect(
+      normalizeDatabaseLatestInfo([
+        { device_sn: "camera-empty", payload: { crop_hb3_path: "", crop_cloud_path: "" } },
+        { device_sn: "camera-video", payload: { storage_path: "/mnt/data/video.zxvideo" } },
+      ])
+    ).toEqual([]);
   });
 });
