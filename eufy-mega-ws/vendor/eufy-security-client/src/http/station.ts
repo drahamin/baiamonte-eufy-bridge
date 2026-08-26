@@ -1,5 +1,6 @@
 import { TypedEmitter } from "tiny-typed-emitter";
 import { Readable } from "stream";
+import { spawn } from "child_process";
 const { format } = require("date-and-time");
 
 import { HTTPApi } from "./api";
@@ -90,19 +91,19 @@ export const buildAicEventQueryPayload = (
   startDate: Date,
   endDate: Date,
   count = 100,
-  stationSerial?: string
+  _stationSerial?: string
 ): Record<string, unknown> => ({
   start_date: `${Math.floor(endDate.getTime() / 1000)}`,
   end_date: `${Math.floor(startDate.getTime() / 1000)}`,
   start_id: 0,
-  end_id: 1,
+  end_id: 0,
   query: [],
   flag: 0,
   res_unzip: 1,
   count: Math.max(1, Math.min(999, Math.trunc(count))),
   where: [],
+  or: [],
   or_and: [],
-  ...(stationSerial ? { station_sn: stationSerial } : {}),
 });
 import {
   encodePasscode,
@@ -139,7 +140,7 @@ import {
   StreamMetadata,
   StreamTimeoutOptions,
 } from "../p2p/interfaces";
-import { P2PClientProtocol } from "../p2p/session";
+import { P2PClientProtocol, normalizeAicEventData } from "../p2p/session";
 import {
   AlarmEvent,
   CalibrateGarageType,
@@ -229,6 +230,7 @@ export class Station extends TypedEmitter<StationEvents> {
   private currentDelay = 0;
   private reconnectTimeout?: NodeJS.Timeout;
   private terminating = false;
+  private proEventQueryRunning = false;
 
   private p2pConnectionType = P2PConnectionType.QUICKEST;
 
@@ -15474,6 +15476,25 @@ export class Station extends TypedEmitter<StationEvents> {
     if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || startDate > endDate) {
       throw new TypeError("Invalid AIC event query date range");
     }
+    const helper = process.env.BAIAMONTE_PRO_EVENT_HELPER;
+    if (this.isStationHomeBasePro() && helper) {
+      if (this.proEventQueryRunning) {
+        throw new Error("A HomeBase Pro event query is already running");
+      }
+      this.proEventQueryRunning = true;
+      this.databaseQueryAicEventsWebRtc(helper, startDate, endDate, count)
+        .catch((err) => {
+          rootHTTPLogger.warn("HomeBase Pro WebRTC event query unavailable", {
+            error: getError(ensureError(err)),
+            stationSN: this.getSerial(),
+          });
+          failureCallback?.();
+        })
+        .finally(() => {
+          this.proEventQueryRunning = false;
+        });
+      return;
+    }
     const payload = buildAicEventQueryPayload(startDate, endDate, count, this.getSerial());
     rootHTTPLogger.debug("Station database query AIC events - sending command", {
       stationSN: this.getSerial(),
@@ -15498,6 +15519,76 @@ export class Station extends TypedEmitter<StationEvents> {
       },
       { command: commandData, onFailure: failureCallback }
     );
+  }
+
+  private async databaseQueryAicEventsWebRtc(
+    helper: string,
+    startDate: Date,
+    endDate: Date,
+    count: number
+  ): Promise<void> {
+    const python = process.env.BAIAMONTE_PRO_EVENT_PYTHON || "python3";
+    const persistentPath = process.env.BAIAMONTE_PERSISTENT_FILE || "/data/persistent.json";
+    const expectedDeviceSerials = (this.rawStation.devices || [])
+      .map((device) => device.device_sn)
+      .filter((serial): serial is string => typeof serial === "string" && serial.length > 0);
+    const request = {
+      persistentPath,
+      stationSn: this.getSerial(),
+      accountId: this.rawStation.member.admin_user_id,
+      region: this.api.getCountry(),
+      startSeconds: Math.floor(startDate.getTime() / 1000),
+      endSeconds: Math.floor(endDate.getTime() / 1000),
+      count: Math.max(1, Math.min(300, Math.trunc(count))),
+      expectedDeviceSerials,
+    };
+    const response = await new Promise<unknown>((resolve, reject) => {
+      const processHandle = spawn(python, [helper], {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: process.env,
+      });
+      let stdout = Buffer.alloc(0);
+      let stderr = "";
+      let settled = false;
+      const finish = (callback: (value: unknown) => void, value: unknown): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        callback(value);
+      };
+      const timeout = setTimeout(() => {
+        processHandle.kill("SIGTERM");
+        finish(reject, new Error("HomeBase Pro event helper timed out"));
+      }, 60_000);
+      processHandle.stdout.on("data", (chunk: Buffer) => {
+        if (stdout.length + chunk.length > 16 * 1024 * 1024) {
+          processHandle.kill("SIGTERM");
+          finish(reject, new Error("HomeBase Pro event response exceeded 16 MB"));
+          return;
+        }
+        stdout = Buffer.concat([stdout, chunk]);
+      });
+      processHandle.stderr.on("data", (chunk: Buffer) => {
+        if (stderr.length < 4096) stderr += chunk.toString("utf8").slice(0, 4096 - stderr.length);
+      });
+      processHandle.on("error", (error) => finish(reject, error));
+      processHandle.on("close", (code) => {
+        if (settled) return;
+        if (code !== 0) {
+          finish(reject, new Error(`HomeBase Pro event helper exited ${code}: ${stderr.trim().slice(-300)}`));
+          return;
+        }
+        try {
+          finish(resolve, JSON.parse(stdout.toString("utf8")));
+        } catch (error) {
+          finish(reject, ensureError(error));
+        }
+      });
+      processHandle.stdin.end(JSON.stringify(request));
+    });
+    const envelope = response as { data?: unknown };
+    const normalized = normalizeAicEventData(envelope?.data);
+    this.onDatabaseQueryAicEvents(DatabaseReturnCode.SUCCESSFUL, normalized);
   }
 
   public databaseQueryLocal(

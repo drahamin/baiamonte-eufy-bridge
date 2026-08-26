@@ -114,6 +114,10 @@ if bashio::config.has_value 'username' && bashio::config.has_value 'password'; t
     # See bropat/eufy-security-ws#564.
     export BAIAMONTE_BRIDGE_PORT="$BRIDGE_PORT"
     export BAIAMONTE_DASHBOARD_PORT="8097"
+    export BAIAMONTE_PRO_EVENT_HELPER="/opt/baiamonte-pro-events/pro_event_helper.py"
+    export BAIAMONTE_PRO_EVENT_PYTHON="/opt/baiamonte-pro-events/venv/bin/python"
+    export BAIAMONTE_SCTP_ORACLE="/opt/baiamonte-pro-events/sctp_oracle.cjs"
+    export BAIAMONTE_PERSISTENT_FILE="/data/persistent.json"
     if [[ "${BAIAMONTE_SKIP_DASHBOARD:-false}" != "true" ]]; then
         /usr/bin/node /opt/baiamonte-eufy-dashboard/server.cjs &
     fi

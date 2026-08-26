@@ -33,14 +33,14 @@ describe("HomeBase Professional S1 catalog", () => {
       start_date: "1787702400",
       end_date: "1787616000",
       start_id: 0,
-      end_id: 1,
+      end_id: 0,
       query: [],
       flag: 0,
       res_unzip: 1,
       count: 500,
       where: [],
+      or: [],
       or_and: [],
-      station_sn: "T9000-test",
     });
   });
 });

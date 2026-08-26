@@ -163,4 +163,4 @@ jobs:
       - name: Verify runtime client
         run: |
           docker run --rm --entrypoint node eufy-mega-ws:test --input-type=module -e \
-            "import client from '/usr/src/app/node_modules/eufy-security-ws/node_modules/eufy-security-client/package.json' with { type: 'json' }; const contract = await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/const.js'); if (client.version !== '4.1.1-mega.13' || contract.maxSchemaVersion !== 21) process.exit(1); await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/index.js')"
+            "import client from '/usr/src/app/node_modules/eufy-security-ws/node_modules/eufy-security-client/package.json' with { type: 'json' }; const contract = await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/const.js'); if (client.version !== '4.1.1-mega.23' || contract.maxSchemaVersion !== 21) process.exit(1); await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/index.js')"

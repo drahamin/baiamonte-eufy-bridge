@@ -3897,6 +3897,12 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
       for (const update of data.latest_updates) {
         const event = update.event;
         if (event === undefined) continue;
+        const inlineData = typeof event.thumb_data === "string" ? event.thumb_data : undefined;
+        // Inline bytes travel only inside the local helper/client boundary. Never
+        // expose them in the schema event; Security serves cached media through
+        // its authenticated image routes.
+        delete event.thumb_data;
+        delete event.thumb_mime;
         const image = [
           event.thumb_path,
           event.thumbPath,
@@ -3919,7 +3925,20 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
             if (device.hasProperty(PropertyName.DevicePictureUrl)) {
               device.updateProperty(PropertyName.DevicePictureUrl, image, true);
             }
-            this.queueDashboardSnapshot(device, image);
+            let usedInline = false;
+            if (inlineData && inlineData.length <= Math.ceil(this.SNAPSHOT_CACHE_MAX_BYTES * 4 / 3) + 16) {
+              try {
+                const bytes = Buffer.from(inlineData, "base64");
+                const type = this.getCachedSnapshotType(bytes);
+                if (type && bytes.length > 0 && bytes.length <= this.SNAPSHOT_CACHE_MAX_BYTES) {
+                  device.updateProperty(PropertyName.DevicePicture, { data: bytes, type } as Picture, true);
+                  usedInline = true;
+                }
+              } catch {
+                // Fall through to the authenticated URL/HomeBase downloader.
+              }
+            }
+            if (!usedInline) this.queueDashboardSnapshot(device, image);
           })
           .catch((err) => {
             const error = ensureError(err);

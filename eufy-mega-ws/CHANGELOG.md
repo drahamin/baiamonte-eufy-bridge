@@ -365,3 +365,9 @@
 - Added optional persistent last-event snapshot cache, enabled by default in this add-on.
 - Redacted signed query parameters from final image-fetch errors.
 - Updated packaging for Home Assistant's post-2026.04 local app build format.
+# 1.6.13
+
+- Fetch HomeBase Pro latest-event thumbnails through the native Mega WebRTC AIC event flow without starting camera live streams.
+- Resolve shared-member authentication separately from each station owner's command identity, preserving Miami/Baiamonte house isolation.
+- Decode and persist inline Pro thumbnails so Security and the system camera entities use the same restart-safe snapshot cache.
+- Query missing cameras individually after the initial daily event page, avoiding a full multi-thousand-event scan during normal refreshes.
