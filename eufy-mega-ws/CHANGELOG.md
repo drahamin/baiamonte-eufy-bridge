@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.6 — 2026-08-26
+
+- Enable the HomeBase Professional S1 read-only latest-record query identified in
+  the current iPhone app as `GET_LATEST_RECORD_INFO`.
+- Allow the Pro to return its selected thumbnail through the existing serialized
+  HomeBase image downloader. Destructive database, reboot, and alarm commands stay disabled.
+
 ## 1.6.5 — 2026-08-26
 
 - Follow the current eufy iPhone app's dashboard image model by reading its

@@ -11027,9 +11027,12 @@ export const StationCommands: Commands = {
     CommandName.StationDatabaseCountByDate,
     CommandName.StationDatabaseDelete,
   ],
-  // Properties use verified T9000 parameter IDs, but command payload compatibility is still being
-  // validated. Do not advertise destructive/reboot/alarm/database commands by analogy alone.
-  [DeviceType.HOMEBASE_PRO]: [],
+  // App 6.0.80 identifies the T9000 home-page path as GET_LATEST_RECORD_INFO and consumes the
+  // returned HomeBase thumbnail path. Keep this catalog read-only: no reboot, alarm or deletion.
+  [DeviceType.HOMEBASE_PRO]: [
+    CommandName.StationDownloadImage,
+    CommandName.StationDatabaseQueryLatestInfo,
+  ],
   [DeviceType.HOMEBASE_MINI]: [
     CommandName.StationReboot,
     CommandName.StationTriggerAlarmSound,
