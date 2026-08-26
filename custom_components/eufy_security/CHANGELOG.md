@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.3 — 2026-08-26
+
+- Resolve a renamed HomeBase Pro doorbell snapshot when the current account has
+  exactly one doorbell and AIC evidence has exactly one distinct doorbell label.
+  This covers the Miami `Front Door Doorbell` to `Office Doorbell` rename without
+  risking another camera's evidence being assigned to it.
+
 ## 9.6.2 — 2026-08-26
 
 - Add an explicit **Capture camera snapshot** entity action that obtains one frame

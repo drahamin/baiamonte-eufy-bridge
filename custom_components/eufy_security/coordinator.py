@@ -410,6 +410,24 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             if name and event.get("thumbnail_url") and name not in latest:
                 latest[name] = event
 
+        # HomeBase Pro can retain an earlier device label in AIC records after the
+        # user renames a camera or separates a shared account. Resolve that alias
+        # only when both sides are unambiguous; never let one doorbell's evidence
+        # populate another doorbell's camera entity.
+        doorbell_devices = [
+            device
+            for device in self.devices.values()
+            if "doorbell" in self._snapshot_name(device.name)
+        ]
+        doorbell_events = [
+            event for name, event in latest.items() if "doorbell" in name
+        ]
+        unique_doorbell_event = (
+            doorbell_events[0]
+            if len(doorbell_devices) == 1 and len(doorbell_events) == 1
+            else None
+        )
+
         updated = 0
         for device in self.devices.values():
             candidates = [
@@ -419,6 +437,12 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 or name in self._snapshot_name(device.name)
                 or self._snapshot_name(device.name) in name
             ]
+            if (
+                not candidates
+                and unique_doorbell_event is not None
+                and device is doorbell_devices[0]
+            ):
+                candidates = [unique_doorbell_event]
             if not candidates:
                 continue
             event = candidates[0]
