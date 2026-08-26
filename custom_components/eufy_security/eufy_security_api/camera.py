@@ -73,6 +73,7 @@ class Camera(Device):
 
         self.stream_future = None
         self.stream_checker = None
+        self.stream_stopped_listener = None
 
         self.p2p_streamer = P2PStreamer(self)
 
@@ -106,6 +107,8 @@ class Camera(Device):
         self.stream_status = StreamStatus.IDLE
         self.video_queue = deque()
         self.audio_queue = deque()
+        if self.stream_stopped_listener is not None:
+            await self.stream_stopped_listener()
 
     async def _handle_rtsp_livestream_started(self, event: Event):
         # automatically find this function for respective event
@@ -116,6 +119,8 @@ class Camera(Device):
         # automatically find this function for respective event
         _LOGGER.debug("RTSP livestream stopped")
         self.stream_status = StreamStatus.IDLE
+        if self.stream_stopped_listener is not None:
+            await self.stream_stopped_listener()
 
     async def _handle_livestream_video_data_received(self, event: Event):
         self.video_queue.append(bytearray(event.data["buffer"]["data"]))

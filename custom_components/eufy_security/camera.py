@@ -119,6 +119,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         self._last_image = None
         self._snapshot_lock = asyncio.Lock()
         self._stream_start_lock = asyncio.Lock()
+        self.product.stream_stopped_listener = self._stop_hass_streaming
         if self.product.picture_base64 is not None:
             self._last_image = self.product.picture_bytes
 
@@ -319,12 +320,11 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         return self._last_image
 
     async def _start_livestream(self) -> None:
-        """start byte based livestream on camera"""
+        """Start a P2P source for the bounded camera proxy request."""
         if await self.product.start_livestream() is False:
             raise ServiceValidationError(
                 f"{self.product.model} opened P2P but delivered no media"
             )
-        await self._start_hass_streaming()
         self.async_write_ha_state()
 
     async def _stop_livestream(self) -> None:
@@ -334,12 +334,11 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         self.async_write_ha_state()
 
     async def _start_rtsp_livestream(self) -> None:
-        """start rtsp based livestream on camera"""
+        """Start the device RTSP source without creating an orphan HA worker."""
         if await self.product.start_rtsp_livestream() is False:
             raise ServiceValidationError(
                 f"{self.product.model} did not deliver an RTSP stream"
             )
-        await self._start_hass_streaming()
         self.async_write_ha_state()
 
     async def _stop_rtsp_livestream(self) -> None:

@@ -1,5 +1,11 @@
 # Changelog
 
+## 9.5.4 — 2026-08-26
+
+- Keep companion proxy sessions separate from Home Assistant's persistent stream
+  workers, and stop any native worker immediately when the Eufy P2P/RTSP source
+  ends. This prevents a failed go2rtc path from retrying indefinitely.
+
 ## 9.5.3 — 2026-08-26
 
 - Prevent Home Assistant device and camera pages from starting every Eufy P2P
@@ -10,7 +16,6 @@
 - Align live-view lifecycle with Eufy's Android surfaces: one feed on phones, up
   to four on E10-sized displays, five-minute session expiry, and stream cleanup
   when the tab is hidden, closed, or the evidence query is refreshed.
-
 ## 9.5.2 — 2026-08-25
 
 - Start Eufy P2P automatically when Home Assistant's native camera player requests HLS, fixing
