@@ -56,6 +56,11 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self._session = aiohttp_client.async_get_clientsession(self.hass)
         self._api = ApiClient(self.config, self._session, self._on_error)
         self._reload_pending = False
+        # Camera cards can request every thumbnail at the same time.  Eufy stations
+        # do not tolerate parallel P2P setup well, so permit one opportunistic
+        # snapshot capture for the whole account while the remaining cards return
+        # their cached event image immediately.
+        self.camera_snapshot_semaphore = asyncio.Semaphore(1)
         self.last_bridge_error: str | None = None
         self._evidence_records: dict[str, dict] = {}
         self._evidence_video_cache: dict[str, bytes] = {}

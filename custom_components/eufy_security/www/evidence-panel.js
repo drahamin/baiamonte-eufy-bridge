@@ -12,6 +12,10 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
     this._rendered = false;
     this._objectUrls = [];
     this._liveCameras = new Set();
+    this._liveTimers = new Map();
+    this._visibilityHandler = () => {
+      if (document.hidden) void this.stopAllLive();
+    };
     this._snapshotBusy = false;
     this._days = 1;
     this._source = "hybrid";
@@ -25,9 +29,49 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
 
   set panel(value) { this._panel = value; }
 
+  connectedCallback() {
+    document.addEventListener("visibilitychange", this._visibilityHandler);
+  }
+
   disconnectedCallback() {
+    document.removeEventListener("visibilitychange", this._visibilityHandler);
+    void this.stopAllLive();
     this._objectUrls.forEach((url) => URL.revokeObjectURL(url));
     this._objectUrls = [];
+  }
+
+  liveLimit() {
+    // Match the official phone app's single live view while preserving the E10
+    // display's four-tile video wall on tablet/desktop-sized screens.
+    return window.matchMedia("(max-width: 900px)").matches ? 1 : 4;
+  }
+
+  async stopLive(entityId, button = null, preview = null) {
+    if (!this._liveCameras.has(entityId)) return;
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Stopping…";
+    }
+    const timer = this._liveTimers.get(entityId);
+    if (timer) clearTimeout(timer);
+    this._liveTimers.delete(entityId);
+    this._liveCameras.delete(entityId);
+    try {
+      await this._hass?.callService("eufy_security", "stop_p2p_livestream", {}, { entity_id: entityId });
+    } catch (_error) {
+      // The bridge may already have stopped an expired P2P session.
+    } finally {
+      if (preview) preview.innerHTML = '<span class="camera-placeholder">Camera idle</span>';
+      if (button) {
+        button.textContent = "Live";
+        button.disabled = false;
+      }
+    }
+  }
+
+  async stopAllLive() {
+    const active = [...this._liveCameras];
+    await Promise.allSettled(active.map((entityId) => this.stopLive(entityId)));
   }
 
   async loadEvents() {
@@ -40,7 +84,7 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       await new Promise((resolve) => setTimeout(resolve, 250));
       if (!this.isConnected) return;
     }
-    this._liveCameras.clear();
+    await this.stopAllLive();
     this._loading = true;
     this._error = "";
     this.render();
@@ -140,22 +184,13 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
   async startLive(entityId, button) {
     const preview = button.closest(".camera")?.querySelector(".camera-preview");
     if (this._liveCameras.has(entityId)) {
-      button.disabled = true;
-      button.textContent = "Stopping…";
-      try {
-        await this._hass.callService("eufy_security", "stop_p2p_livestream", {}, { entity_id: entityId });
-      } catch (_error) {
-        // The bridge may already have stopped an expired P2P session.
-      } finally {
-        this._liveCameras.delete(entityId);
-        preview.innerHTML = '<span class="camera-placeholder">Camera idle</span>';
-        button.textContent = "Live";
-        button.disabled = false;
-      }
+      await this.stopLive(entityId, button, preview);
       return;
     }
-    if (!this._liveCameras.has(entityId) && this._liveCameras.size >= 4) {
-      button.textContent = "Four live feeds maximum";
+    const limit = this.liveLimit();
+    if (limit === 1 && this._liveCameras.size) await this.stopAllLive();
+    if (this._liveCameras.size >= limit) {
+      button.textContent = `${limit} live feed${limit === 1 ? "" : "s"} maximum`;
       return;
     }
     if (this._snapshotBusy) {
@@ -180,6 +215,15 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       image.src = `/api/camera_proxy_stream/${encodeURIComponent(entityId)}?token=${encodeURIComponent(token)}`;
       preview.replaceChildren(image);
       button.textContent = "Stop";
+      this._liveTimers.set(entityId, setTimeout(() => {
+        const card = [...this.shadowRoot.querySelectorAll(".camera")]
+          .find((item) => item.dataset.entity === entityId);
+        void this.stopLive(
+          entityId,
+          card?.querySelector(".live-button") || null,
+          card?.querySelector(".camera-preview") || null,
+        );
+      }, 5 * 60 * 1000));
     } catch (error) {
       button.textContent = "Live failed — retry";
       preview.innerHTML = `<span class="camera-placeholder">${esc(error?.message || "Camera did not deliver media")}</span>`;
@@ -273,7 +317,7 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
     </style><main>
       <div class="hero"><div><h1>Baiamonte Eufy Security</h1><p class="sub">HomeBase DVR, live cameras, prior events, snapshots, and complete useful AI evidence.</p></div>
       <div class="toolbar"><label class="field">History<select id="days"><option value="1" ${this._days === 1 ? "selected" : ""}>24 hours</option><option value="3" ${this._days === 3 ? "selected" : ""}>3 days</option><option value="7" ${this._days === 7 ? "selected" : ""}>7 days</option><option value="14" ${this._days === 14 ? "selected" : ""}>14 days</option><option value="31" ${this._days === 31 ? "selected" : ""}>31 days</option></select></label><label class="field">Index<select id="source"><option value="hybrid" ${this._source === "hybrid" ? "selected" : ""}>Cloud + HomeBase</option><option value="cloud" ${this._source === "cloud" ? "selected" : ""}>Account cloud</option><option value="local" ${this._source === "local" ? "selected" : ""}>HomeBase local</option></select></label><button class="load" id="load">${this._loading ? "Loading…" : "Load events"}</button></div></div>
-      <section class="section"><h2>Live DVR view</h2><p class="sub">${cameras.length} Eufy cameras. Start up to four simultaneous live feeds; Controls opens native streaming, PTZ, presets and device actions.</p></section>
+      <section class="section"><h2>Live DVR view</h2><p class="sub">${cameras.length} Eufy cameras. Phone view runs one live camera; wide displays support up to four. Feeds stop after five minutes or when this tab is hidden. Controls opens native streaming, PTZ, presets and device actions.</p></section>
       <div class="live">${live || '<div class="status">Waiting for Eufy camera entities.</div>'}</div>
       <section class="section"><h2>Evidence timeline</h2><p class="sub">${this._summary ? `${this._summary.count || 0} indexed events · ${(this._summary.local_homebase_models || []).join(", ") || "account index"}${(this._summary.warnings || []).length ? ` · fallback: ${(this._summary.warnings || []).join(", ")}` : ""}` : "Choose a window and load prior events."}</p></section>
       <div class="events">${this._error ? `<div class="status error">${esc(this._error)}</div>` : this._loading ? '<div class="status">Querying the authenticated account and HomeBase indexes…</div>' : events || '<div class="status">No events loaded.</div>'}</div>

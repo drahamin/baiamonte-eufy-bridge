@@ -1,5 +1,16 @@
 # Changelog
 
+## 9.5.3 — 2026-08-26
+
+- Prevent Home Assistant device and camera pages from starting every Eufy P2P
+  livestream simultaneously. Event thumbnails are returned from cache immediately
+  and uncached cameras refresh through one account-wide capture slot.
+- Treat an already-running Eufy livestream as a recoverable snapshot condition
+  instead of failing the camera image HTTP request.
+- Align live-view lifecycle with Eufy's Android surfaces: one feed on phones, up
+  to four on E10-sized displays, five-minute session expiry, and stream cleanup
+  when the tab is hidden, closed, or the evidence query is refreshed.
+
 ## 9.5.2 — 2026-08-25
 
 - Start Eufy P2P automatically when Home Assistant's native camera player requests HLS, fixing

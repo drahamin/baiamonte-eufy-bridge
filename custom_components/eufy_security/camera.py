@@ -20,7 +20,10 @@ from .coordinator import EufySecurityDataUpdateCoordinator
 from .entity import EufySecurityEntity
 from .eufy_security_api.camera import StreamProvider, StreamStatus
 from .eufy_security_api.const import STREAM_SLEEP_SECONDS, STREAM_TIMEOUT_SECONDS
-from .eufy_security_api.exceptions import WebSocketConnectionException
+from .eufy_security_api.exceptions import (
+    FailedCommandException,
+    WebSocketConnectionException,
+)
 from .eufy_security_api.metadata import Metadata
 from .eufy_security_api.util import wait_for_value_to_equal
 
@@ -238,7 +241,31 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Return a fresh frame, starting a short P2P stream when required."""
+        """Return a cached frame and opportunistically refresh one camera at a time."""
+        if self.product.picture_base64 is not None:
+            self._last_image = self.product.picture_bytes
+            return self._last_image
+
+        # A device page can ask dozens of camera entities for thumbnails in one
+        # render.  Never queue those requests: the first camera may refresh while
+        # the others return cached data and retry on Home Assistant's next poll.
+        snapshot_semaphore = self.coordinator.camera_snapshot_semaphore
+        if snapshot_semaphore.locked():
+            return self._last_image
+
+        async with snapshot_semaphore:
+            # An event image may have arrived while this request waited for the
+            # account-wide capture slot.
+            if self.product.picture_base64 is not None:
+                self._last_image = self.product.picture_bytes
+                return self._last_image
+
+            return await self._async_refresh_camera_image(width, height)
+
+    async def _async_refresh_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        """Capture one bounded P2P frame without failing the camera HTTP request."""
         async with self._snapshot_lock:
             _LOGGER.debug("Camera image requested; streaming=%s", self.is_streaming)
             started_here = False
@@ -247,7 +274,14 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                 and "start_livestream" in self.product.commands
                 and "stop_livestream" in self.product.commands
             ):
-                started_here = await self.product.start_livestream()
+                try:
+                    started_here = await self.product.start_livestream()
+                except FailedCommandException as exc:
+                    if exc.error_code != "device_livestream_already_running":
+                        _LOGGER.warning(
+                            "Camera snapshot start was rejected: %s", exc.error_code
+                        )
+                    return self._last_image
                 if started_here:
                     await wait_for_value_to_equal(
                         self.product.__dict__,
@@ -270,7 +304,11 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                     try:
                         async with asyncio.timeout(STREAM_TIMEOUT_SECONDS):
                             await self.product.stop_livestream()
-                    except (asyncio.TimeoutError, WebSocketConnectionException):
+                    except (
+                        asyncio.TimeoutError,
+                        FailedCommandException,
+                        WebSocketConnectionException,
+                    ):
                         _LOGGER.warning(
                             "Camera snapshot cleanup timed out; releasing the HTTP request"
                         )
