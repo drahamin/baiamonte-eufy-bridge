@@ -858,28 +858,51 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
   private decodeDeviceListData(data: unknown): Array<DeviceListResponse> {
     const decoded = typeof data === "string" ? this.decryptAPIData(data) : data;
     if (Array.isArray(decoded)) return decoded as Array<DeviceListResponse>;
-    if (decoded && typeof decoded === "object") {
-      const record = decoded as Record<string, unknown>;
+    let current: unknown = decoded;
+    for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+      const record = current as Record<string, unknown>;
       for (const key of ["devices", "device_list", "list"]) {
         if (Array.isArray(record[key])) return record[key] as Array<DeviceListResponse>;
       }
+      current = ["data", "result", "payload"]
+        .map((key) => record[key])
+        .find((value) => value !== undefined);
     }
     return [];
   }
 
   private async getCurrentDeviceCovers(data: Record<string, unknown>): Promise<Array<DeviceListResponse>> {
-    try {
-      const response = await this.request({ method: "post", endpoint: this.apiGetCurrentDevices, data });
-      if (response.status !== 200) return [];
-      const result = response.data as ResultResponse;
-      if (result.code !== ResponseErrorCode.CODE_OK || result.data === undefined) return [];
-      return this.decodeDeviceListData(result.data);
-    } catch (err) {
-      rootHTTPLogger.debug("Current app dashboard cover metadata unavailable; using legacy covers", {
-        error: getError(ensureError(err)),
-      });
-      return [];
+    // Eufy's current app accepts the v6 house-inventory body. Some accounts still
+    // expose the transitional page-based shape, so retain that as a bounded
+    // fallback. The old legacy device-list body alone returns code 0 with an empty
+    // list on newer accounts, silently forcing stale push thumbnails downstream.
+    const bodies = [
+      {
+        house_id: "",
+        categories: [],
+        add_pns: [],
+        transaction: data.transaction,
+      },
+      { ...data, page: 1 },
+      data,
+    ];
+    let lastError: Error | undefined;
+    for (const body of bodies) {
+      try {
+        const response = await this.request({ method: "post", endpoint: this.apiGetCurrentDevices, data: body });
+        if (response.status !== 200) continue;
+        const result = response.data as ResultResponse;
+        if (result.code !== ResponseErrorCode.CODE_OK || result.data === undefined) continue;
+        const devices = this.decodeDeviceListData(result.data);
+        if (devices.length > 0) return devices;
+      } catch (err) {
+        lastError = ensureError(err);
+      }
     }
+    rootHTTPLogger.debug("Current app dashboard cover metadata unavailable; using legacy covers", {
+      error: lastError ? getError(lastError) : "all supported request shapes returned no devices",
+    });
+    return [];
   }
 
   public async getDeviceList(): Promise<Array<DeviceListResponse>> {

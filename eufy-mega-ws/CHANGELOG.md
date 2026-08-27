@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.17 — 2026-08-27
+
+- Query current Eufy app dashboard covers with the v6 house-inventory request shape before falling back to transitional page-based requests.
+- Unwrap bounded nested current-app response envelopes so fresh full camera covers replace stale, compressed push-event thumbnails on Home Assistant camera cards.
+
 ## 1.6.16 — 2026-08-27
 
 - Refresh stable Eufy app dashboard-cover URLs every 25 minutes because Eufy can replace the image bytes without changing the URL.

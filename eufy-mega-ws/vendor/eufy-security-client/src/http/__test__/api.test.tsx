@@ -199,5 +199,12 @@ describe("HTTPApi", () => {
                 cover_path: "x".repeat(4097),
             })).toBeUndefined();
         });
+
+        it("unwraps current-app device lists through bounded nested envelopes", async () => {
+            const api = await HTTPApi.initialize("US", "test@test.com", "password123");
+            expect((api as any).decodeDeviceListData({
+                data: { result: { payload: { devices: [{ device_sn: "DEVICE1" }] } } },
+            })).toEqual([{ device_sn: "DEVICE1" }]);
+        });
     });
 });
