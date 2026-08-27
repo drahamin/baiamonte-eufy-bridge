@@ -41,7 +41,7 @@ from .evidence import (
     normalize_cloud_event,
     normalize_local_event,
 )
-from .snapshot import is_valid_snapshot
+from .snapshot import disk_cache_source, is_valid_snapshot
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -598,7 +598,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 )
             except (AttributeError, KeyError, TypeError, ValueError):
                 device.image_last_updated = None
-            device.snapshot_source = f"disk_cache:{metadata.get('source') or 'event'}"
+            device.snapshot_source = disk_cache_source(metadata.get("source"))
         if restored:
             _LOGGER.info("Restored %s durable Eufy camera snapshots", restored)
 

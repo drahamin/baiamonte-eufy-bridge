@@ -5,6 +5,14 @@ from __future__ import annotations
 MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024
 
 
+def disk_cache_source(source: object) -> str:
+    """Mark restored evidence once, even across repeated Core restarts."""
+    value = str(source or "event")
+    while value.startswith("disk_cache:"):
+        value = value.removeprefix("disk_cache:")
+    return f"disk_cache:{value or 'event'}"
+
+
 def is_valid_snapshot(content: object) -> bool:
     """Return whether content is a bounded JPEG, PNG, or WebP image."""
     if not isinstance(content, (bytes, bytearray, memoryview)):

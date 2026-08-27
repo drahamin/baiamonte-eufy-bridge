@@ -35,3 +35,9 @@ def test_empty_product_snapshot_preserves_fallback() -> None:
 
 def test_malformed_product_snapshot_is_not_advertised() -> None:
     assert snapshot.product_snapshot_bytes(Product(b"not-an-image")) is None
+
+
+def test_disk_cache_source_is_idempotent_across_restarts() -> None:
+    assert snapshot.disk_cache_source("push_event") == "disk_cache:push_event"
+    assert snapshot.disk_cache_source("disk_cache:push_event") == "disk_cache:push_event"
+    assert snapshot.disk_cache_source("disk_cache:disk_cache:push_event") == "disk_cache:push_event"

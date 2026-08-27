@@ -1,5 +1,11 @@
 # Changelog
 
+## 9.6.5 — 2026-08-27
+
+- Normalizes durable snapshot provenance when Home Assistant restores the same
+  cached frame across repeated Core restarts, preventing recursive
+  `disk_cache:` prefixes while preserving the original evidence source.
+
 ## 9.6.4 — 2026-08-26
 
 - Read HomeBase Pro snapshot fields from history, `latest_update`, and nested
