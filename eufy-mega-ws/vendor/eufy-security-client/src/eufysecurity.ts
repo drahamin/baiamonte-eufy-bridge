@@ -146,7 +146,9 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
   private dashboardSnapshotQueue: Array<{ device: Device; value: string }> = [];
   private dashboardSnapshotActive = 0;
   private dashboardSnapshotUrls: Map<string, string> = new Map<string, string>();
+  private dashboardSnapshotRequestedAt: Map<string, number> = new Map<string, number>();
   private dashboardSnapshotTimer?: NodeJS.Timeout;
+  private readonly DASHBOARD_SNAPSHOT_REFRESH_MS = 25 * 60 * 1000;
 
   private pushService!: PushNotificationService;
   private mqttService!: MQTTService;
@@ -1426,8 +1428,19 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
 
   private queueDashboardSnapshot(device: Device, value: PropertyValue): void {
     if (typeof value !== "string" || value === "" || !device.hasProperty(PropertyName.DevicePicture)) return;
-    if (this.dashboardSnapshotUrls.get(device.getSerial()) === value) return;
-    this.dashboardSnapshotUrls.set(device.getSerial(), value);
+    const serial = device.getSerial();
+    const requestedAt = this.dashboardSnapshotRequestedAt.get(serial) ?? 0;
+    if (
+      this.dashboardSnapshotUrls.get(serial) === value &&
+      Date.now() - requestedAt < this.DASHBOARD_SNAPSHOT_REFRESH_MS
+    )
+      return;
+    // Eufy's app-facing cover URL is often stable while the bytes behind it are
+    // replaced. A permanent URL-only dedupe therefore leaves HA showing an old,
+    // soft event frame. Re-fetch it at a bounded cadence: serialized, cached and
+    // never through an automatic livestream/P2P session.
+    this.dashboardSnapshotUrls.set(serial, value);
+    this.dashboardSnapshotRequestedAt.set(serial, Date.now());
     this.dashboardSnapshotQueue.push({ device, value });
     if (this.dashboardSnapshotTimer === undefined) {
       this.dashboardSnapshotTimer = setTimeout(() => {
@@ -1459,6 +1472,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
           })
           .catch((err) => {
             this.dashboardSnapshotUrls.delete(item.device.getSerial());
+            this.dashboardSnapshotRequestedAt.delete(item.device.getSerial());
             const error = ensureError(err);
             rootMainLogger.debug("HomeBase dashboard snapshot unavailable", {
               error: getError(error),
@@ -1485,6 +1499,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
         })
         .catch((err) => {
           this.dashboardSnapshotUrls.delete(item.device.getSerial());
+          this.dashboardSnapshotRequestedAt.delete(item.device.getSerial());
           const error = ensureError(err);
           rootMainLogger.debug("Dashboard snapshot unavailable", {
             error: getError(error),

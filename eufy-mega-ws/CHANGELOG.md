@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.16 — 2026-08-27
+
+- Refresh stable Eufy app dashboard-cover URLs every 25 minutes because Eufy can replace the image bytes without changing the URL.
+- Keep cover downloads serialized and cached, without automatically opening livestream or P2P sessions, so clearer camera cards do not add material Home Assistant or battery-camera load.
+
 ## 1.6.12 — 2026-08-26
 
 - Correct the HomeBase Professional event path after canarying the current app flow: its
