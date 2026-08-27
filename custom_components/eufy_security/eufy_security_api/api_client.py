@@ -150,19 +150,22 @@ class ApiClient:
     async def _build_product(self, product_type: ProductType, serial_no: str):
         """Build one product from bridge properties, metadata and commands."""
         product: Product = None
-        properties = await self._get_properties(product_type, serial_no)
-        metadata = await self._get_metadata(product_type, serial_no)
-        commands = await self._get_commands(product_type, serial_no)
+        # These are independent bridge reads. Fetching them concurrently keeps a
+        # large account inside Home Assistant's setup deadline without raising the
+        # four-product inventory concurrency limit.
+        properties, metadata, commands = await asyncio.gather(
+            self._get_properties(product_type, serial_no),
+            self._get_metadata(product_type, serial_no),
+            self._get_commands(product_type, serial_no),
+        )
 
         if product_type == ProductType.device:
             if ProductCommand.start_livestream.name in commands:
-                is_rtsp_streaming = await self._get_is_rtsp_streaming(
-                    product_type, serial_no
+                is_rtsp_streaming, is_p2p_streaming, voices = await asyncio.gather(
+                    self._get_is_rtsp_streaming(product_type, serial_no),
+                    self._get_is_p2p_streaming(product_type, serial_no),
+                    self._get_voices(product_type, serial_no),
                 )
-                is_p2p_streaming = await self._get_is_p2p_streaming(
-                    product_type, serial_no
-                )
-                voices = await self._get_voices(product_type, serial_no)
                 product = Camera(
                     self,
                     serial_no,

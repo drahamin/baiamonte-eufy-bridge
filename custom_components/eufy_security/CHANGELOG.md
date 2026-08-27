@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.9 — 2026-08-27
+
+- Fetch each product's independent inventory and camera-status records concurrently
+  while preserving the existing four-product limit. This prevents large accounts
+  from remaining in **Initializing** solely because serial bridge reads exceed the
+  three-minute setup deadline.
+
 ## 9.6.8 — 2026-08-27
 
 - Keep the authenticated Security page and its configured sidebar visibility
