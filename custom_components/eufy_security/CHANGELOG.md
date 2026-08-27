@@ -1,5 +1,11 @@
 # Changelog
 
+## 9.6.6 — 2026-08-27
+
+- Automatically expose an enabled HomeBase RTSP source to native Home Assistant camera cards, providing current local video without waking or retaining a P2P session.
+- Recover contrast and color from low-dynamic-range Eufy event covers and apply bounded sharpening before serving dashboard stills, while leaving live streams untouched.
+- Cache the enhancement by source bytes and skip large or invalid media so repeated Home Assistant card loads add negligible CPU or memory pressure.
+
 ## 9.6.5 — 2026-08-27
 
 - Normalizes durable snapshot provenance when Home Assistant restores the same
