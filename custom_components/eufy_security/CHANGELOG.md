@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.8 — 2026-08-27
+
+- Keep the authenticated Security page and its configured sidebar visibility
+  independent of bridge inventory initialization and reconnect retries.
+- Remove the panel only when the integration is disabled or deleted, rather than
+  during a normal options reload.
+
 ## 9.6.7 — 2026-08-27
 
 - Add a **Show Baiamonte Eufy Security in the sidebar** integration option.

@@ -18,6 +18,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import COORDINATOR, DOMAIN, NAME, PLATFORMS
 from .coordinator import EufySecurityDataUpdateCoordinator
 from .http import register_evidence_views
+from .model import Config
 from .panel import register_panel, register_panel_assets, unregister_panel
 
 _LOGGER = logging.getLogger(__package__)
@@ -37,6 +38,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data.setdefault(DOMAIN, {})
     register_evidence_views(hass, _coordinator)
     await register_panel_assets(hass)
+    entries = hass.config_entries.async_entries(DOMAIN)
+    show_in_sidebar = Config.parse(entries[0]).show_sidebar_panel if entries else True
+    await register_panel(hass, show_in_sidebar=show_in_sidebar)
 
     async def handle_send_message(call: ServiceCall) -> None:
         message: Any = call.data["message"]
@@ -145,12 +149,14 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     domain_data[COORDINATOR] = coordinator
     domain_data[config_entry.entry_id] = coordinator
 
-    await coordinator.initialize()
-    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
-    coordinator.platforms.extend(platform.value for platform in PLATFORMS)
+    # The authenticated companion page is independent of bridge inventory. Keep
+    # its route available while a large account initializes or reconnects.
     await register_panel(
         hass, show_in_sidebar=coordinator.config.show_sidebar_panel
     )
+    await coordinator.initialize()
+    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
+    coordinator.platforms.extend(platform.value for platform in PLATFORMS)
     config_entry.async_on_unload(config_entry.add_update_listener(async_reload_entry))
     return True
 
@@ -161,17 +167,32 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     coordinator = domain_data.get(config_entry.entry_id) or domain_data.get(COORDINATOR)
     unloaded = await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
     if unloaded and coordinator is not None:
-        unregister_panel(hass)
         await coordinator.disconnect()
         domain_data.pop(config_entry.entry_id, None)
         if domain_data.get(COORDINATOR) is coordinator:
             domain_data.pop(COORDINATOR, None)
+    if unloaded and config_entry.disabled_by is not None:
+        unregister_panel(hass)
     return unloaded
 
 
 async def async_reload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
     """Reload an updated bridge configuration."""
+    # Apply sidebar visibility immediately. The companion route is deliberately
+    # independent of bridge connection and inventory setup.
+    unregister_panel(hass)
+    await register_panel(
+        hass,
+        show_in_sidebar=Config.parse(config_entry).show_sidebar_panel,
+    )
     await hass.config_entries.async_reload(config_entry.entry_id)
+
+
+async def async_remove_entry(
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> None:
+    """Remove the companion panel when the integration entry is deleted."""
+    unregister_panel(hass)
 
 
 async def async_remove_config_entry_device(
