@@ -34,6 +34,10 @@ class EufySecurityOptionFlowHandler(config_entries.OptionsFlow):
                     ConfigField.dashboard_port.name, default=self.config.dashboard_port
                 ): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
                 vol.Optional(
+                    ConfigField.show_sidebar_panel.name,
+                    default=self.config.show_sidebar_panel,
+                ): bool,
+                vol.Optional(
                     ConfigField.no_stream_in_hass.name,
                     default=self.config.no_stream_in_hass,
                 ): bool,

@@ -1,5 +1,11 @@
 # Changelog
 
+## 9.6.7 — 2026-08-27
+
+- Add a **Show Baiamonte Eufy Security in the sidebar** integration option.
+  Hiding it removes only the left-menu item; the authenticated Security page,
+  entities, services, and bridge connection remain available.
+
 ## 9.6.6 — 2026-08-27
 
 - Automatically expose an enabled HomeBase RTSP source to native Home Assistant camera cards, providing current local video without waking or retaining a P2P session.

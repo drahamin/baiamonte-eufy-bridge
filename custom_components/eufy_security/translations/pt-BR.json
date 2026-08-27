@@ -33,6 +33,7 @@
           "sync_interval": "Intervalo de escaneamento na nuvem em segundos [1 to 9999]",
           "rtsp_server_address": "Endereço IP do host para add-on GO2RTC(P2P)",
           "dashboard_port": "Baiamonte bridge diagnostics port",
+          "show_sidebar_panel": "Mostrar Baiamonte Eufy Security na barra lateral",
           "no_stream_in_hass": "Do not use STREAM module inside Home Assistant (if you do not watch the video inside Home Assistant native streaming or you are using WebRTC, enable this to decrease CPU usage",
           "name_for_custom1": "Nome de substituição para o modo de guarda personalizado 1",
           "name_for_custom2": "Nome de substituição para o modo de guarda personalizado 2",

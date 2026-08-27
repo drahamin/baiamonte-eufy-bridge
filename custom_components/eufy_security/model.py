@@ -24,6 +24,7 @@ class ConfigField(Enum):
     sync_interval = 600  # seconds
     rtsp_server_address = 3
     dashboard_port = 8097
+    show_sidebar_panel = True
     no_stream_in_hass = False
     name_for_custom1 = "Custom 1"
     name_for_custom2 = "Custom 2"
@@ -45,6 +46,7 @@ class Config:
     sync_interval: int = ConfigField.sync_interval.value
     rtsp_server_address: str = ConfigField.host.value
     dashboard_port: int = ConfigField.dashboard_port.value
+    show_sidebar_panel: bool = ConfigField.show_sidebar_panel.value
     no_stream_in_hass: bool = ConfigField.no_stream_in_hass.value
     name_for_custom1: str = ConfigField.name_for_custom1.value
     name_for_custom2: str = ConfigField.name_for_custom2.value

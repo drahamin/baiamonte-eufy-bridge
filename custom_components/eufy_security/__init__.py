@@ -18,7 +18,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import COORDINATOR, DOMAIN, NAME, PLATFORMS
 from .coordinator import EufySecurityDataUpdateCoordinator
 from .http import register_evidence_views
-from .panel import register_panel
+from .panel import register_panel, register_panel_assets, unregister_panel
 
 _LOGGER = logging.getLogger(__package__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -36,7 +36,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register bridge-level services."""
     hass.data.setdefault(DOMAIN, {})
     register_evidence_views(hass, _coordinator)
-    await register_panel(hass)
+    await register_panel_assets(hass)
 
     async def handle_send_message(call: ServiceCall) -> None:
         message: Any = call.data["message"]
@@ -148,6 +148,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     await coordinator.initialize()
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
     coordinator.platforms.extend(platform.value for platform in PLATFORMS)
+    await register_panel(
+        hass, show_in_sidebar=coordinator.config.show_sidebar_panel
+    )
     config_entry.async_on_unload(config_entry.add_update_listener(async_reload_entry))
     return True
 
@@ -158,6 +161,7 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     coordinator = domain_data.get(config_entry.entry_id) or domain_data.get(COORDINATOR)
     unloaded = await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
     if unloaded and coordinator is not None:
+        unregister_panel(hass)
         await coordinator.disconnect()
         domain_data.pop(config_entry.entry_id, None)
         if domain_data.get(COORDINATOR) is coordinator:

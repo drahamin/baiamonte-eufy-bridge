@@ -33,6 +33,7 @@
           "sync_interval": "Interwał skanowania chmury w sekundach [1 to 9999]",
           "rtsp_server_address": "Adres IP dla dodatku GO2RTC (P2P)",
           "dashboard_port": "Baiamonte bridge diagnostics port",
+          "show_sidebar_panel": "Pokaż Baiamonte Eufy Security na pasku bocznym",
           "no_stream_in_hass": "Nie używaj modułu STREAM w Home Assistant (jeśli nie oglądasz wideo w natywnym streamingu Home Assistant lub używasz WebRTC, włącz to ustawienia, aby zmniejszyć zużycie procesora",
           "name_for_custom1": "Zastąp nazwę dla pierwszego niestandardowego trybu ochrony (Bypass)",
           "name_for_custom2": "Zastąp nazwę dla drugiego niestandardowego trybu ochrony (Night)",
