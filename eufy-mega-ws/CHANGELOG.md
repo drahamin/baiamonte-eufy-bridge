@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.18 — 2026-08-27
+
+- Accept the current app's snake-case and camel-case local cover, cover, snapshot, image and thumbnail field families, including string timestamps.
+- When a future Eufy response renames those fields again, record only safe aggregate field names so compatibility can be repaired without logging identifiers or media locations.
+
 ## 1.6.17 — 2026-08-27
 
 - Query current Eufy app dashboard covers with the v6 house-inventory request shape before falling back to transitional page-based requests.

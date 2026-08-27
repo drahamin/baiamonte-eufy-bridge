@@ -193,6 +193,14 @@ describe("HTTPApi", () => {
             })).toEqual({ path: "/mnt/local.jpg", time: 200 });
         });
 
+        it("accepts current-app camel-case cover fields and numeric timestamps", () => {
+            expect(HTTPApi.selectDashboardCover({
+                device_sn: "DEVICE1",
+                coverPath: "https://example.invalid/current.jpg",
+                coverTime: "300",
+            } as any)).toEqual({ path: "https://example.invalid/current.jpg", time: 300 });
+        });
+
         it("ignores empty and implausibly long paths", () => {
             expect(HTTPApi.selectDashboardCover({
                 local_cover_path: "",

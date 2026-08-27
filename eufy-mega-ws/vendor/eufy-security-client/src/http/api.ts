@@ -837,11 +837,39 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
    * serialized and uses authenticated HTTP or HomeBase download according to URL/path shape.
    */
   public static selectDashboardCover(device: Partial<DeviceListResponse>): { path: string; time: number } | undefined {
+    const current = device as Partial<DeviceListResponse> & Record<string, unknown>;
+    const stringValue = (...keys: string[]): string | undefined => {
+      const value = keys.map((key) => current[key]).find((candidate) => typeof candidate === "string" && candidate.length > 0);
+      return typeof value === "string" ? value : undefined;
+    };
+    const numberValue = (...keys: string[]): number | undefined => {
+      const value = keys.map((key) => current[key]).find((candidate) =>
+        (typeof candidate === "number" && Number.isFinite(candidate)) ||
+        (typeof candidate === "string" && candidate.length > 0 && Number.isFinite(Number(candidate)))
+      );
+      return value === undefined ? undefined : Number(value);
+    };
     const candidates = [
-      { path: device.local_cover_path, time: device.local_cover_time, priority: 4 },
-      { path: device.cover_path, time: device.cover_time, priority: 3 },
-      { path: device.image, time: device.image_time, priority: 2 },
-      { path: device.device_thumbnail_path, time: 0, priority: 1 },
+      {
+        path: stringValue("local_cover_path", "localCoverPath", "local_cover", "localCover"),
+        time: numberValue("local_cover_time", "localCoverTime", "local_cover_timestamp", "localCoverTimestamp"),
+        priority: 4,
+      },
+      {
+        path: stringValue("cover_path", "coverPath", "cover_url", "coverUrl", "snapshot_url", "snapshotUrl"),
+        time: numberValue("cover_time", "coverTime", "cover_timestamp", "coverTimestamp", "snapshot_time", "snapshotTime"),
+        priority: 3,
+      },
+      {
+        path: stringValue("image", "image_url", "imageUrl", "image_path", "imagePath"),
+        time: numberValue("image_time", "imageTime", "image_timestamp", "imageTimestamp"),
+        priority: 2,
+      },
+      {
+        path: stringValue("device_thumbnail_path", "deviceThumbnailPath", "thumbnail_path", "thumbnailPath", "thumbnail_url", "thumbnailUrl", "thumbnail"),
+        time: numberValue("thumbnail_time", "thumbnailTime", "thumbnail_timestamp", "thumbnailTimestamp"),
+        priority: 1,
+      },
     ]
       .filter((item): item is { path: string; time: number | undefined; priority: number } =>
         typeof item.path === "string" && item.path.length > 0 && item.path.length <= 4096
@@ -944,8 +972,17 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
             }
             rootHTTPLogger.info("Current app dashboard cover metadata merged", {
               devices: deviceList.length,
+              currentDevices: currentDevices.length,
               covers: coverCount,
             });
+            if (currentDevices.length > 0 && coverCount === 0) {
+              rootHTTPLogger.info("Current app devices exposed no recognized cover fields", {
+                fields: [...new Set(currentDevices.flatMap((device) => Object.keys(device)))]
+                  .filter((key) => !/(account|address|email|ip|key|mac|name|serial|sn|token|url)/i.test(key))
+                  .sort()
+                  .slice(0, 120),
+              });
+            }
             rootHTTPLogger.debug("Decrypted device list data: %s", JSON.stringify(deviceList, null, 2));
             return deviceList;
           }
