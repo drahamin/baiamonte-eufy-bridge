@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.10 — 2026-08-28
+
+- Bound reconnect inventory traffic on large camera accounts by keeping each
+  camera's property, metadata, command and streaming-capability reads
+  sequential inside the existing four-camera concurrency limit. This avoids
+  event-loop starvation without removing devices or features.
+
 ## 9.6.9 — 2026-08-27
 
 - Fetch each product's independent inventory and camera-status records concurrently
