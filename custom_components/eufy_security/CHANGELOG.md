@@ -1,5 +1,10 @@
 # Changelog
 
+## 9.6.11 — 2026-08-29
+
+- Advertise controlled playback for cameras that provide explicit P2P start/stop commands while keeping stream discovery side-effect free.
+- Permit always-on local RTSP sources when the general Home Assistant stream-worker option is disabled, without automatically waking P2P cameras.
+
 ## 9.6.10 — 2026-08-28
 
 - Bound reconnect inventory traffic on large camera accounts by keeping each

@@ -118,12 +118,17 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
     ) -> None:
         Camera.__init__(self)
         EufySecurityEntity.__init__(self, coordinator, metadata)
-        # An enabled HomeBase RTSP source is already a bounded local stream and
-        # does not wake P2P. Let native HA cards use it. Cameras without RTSP stay
-        # snapshot-only; the companion remains the owner of explicit P2P live view.
+        # Advertise the playback endpoint for cameras that can supply either a
+        # local RTSP source or an explicitly started P2P source. stream_source()
+        # remains side-effect free, so merely rendering a dashboard cannot wake a
+        # battery camera; the user must start P2P first.
+        commands = set(self.product.commands or [])
         self._attr_supported_features = (
             CameraEntityFeature.STREAM
-            if self.product.is_rtsp_enabled and self.product.rtsp_stream_url
+            if (
+                (self.product.is_rtsp_enabled and self.product.rtsp_stream_url)
+                or {"start_livestream", "stop_livestream"}.issubset(commands)
+            )
             else CameraEntityFeature(0)
         )
         self._attr_name = f"{self.product.name}"
@@ -187,7 +192,10 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
 
     async def async_create_stream(self):
         """Create HA playback only for a source the user already started."""
-        if self.coordinator.config.no_stream_in_hass is True:
+        if (
+            self.coordinator.config.no_stream_in_hass is True
+            and not (self.product.is_rtsp_enabled and self.product.rtsp_stream_url)
+        ):
             return None
         if (
             self.is_streaming is False

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.19 — 2026-08-29
+
+- Treat exhausted app-cover downloads as cached-image diagnostics instead of persistent bridge errors; the last verified camera image remains available.
+
 ## 1.6.18 — 2026-08-27
 
 - Accept the current app's snake-case and camel-case local cover, cover, snapshot, image and thumbnail field families, including string timestamps.

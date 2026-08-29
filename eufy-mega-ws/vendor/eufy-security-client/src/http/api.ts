@@ -2182,7 +2182,11 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
           }
 
           if (lastError) {
-            rootHTTPLogger.error("Get Image - retries exhausted", {
+            // A dashboard cover can legitimately be absent, expired or not yet
+            // materialized in Eufy's object store. The caller preserves the last
+            // verified cached image, so this is diagnostic rather than a bridge
+            // fault and must not create a persistent red system error.
+            rootHTTPLogger.debug("Get Image - retries exhausted; cached image preserved", {
               error: lastError.message,
               deviceSN,
               url: redactSignedImageUrl(url),
