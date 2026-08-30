@@ -41,11 +41,9 @@ class WebSocketClient:
         """Set up web socket connection"""
         try:
             # The bridge can briefly pause its local event loop while it refreshes
-            # the large Eufy account inventory.  A ten-second heartbeat treated
-            # that healthy work as a dead bridge and reloaded the whole HA entry
-            # every ~11 minutes.  Keep the connection lightweight and tolerate a
-            # bounded bridge pause; request/response calls retain their own
-            # explicit 30-second timeout.
+            # the large Eufy account inventory. Keep this long-lived Home Assistant
+            # connection lightweight and tolerant of a bounded bridge pause;
+            # request/response calls retain their own explicit 30-second timeout.
             self.socket = await self.session.ws_connect(
                 f"ws://{self.host}:{self.port}", heartbeat=60, compress=0
             )
