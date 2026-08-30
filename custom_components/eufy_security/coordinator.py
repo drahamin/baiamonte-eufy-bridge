@@ -948,7 +948,12 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
     async def _update_local(self):
         try:
             _LOGGER.debug("coordinator - start update_local")
-            await self._api.poll_refresh()
+            # The bridge websocket is event-driven. A full account ``poll_refresh``
+            # fans thousands of device/property events into Home Assistant at once
+            # on this estate and can block Core long enough for app websocket PONGs
+            # to expire. Keep the scheduled coordinator update to a cheap bridge
+            # health read; commands that need an explicit refresh still request it
+            # at the product/API layer.
             await self._refresh_bridge_status()
             _LOGGER.debug("coordinator - complete update_local")
             return self.data
