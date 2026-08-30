@@ -40,8 +40,14 @@ class WebSocketClient:
     async def connect(self):
         """Set up web socket connection"""
         try:
+            # The bridge can briefly pause its local event loop while it refreshes
+            # the large Eufy account inventory.  A ten-second heartbeat treated
+            # that healthy work as a dead bridge and reloaded the whole HA entry
+            # every ~11 minutes.  Keep the connection lightweight and tolerate a
+            # bounded bridge pause; request/response calls retain their own
+            # explicit 30-second timeout.
             self.socket = await self.session.ws_connect(
-                f"ws://{self.host}:{self.port}", heartbeat=10, compress=9
+                f"ws://{self.host}:{self.port}", heartbeat=60, compress=0
             )
         except Exception as exc:
             raise WebSocketConnectionException(
