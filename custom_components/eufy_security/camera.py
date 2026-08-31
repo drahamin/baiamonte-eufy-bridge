@@ -280,15 +280,15 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         return self._last_image
 
     @callback
-    def _handle_coordinator_update(self) -> None:
-        """Keep a verified frame and invalidate failed frontend image responses."""
+    def _handle_product_update(self) -> None:
+        """Keep the affected camera's verified frame and token current."""
         snapshot = product_snapshot_bytes(self.product, self._last_image)
         if snapshot is not None and snapshot != self._last_image:
             self._last_image = snapshot
             # The camera proxy URL is tokenized. Rotate it as soon as the frame
             # changes so iOS/Android dashboards do not retain an earlier 404.
             self.async_update_token()
-        super()._handle_coordinator_update()
+        super()._handle_product_update()
 
     async def async_refresh_stale_snapshot(self, *, force: bool = False) -> bool:
         """Capture one bounded frame when requested or every source is stale."""
@@ -341,7 +341,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                 # Notify every camera/cache listener, rotate the camera token and
                 # persist the verified frame. A direct entity state write does not
                 # exercise the coordinator's durable snapshot cache.
-                self.coordinator.async_update_listeners()
+                self.product.notify_state_update()
                 return True
             except (
                 asyncio.TimeoutError,

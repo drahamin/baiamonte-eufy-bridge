@@ -1,5 +1,32 @@
 # Changelog
 
+## 9.6.18 — 2026-08-31
+
+- Keep cached camera frames and tokenized image URLs current on product-scoped
+  events. Explicit snapshot captures now notify only that camera's entities plus
+  the coalesced bridge cache instead of relying on an estate-wide refresh.
+
+## 9.6.17 — 2026-08-31
+
+- Route property events only to entities belonging to the affected Eufy
+  product. This removes estate-wide writes for a single camera event while
+  preserving all entities, state detail, bridge diagnostics and snapshot cache.
+
+## 9.6.16 — 2026-08-31
+
+- Coalesce property-event bursts into one Home Assistant entity refresh per
+  second. Product values remain current in memory while avoiding thousands of
+  redundant entity writes that could briefly disconnect dashboard clients.
+
+## 9.6.15 — 2026-08-31
+
+- Keep bridge command results on the primary WebSocket path while coalescing
+  repetitive device events on a bounded cooperative worker. This prevents a
+  large Eufy account from starving Home Assistant's HTTP and app event loops.
+- Pace initial bridge inventory at two products at a time and defer any single
+  product that cannot answer within 20 seconds. This avoids reconnect bursts,
+  keeps setup bounded, and preserves every responsive device and feature.
+
 ## 9.6.11 — 2026-08-29
 
 - Advertise controlled playback for cameras that provide explicit P2P start/stop commands while keeping stream discovery side-effect free.

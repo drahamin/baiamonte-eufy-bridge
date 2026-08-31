@@ -71,6 +71,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self._daily_snapshot_unsub = None
         self._snapshot_cache_task: asyncio.Task | None = None
         self._snapshot_cache_dirty = False
+        self._listener_flush_handle: asyncio.TimerHandle | None = None
         self._snapshot_cache_dir = self.hass.config.path(
             ".storage", "baiamonte_eufy_snapshots"
         )
@@ -504,7 +505,21 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
     @callback
     def async_update_listeners(self) -> None:
-        """Update entities and persist any newly delivered event snapshots."""
+        """Coalesce bridge bursts into one estate-wide entity refresh."""
+        # Every product uses this coordinator as its state listener.  With more
+        # than 2,000 Eufy entities, immediately refreshing every listener for
+        # every property event can monopolize Core for several seconds.  Keep
+        # the latest product values in memory immediately, but publish them to
+        # Home Assistant at most once per second.
+        if self._listener_flush_handle is None:
+            self._listener_flush_handle = self.hass.loop.call_later(
+                1.0, self._flush_entity_updates
+            )
+
+    @callback
+    def _flush_entity_updates(self) -> None:
+        """Publish the newest coalesced product state to Home Assistant."""
+        self._listener_flush_handle = None
         super().async_update_listeners()
         self._schedule_snapshot_cache_write()
 
@@ -962,6 +977,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def disconnect(self):
         """disconnect from api"""
+        if self._listener_flush_handle is not None:
+            self._listener_flush_handle.cancel()
+            self._listener_flush_handle = None
         if self._daily_snapshot_unsub is not None:
             self._daily_snapshot_unsub()
             self._daily_snapshot_unsub = None

@@ -98,7 +98,7 @@ class EufySecurityBinarySensor(BinarySensorEntity, EufySecurityEntity):
         return bool(get_child_value(self.product.properties, self.metadata.name))
 
 
-class EufySecurityProductEntity(BinarySensorEntity, CoordinatorEntity):
+class EufySecurityProductEntity(BinarySensorEntity):
     """Privacy-safe capability summary for a bridge product."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -107,7 +107,8 @@ class EufySecurityProductEntity(BinarySensorEntity, CoordinatorEntity):
     def __init__(
         self, coordinator: EufySecurityDataUpdateCoordinator, product: Product
     ) -> None:
-        super().__init__(coordinator)
+        super().__init__()
+        self.coordinator = coordinator
         self.product = product
         self.product.set_state_update_listener(coordinator.async_update_listeners)
 
@@ -118,6 +119,20 @@ class EufySecurityProductEntity(BinarySensorEntity, CoordinatorEntity):
         self._attr_name = (
             f"{self.product.name} Debug ({self.product.product_type.value})"
         )
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe the diagnostic entity to its own product."""
+        await super().async_added_to_hass()
+        self.product.add_state_update_listener(self.async_write_ha_state)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Remove the product-scoped diagnostic listener."""
+        self.product.remove_state_update_listener(self.async_write_ha_state)
+        await super().async_will_remove_from_hass()
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.available
 
     @property
     def is_on(self):

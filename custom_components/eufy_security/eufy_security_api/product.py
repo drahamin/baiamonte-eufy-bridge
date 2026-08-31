@@ -37,7 +37,7 @@ class Product:
         self.commands = commands
         self.connected = True
 
-        self.state_update_listener: Callable = None
+        self.state_update_listeners: set[Callable] = set()
 
         self._set_properties(properties)
         self._set_metadata(metadata)
@@ -68,8 +68,21 @@ class Product:
             self.metadata[key] = metadata
 
     def set_state_update_listener(self, listener: Callable):
-        """Set listener function when state changes"""
-        self.state_update_listener = listener
+        """Register a listener function when state changes."""
+        self.add_state_update_listener(listener)
+
+    def add_state_update_listener(self, listener: Callable) -> None:
+        """Register one product-scoped state listener."""
+        self.state_update_listeners.add(listener)
+
+    def remove_state_update_listener(self, listener: Callable) -> None:
+        """Remove one product-scoped state listener."""
+        self.state_update_listeners.discard(listener)
+
+    def notify_state_update(self) -> None:
+        """Publish the newest product state to registered listeners."""
+        for callback_func in tuple(self.state_update_listeners):
+            callback_func()
 
     async def set_property(self, metadata, value: Any):
         """Process set property call"""
@@ -129,9 +142,7 @@ class Product:
         if handler_func is not None:
             await handler_func(event)
 
-        if self.state_update_listener is not None:
-            callback_func = self.state_update_listener
-            callback_func()
+        self.notify_state_update()
 
     async def _handle_property_changed(self, event: Event):
         self.properties[event.data[MessageField.NAME.value]] = event.data[

@@ -136,21 +136,37 @@ class ApiClient:
 
     async def _get_products(self, product_type: ProductType, products: list) -> dict:
         """Build product inventory with bounded bridge request concurrency."""
-        semaphore = asyncio.Semaphore(4)
+        # Two products at a time keeps a large estate within Home Assistant's
+        # setup window without recreating the former reconnect burst.
+        semaphore = asyncio.Semaphore(2)
 
         async def build_product(serial_no: str):
             async with semaphore:
-                return serial_no, await self._build_product(product_type, serial_no)
+                try:
+                    async with asyncio.timeout(20):
+                        product = await self._build_product(product_type, serial_no)
+                except (asyncio.TimeoutError, WebSocketConnectionException) as exc:
+                    _LOGGER.warning(
+                        "Deferred one Eufy %s during bounded inventory: %s",
+                        product_type.name,
+                        type(exc).__name__,
+                    )
+                    product = None
+                return serial_no, product
 
         entries = await asyncio.gather(
             *(build_product(serial_no) for serial_no in products)
         )
-        return dict(entries)
+        return {
+            serial_no: product
+            for serial_no, product in entries
+            if product is not None
+        }
 
     async def _build_product(self, product_type: ProductType, serial_no: str):
         """Build one product from bridge properties, metadata and commands."""
         product: Product = None
-        # Product construction is already bounded to four concurrent products
+        # Product construction is already bounded to two concurrent products
         # in ``_get_products``. Keep each product's reads sequential so a large
         # camera account cannot create a twelve-request reconnect burst that
         # starves Home Assistant's event loop.

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections import OrderedDict
 from collections.abc import Callable, Coroutine
 from typing import Any, Text
 
@@ -36,6 +37,9 @@ class WebSocketClient:
 
         self.socket: aiohttp.ClientWebSocketResponse | None = None
         self.task: asyncio.Task | None = None
+        self.event_task: asyncio.Task | None = None
+        self._pending_events: OrderedDict[tuple, dict] = OrderedDict()
+        self._event_ready = asyncio.Event()
 
     async def connect(self):
         """Set up web socket connection"""
@@ -53,6 +57,7 @@ class WebSocketClient:
             ) from exc
         self.task = asyncio.create_task(self._process_messages())
         self.task.add_done_callback(self._on_close)
+        self.event_task = asyncio.create_task(self._process_events())
         await self._on_open()
 
     async def disconnect(self):
@@ -60,6 +65,12 @@ class WebSocketClient:
         if self.task is not None:
             self.task.cancel()
             self.task = None
+        if self.event_task is not None:
+            self.event_task.cancel()
+            await asyncio.gather(self.event_task, return_exceptions=True)
+            self.event_task = None
+        self._pending_events.clear()
+        self._event_ready.clear()
         if self.socket is not None:
             await self.socket.close()
             self.socket = None
@@ -86,13 +97,56 @@ class WebSocketClient:
     async def _on_message(self, message):
         try:
             if self.message_callback is not None:
-                await self.message_callback(message.json())
+                payload = message.json()
+                # Results unblock bridge commands and inventory reads, so process
+                # them immediately. Device/station events can arrive in bursts of
+                # thousands on a large account; coalesce those on a separate,
+                # bounded worker so they can never starve Home Assistant's HTTP
+                # server or delay a command response behind stale state changes.
+                if payload.get("type") == "event":
+                    self._queue_event(payload)
+                else:
+                    await self.message_callback(payload)
         except DeviceNotInitializedYetException:
             _LOGGER.debug(
                 "Ignored device event received before inventory initialization"
             )
         except Exception as exc:
             _LOGGER.error("Unable to process WebSocket message: %s", type(exc).__name__)
+
+    def _queue_event(self, payload: dict) -> None:
+        """Coalesce repetitive bridge events without losing the newest state."""
+        event = payload.get("event") or {}
+        key = (
+            event.get("source"),
+            event.get("serialNumber"),
+            event.get("event"),
+            event.get("name"),
+        )
+        if key in self._pending_events:
+            self._pending_events.pop(key)
+        elif len(self._pending_events) >= 512:
+            self._pending_events.popitem(last=False)
+            _LOGGER.warning("Dropped oldest Eufy event from the bounded Core queue")
+        self._pending_events[key] = payload
+        self._event_ready.set()
+
+    async def _process_events(self) -> None:
+        """Drain coalesced events cooperatively and keep Core responsive."""
+        try:
+            while True:
+                await self._event_ready.wait()
+                while self._pending_events:
+                    _, payload = self._pending_events.popitem(last=False)
+                    if self.message_callback is not None:
+                        await self.message_callback(payload)
+                    # Explicitly hand control back to Home Assistant between every
+                    # state update; large Eufy accounts must not monopolize a loop
+                    # iteration even when the bridge reconnects many stations.
+                    await asyncio.sleep(0)
+                self._event_ready.clear()
+        except asyncio.CancelledError:
+            return
 
     async def _on_error(self, error: Text = "Unspecified") -> None:
         if self.error_callback is not None:

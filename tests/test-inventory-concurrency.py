@@ -12,7 +12,7 @@ SOURCE = Path(__file__).parents[1] / (
 
 
 def test_product_builder_does_not_multiply_bridge_concurrency() -> None:
-    """Per-product reads stay sequential inside the four-product limit."""
+    """Per-product reads stay sequential inside the two-product limit."""
     tree = ast.parse(SOURCE.read_text())
     builder = next(
         node
@@ -30,3 +30,7 @@ def test_product_builder_does_not_multiply_bridge_concurrency() -> None:
         and node.func.attr == "gather"
     ]
     assert gathers == []
+
+    source = SOURCE.read_text()
+    assert "asyncio.Semaphore(2)" in source
+    assert "asyncio.timeout(20)" in source
