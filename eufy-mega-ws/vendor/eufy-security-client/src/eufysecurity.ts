@@ -1770,6 +1770,18 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
               })
               .catch((err) => {
                 const error = ensureError(err);
+                // Shared Eufy accounts can retain devices whose former station is no
+                // longer returned by the cloud inventory. A push is emitted above
+                // before device-specific processing, so skipping that orphan keeps
+                // the event and snapshot while avoiding a stack trace per orphaned
+                // device for every estate notification.
+                if (error instanceof StationNotFoundError) {
+                  rootMainLogger.debug("Skip push processing for device with unavailable station", {
+                    deviceSN: device.getSerial(),
+                    stationSN: device.getStationSerial(),
+                  });
+                  return;
+                }
                 rootMainLogger.error("Process push notification for devices loading station", {
                   error: getError(error),
                   message: message,

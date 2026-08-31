@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.20 — 2026-08-31
+
+- Preserve push events and snapshot evidence while quietly skipping legacy devices whose former station is no longer present in the current Eufy cloud inventory.
+- Prevent an orphaned Eufy device from producing a repeated `StationNotFoundError` stack trace for every estate motion or vehicle notification.
+
 ## 1.6.19 — 2026-08-29
 
 - Treat exhausted app-cover downloads as cached-image diagnostics instead of persistent bridge errors; the last verified camera image remains available.
