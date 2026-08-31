@@ -79,7 +79,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
     async def initialize(self):
         """Initialize the integration"""
         try:
-            async with asyncio.timeout(180):
+            # A large camera inventory must never hold Home Assistant's entire
+            # startup sequence offline. The bridge can retry through the normal
+            # ConfigEntryNotReady path after Core is available.
+            async with asyncio.timeout(75):
                 await self._api.connect()
                 await self._refresh_bridge_status()
                 await self._restore_snapshot_cache()
@@ -113,7 +116,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             raise ConfigEntryNotReady() from exc
         except asyncio.TimeoutError as exc:
             raise ConfigEntryNotReady(
-                "Baiamonte eufy Bridge inventory did not finish within three minutes"
+                "Baiamonte eufy Bridge inventory did not finish within 75 seconds"
             ) from exc
 
     @property
