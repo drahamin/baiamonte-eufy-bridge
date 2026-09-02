@@ -95,12 +95,12 @@ RUN \
     && /opt/baiamonte-pro-events/venv/bin/pip install --no-cache-dir \
         aiortc==1.15.0 websockets==17.0.1 aiohttp==3.14.3 truststore==0.10.4 \
     && mkdir -p /opt/baiamonte-pro-events/worker \
-    && curl -fsSL https://security.eufy.com/plugin/libsctp_0_0_2.js \
-        -o /opt/baiamonte-pro-events/worker/libsctp_0_0_2.js \
-    && curl -fsSL https://security.eufy.com/plugin/libsctp_0_0_2.wasm \
-        -o /opt/baiamonte-pro-events/worker/libsctp_0_0_2.wasm \
-    && echo "423f2f6314c15984886320d1b3c71f268f0ce6449d6c4e02d6c4898ad9e510fd  /opt/baiamonte-pro-events/worker/libsctp_0_0_2.js" | sha256sum -c - \
-    && echo "52c12617f8b87c08d967402f3ff749e1e8913d5be878fa88940e11f5ccdd2421  /opt/baiamonte-pro-events/worker/libsctp_0_0_2.wasm" | sha256sum -c - \
+    && curl -fsSL https://security.eufy.com/plugin/libsctp_0_0_4.js \
+        -o /opt/baiamonte-pro-events/worker/libsctp_0_0_4.js \
+    && curl -fsSL https://security.eufy.com/plugin/libsctp_0_0_4.wasm \
+        -o /opt/baiamonte-pro-events/worker/libsctp_0_0_4.wasm \
+    && echo "1cf0326ab7b14a986af654d704f2eadcd9edb5e1290ca3f1a53a819d2054ea6a  /opt/baiamonte-pro-events/worker/libsctp_0_0_4.js" | sha256sum -c - \
+    && echo "f9b49bca7611956f75f6198d1d05f5132e72a1fd1002522c15db15114584b227  /opt/baiamonte-pro-events/worker/libsctp_0_0_4.wasm" | sha256sum -c - \
     && chmod 0755 /opt/baiamonte-pro-events/pro_event_helper.py \
     && (node /opt/baiamonte-pro-events/sctp_oracle.cjs </dev/null >/tmp/sctp-selftest.out 2>/tmp/sctp-selftest.err & \
         oracle_pid=$!; sleep 1; kill "${oracle_pid}"; wait "${oracle_pid}" || true) \

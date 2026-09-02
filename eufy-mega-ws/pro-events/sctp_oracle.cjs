@@ -1,14 +1,14 @@
 "use strict";
 
 // Minimal Node wrapper around Eufy's public WebRTC SCTP framing module. The
-// bridge downloads and hash-verifies the exact public 0.0.2 module at build
+// bridge downloads and hash-verifies the exact public 0.0.4 module at build
 // time. Only command frames are accepted; this helper has no live-video path.
 const fs = require("fs");
 const path = require("path");
 
 const workerDirectory = path.join(__dirname, "worker");
-const gluePath = path.join(workerDirectory, "libsctp_0_0_2.js");
-const wasmPath = path.join(workerDirectory, "libsctp_0_0_2.wasm");
+const gluePath = path.join(workerDirectory, "libsctp_0_0_4.js");
+const wasmPath = path.join(workerDirectory, "libsctp_0_0_4.wasm");
 
 const linkToChannel = (link) => ({ 1: 0, 2: 3, 3: 2, 4: 4, 5: 5, 6: 5 }[link] ?? 6);
 const channelToLink = (channel) => ({ 0: 1, 1: 5, 2: 3, 3: 2, 4: 4, 5: 5, 6: 99 }[channel] ?? 0);

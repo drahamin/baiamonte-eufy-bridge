@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.22 — 2026-09-02
+
+- Update the pinned, hash-verified Eufy WebRTC SCTP runtime to the current official 0.0.4 release
+  after Eufy retired the former 0.0.2 download URLs.
+- Preserve the read-only HomeBase Professional event path and its build-time runtime self-test.
+
 ## 1.6.21 — 2026-09-02
 
 - Add a privacy-safe S380-to-HomeBase-Professional transition summary with per-base assigned-camera,
