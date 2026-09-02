@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.21 — 2026-09-02
+
+- Add a privacy-safe S380-to-HomeBase-Professional transition summary with per-base assigned-camera,
+  snapshot, stream, evidence-index, and thumbnail coverage.
+- Keep the retirement gate closed until the Professional base is present and the S380 has no assigned
+  devices, while preserving camera entities by their camera serial identity across station moves.
+- Surface stale station ownership as an aggregate warning without exposing station or device identifiers.
+
 ## 1.6.20 — 2026-08-31
 
 - Preserve push events and snapshot evidence while quietly skipping legacy devices whose former station is no longer present in the current Eufy cloud inventory.

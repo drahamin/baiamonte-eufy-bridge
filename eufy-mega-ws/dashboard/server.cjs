@@ -4,6 +4,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { WebSocket } = require(process.env.BAIAMONTE_WS_MODULE || "/usr/src/app/node_modules/eufy-security-ws/node_modules/ws");
+const { summarizeHomeBaseTransition } = require("./homebase-transition.cjs");
 
 const dashboardPort = Number(process.env.BAIAMONTE_DASHBOARD_PORT || 8099);
 const bridgePort = Number(process.env.BAIAMONTE_BRIDGE_PORT || 3000);
@@ -283,6 +284,8 @@ async function buildStatus() {
       const ptzPropertyNames = Object.keys(metadata).filter((name) => ptzPropertyPattern.test(name));
       const writablePtzPropertyNames = ptzPropertyNames.filter((name) => metadata[name] && metadata[name].writeable);
       deviceRows.push({
+        serialNumber: device.serialNumber,
+        stationSerialNumber: properties.stationSerialNumber,
         model: device.model,
         type: device.type,
         snapshot: properties.picture !== undefined && properties.picture !== null && properties.picture !== "",
@@ -312,6 +315,7 @@ async function buildStatus() {
       ]);
       const metadata = metadataResult.properties || {};
       stationRows.push({
+        serialNumber: station.serialNumber,
         model: station.model,
         type: station.type,
         properties: Object.keys(metadata).length,
@@ -381,6 +385,12 @@ async function buildStatus() {
     modelCapabilities.set(key, row);
   }
 
+  const homeBaseTransition = summarizeHomeBaseTransition(
+    capabilities.deviceRows,
+    capabilities.stationRows,
+  );
+  const safeStationRows = capabilities.stationRows.map(({ serialNumber: _serialNumber, ...row }) => row);
+
   return {
     brand: "Baiamonte eufy Bridge",
     generatedAt: new Date().toISOString(),
@@ -403,8 +413,9 @@ async function buildStatus() {
       writableStationProperties: capabilities.stationRows.reduce((total, item) => total + item.writable, 0),
     },
     models: [...modelCapabilities.values()].sort((a, b) => a.model.localeCompare(b.model)),
-    stationModels: capabilities.stationRows,
+    stationModels: safeStationRows,
     inventoryModels: { stations: groupModels(inventory.stations), devices: groupModels(inventory.devices) },
+    homeBaseTransition,
     snapshotCache: snapshotCacheStatus(),
     mega: megaStatus(),
     policy: {
