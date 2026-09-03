@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.23 — 2026-09-03
+
+- Merge current Eufy Mega app dashboard covers into existing camera records by stable camera serial,
+  including snake-case and camel-case inventory fields after a camera moves between HomeBases.
+- Preserve the existing serialized, authenticated snapshot download and durable cache path so camera
+  cards gain app-style stills without opening livestream sessions.
+
 ## 1.6.22 — 2026-09-02
 
 - Update the pinned, hash-verified Eufy WebRTC SCTP runtime to the current official 0.0.4 release

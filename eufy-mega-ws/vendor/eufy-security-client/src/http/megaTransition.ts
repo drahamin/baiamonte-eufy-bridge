@@ -57,6 +57,11 @@ interface NativeMegaInventory extends Record<string, unknown> {
   groups?: unknown[];
 }
 
+export interface NativeMegaDashboardCover {
+  path: string;
+  time: number;
+}
+
 export interface MegaProductCatalogSummary {
   /** Distinct connected products for which a catalog was requested. */
   attempted: number;
@@ -78,6 +83,21 @@ export interface MegaProductCatalogSummary {
 
 const safeString = (value: unknown, fallback = ""): string =>
   typeof value === "string" && value.length <= 256 ? value : fallback;
+
+export const extractNativeMegaDashboardCovers = (
+  devices: NativeMegaDevice[]
+): Map<string, NativeMegaDashboardCover> => {
+  const covers = new Map<string, NativeMegaDashboardCover>();
+  for (const device of devices) {
+    const serial = safeString(
+      device.device_sn ?? device.deviceSn ?? device.serial_number ?? device.serialNumber
+    );
+    if (!serial) continue;
+    const cover = HTTPApi.selectDashboardCover(device as Partial<DeviceListResponse>);
+    if (cover) covers.set(serial, cover);
+  }
+  return covers;
+};
 
 const recordOf = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -428,6 +448,20 @@ export class MegaTransition {
         error: getError(ensureError(err)),
       });
       return [];
+    }
+  }
+
+  /** App dashboard covers for devices already represented by the mature legacy inventory. */
+  public async getNativeDashboardCovers(): Promise<Map<string, NativeMegaDashboardCover>> {
+    if (!this.megaLoggedIn) return new Map();
+    try {
+      const inventory = await this.loadNativeInventory();
+      return extractNativeMegaDashboardCovers(inventory.devices ?? []);
+    } catch (err) {
+      rootMainLogger.warn("v6 dashboard covers unavailable; cached and push snapshots remain active", {
+        error: getError(ensureError(err)),
+      });
+      return new Map();
     }
   }
 

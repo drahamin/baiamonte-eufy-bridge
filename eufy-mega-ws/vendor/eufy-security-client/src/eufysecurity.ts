@@ -1169,13 +1169,24 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
   }
 
   private async augmentNativeMegaDevices(): Promise<void> {
+    const nativeCovers = await this.megaTransition.getNativeDashboardCovers();
     const nativeDevices = await this.megaTransition.getSupportedNativeDevices();
-    if (nativeDevices.length === 0) return;
+    if (nativeDevices.length === 0 && nativeCovers.size === 0) return;
 
     const merged: FullDevices = {};
-    for (const device of Object.values(this.devices)) merged[device.getSerial()] = device.getRawDevice();
-
     let changed = false;
+    for (const device of Object.values(this.devices)) {
+      const serial = device.getSerial();
+      const raw = device.getRawDevice();
+      const cover = nativeCovers.get(serial);
+      if (cover && (raw.cover_path !== cover.path || raw.cover_time !== cover.time)) {
+        merged[serial] = { ...raw, cover_path: cover.path, cover_time: cover.time };
+        changed = true;
+      } else {
+        merged[serial] = raw;
+      }
+    }
+
     for (const nativeDevice of nativeDevices) {
       const existing = merged[nativeDevice.device_sn];
       // Never replace a richer legacy record. Native inventory only fills products legacy omits.
