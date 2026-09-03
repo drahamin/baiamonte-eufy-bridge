@@ -36,6 +36,7 @@ import {
   PropertyName,
   ResponseErrorCode,
   SoloCameraDetectionTypes,
+  StorageType,
   T8170DetectionTypes,
   UserPasswordType,
 } from "./http/types";
@@ -1154,6 +1155,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     });
     if (this.devicesLoaded !== undefined) await this.devicesLoaded;
     await this.augmentNativeMegaDevices();
+    await this.hydrateSolarWallSnapshotsFromHistory();
     if (this.refreshEufySecurityCloudTimeout !== undefined) clearTimeout(this.refreshEufySecurityCloudTimeout);
     if (this.config.pollingIntervalMinutes > 0)
       this.refreshEufySecurityCloudTimeout = setTimeout(
@@ -1199,6 +1201,48 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
 
     this.handleDevices(merged);
     if (this.devicesLoaded !== undefined) await this.devicesLoaded;
+  }
+
+  /** Seed app-style stills for S120 cameras from their latest authenticated saved event. */
+  private async hydrateSolarWallSnapshotsFromHistory(): Promise<void> {
+    const targets = Object.values(this.devices).filter((device) =>
+      device.getModel() === "T81A0"
+      && (!device.hasProperty(PropertyName.DevicePicture)
+        || device.getPropertyValue(PropertyName.DevicePicture) === undefined
+        || device.getPropertyValue(PropertyName.DevicePicture) === null)
+    );
+    if (targets.length === 0) return;
+
+    let queued = 0;
+    await Promise.all(targets.map(async (device) => {
+      try {
+        const records = await this.api.getAllHistoryEvents({
+          deviceSN: device.getSerial(),
+          stationSN: device.getStationSerial(),
+          storageType: StorageType.NONE,
+        }, 1);
+        const latest = records
+          .slice()
+          .sort((left, right) => (right.start_time || right.create_time || 0) - (left.start_time || left.create_time || 0))[0];
+        const image = [latest?.thumb_path, latest?.cloud_path]
+          .find((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 4096);
+        if (!image) return;
+        if (device.hasProperty(PropertyName.DevicePictureUrl)) {
+          device.updateProperty(PropertyName.DevicePictureUrl, image, true);
+        }
+        this.queueDashboardSnapshot(device, image);
+        queued++;
+      } catch (err) {
+        rootMainLogger.debug("Saved-event snapshot unavailable for a Solar Wall Light Cam", {
+          error: getError(ensureError(err)),
+        });
+      }
+    }));
+    rootMainLogger.info("Saved-event Solar Wall Light Cam snapshots queued", {
+      targets: targets.length,
+      queued,
+      liveStreamsStarted: 0,
+    });
   }
 
   public close(): void {

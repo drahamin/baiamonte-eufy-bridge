@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.27 — 2026-09-03
+
+- Seed snapshot-missing Solar Wall Light Cam entities from each camera's latest authenticated saved
+  event thumbnail, using the existing serialized download, validation, and persistent cache path.
+- Keep snapshot hydration read-only and explicitly free of livestream sessions.
+
 ## 1.6.26 — 2026-09-03
 
 - Apply nested current-app cover discovery to the legacy-backed camera inventory used by existing
