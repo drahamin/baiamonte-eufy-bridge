@@ -883,6 +883,40 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
     return candidates.length > 0 ? { path: candidates[0].path, time: candidates[0].time } : undefined;
   }
 
+  /** Find dashboard covers embedded in the current app's bounded JSON/Base64 parameter payloads. */
+  public static selectDashboardCoverDeep(value: unknown): { path: string; time: number } | undefined {
+    const candidates: Array<{ path: string; time: number }> = [];
+    const visit = (current: unknown, depth = 0): void => {
+      if (depth > 5) return;
+      if (typeof current === "string" && current.length <= 131072) {
+        const trimmed = current.trim();
+        try {
+          if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            visit(JSON.parse(trimmed), depth + 1);
+          } else if (trimmed.length >= 8 && trimmed.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(trimmed)) {
+            const decoded = Buffer.from(trimmed, "base64").toString("utf8").trim();
+            if (decoded.startsWith("{") || decoded.startsWith("[")) visit(JSON.parse(decoded), depth + 1);
+          }
+        } catch {
+          // Not a structured current-app parameter.
+        }
+        return;
+      }
+      if (Array.isArray(current)) {
+        for (const item of current.slice(0, 512)) visit(item, depth + 1);
+        return;
+      }
+      if (!current || typeof current !== "object") return;
+      const record = current as Record<string, unknown>;
+      const cover = HTTPApi.selectDashboardCover(record as Partial<DeviceListResponse>);
+      if (cover) candidates.push(cover);
+      for (const child of Object.values(record)) visit(child, depth + 1);
+    };
+    visit(value);
+    candidates.sort((left, right) => right.time - left.time);
+    return candidates[0];
+  }
+
   private decodeDeviceListData(data: unknown): Array<DeviceListResponse> {
     const decoded = typeof data === "string" ? this.decryptAPIData(data) : data;
     if (Array.isArray(decoded)) return decoded as Array<DeviceListResponse>;
@@ -964,7 +998,7 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
             for (const device of deviceList) {
               const current = currentBySerial.get(device.device_sn);
               if (!current) continue;
-              const cover = HTTPApi.selectDashboardCover(current);
+              const cover = HTTPApi.selectDashboardCoverDeep(current);
               if (!cover) continue;
               device.cover_path = cover.path;
               device.cover_time = cover.time;

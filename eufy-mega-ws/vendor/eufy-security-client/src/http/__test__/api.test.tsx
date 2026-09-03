@@ -201,6 +201,17 @@ describe("HTTPApi", () => {
             } as any)).toEqual({ path: "https://example.invalid/current.jpg", time: 300 });
         });
 
+        it("finds covers in nested current-app parameter payloads", () => {
+            const payload = Buffer.from(JSON.stringify({
+                snapshotUrl: "https://example.invalid/nested.jpg",
+                snapshotTime: 400,
+            })).toString("base64");
+            expect(HTTPApi.selectDashboardCoverDeep({ params: [{ param_value: payload }] })).toEqual({
+                path: "https://example.invalid/nested.jpg",
+                time: 400,
+            });
+        });
+
         it("ignores empty and implausibly long paths", () => {
             expect(HTTPApi.selectDashboardCover({
                 local_cover_path: "",

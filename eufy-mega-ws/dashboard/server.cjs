@@ -58,7 +58,7 @@ function bridgeSession(schemaVersion, onState) {
       clearTimeout(timer);
       for (const waiter of eventWaiters.splice(0)) {
         clearTimeout(waiter.timeout);
-        waiter.no(new Error("Bridge session closed"));
+        if (typeof waiter.no === "function") waiter.no(new Error("Bridge session closed"));
       }
       for (const waiter of pending.values()) waiter.no(new Error("Bridge session closed"));
       pending.clear();
@@ -529,7 +529,4 @@ http.createServer(async (request, response) => {
   response.end(html);
 }).listen(dashboardPort, "0.0.0.0", () => {
   console.log(`Baiamonte eufy Bridge dashboard listening on ${dashboardPort}`);
-  setTimeout(() => {
-    refreshSolarWallSnapshots().catch(() => undefined);
-  }, 30000);
 });

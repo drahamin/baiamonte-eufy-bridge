@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.26 — 2026-09-03
+
+- Apply nested current-app cover discovery to the legacy-backed camera inventory used by existing
+  Home Assistant entities, including JSON and Base64 parameter payloads.
+- Prevent a diagnostic WebSocket timeout from terminating the read-only bridge dashboard process.
+
 ## 1.6.25 — 2026-09-03
 
 - Hydrate Solar Wall Light Cam dashboard stills from each camera station's native latest-recording

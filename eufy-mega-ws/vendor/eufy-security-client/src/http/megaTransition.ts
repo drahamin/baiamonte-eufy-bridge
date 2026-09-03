@@ -89,45 +89,13 @@ export const extractNativeMegaDashboardCovers = (
 ): Map<string, NativeMegaDashboardCover> => {
   const covers = new Map<string, NativeMegaDashboardCover>();
 
-  const nestedRecords = (value: unknown, depth = 0): Array<Record<string, unknown>> => {
-    if (depth > 5) return [];
-    if (typeof value === "string" && value.length <= 131072) {
-      const trimmed = value.trim();
-      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-        try {
-          return nestedRecords(JSON.parse(trimmed), depth + 1);
-        } catch {
-          return [];
-        }
-      }
-      if (trimmed.length >= 8 && trimmed.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(trimmed)) {
-        try {
-          const decoded = Buffer.from(trimmed, "base64").toString("utf8").trim();
-          if (decoded.startsWith("{") || decoded.startsWith("[")) {
-            return nestedRecords(JSON.parse(decoded), depth + 1);
-          }
-        } catch {
-          return [];
-        }
-      }
-      return [];
-    }
-    if (Array.isArray(value)) return value.slice(0, 512).flatMap((item) => nestedRecords(item, depth + 1));
-    if (!value || typeof value !== "object") return [];
-    const record = value as Record<string, unknown>;
-    return [record, ...Object.values(record).flatMap((item) => nestedRecords(item, depth + 1))];
-  };
-
   for (const device of devices) {
     const serial = safeString(
       device.device_sn ?? device.deviceSn ?? device.serial_number ?? device.serialNumber
     );
     if (!serial) continue;
-    const candidates = nestedRecords(device)
-      .map((record) => HTTPApi.selectDashboardCover(record as Partial<DeviceListResponse>))
-      .filter((cover): cover is NativeMegaDashboardCover => cover !== undefined)
-      .sort((left, right) => right.time - left.time);
-    if (candidates[0]) covers.set(serial, candidates[0]);
+    const cover = HTTPApi.selectDashboardCoverDeep(device);
+    if (cover) covers.set(serial, cover);
   }
   return covers;
 };
