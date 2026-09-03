@@ -505,10 +505,16 @@ class EventCollector:
 async def sign_token(url: str, headers: dict[str, str]) -> str:
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as response:
-            body = await response.json(content_type=None)
-            token = body.get("data") if isinstance(body, dict) else None
+            raw = (await response.text()).strip()
+            try:
+                body = json.loads(raw)
+            except json.JSONDecodeError:
+                body = raw
+            token = body.get("data") if isinstance(body, dict) else body if isinstance(body, str) else None
             if response.status != 200 or not isinstance(token, str) or not token:
                 raise RuntimeError("HomeBase Pro WebRTC sign request was rejected")
+            if len(token) > 4096 or re.fullmatch(r"[A-Za-z0-9._~-]{16,4096}", token) is None:
+                raise RuntimeError("HomeBase Pro WebRTC sign response was invalid")
             return token
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.24 — 2026-09-03
+
+- Recover current-app camera covers nested inside JSON or Base64 Mega device parameters, retaining
+  strict path, size, and image validation before a still can enter the persistent snapshot cache.
+- Accept both JSON-wrapped and validated plain-text HomeBase Professional WebRTC sign tokens so
+  event thumbnails can hydrate camera snapshots without starting livestreams.
+
 ## 1.6.23 — 2026-09-03
 
 - Merge current Eufy Mega app dashboard covers into existing camera records by stable camera serial,
