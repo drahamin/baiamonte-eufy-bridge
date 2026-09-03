@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.28 — 2026-09-03
+
+- Search the authenticated history, video, and alarm record families for the newest valid S120
+  thumbnail because migrated accounts can expose the app still through only one event family.
+
 ## 1.6.27 — 2026-09-03
 
 - Seed snapshot-missing Solar Wall Light Cam entities from each camera's latest authenticated saved

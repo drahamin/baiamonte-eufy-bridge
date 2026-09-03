@@ -1216,12 +1216,17 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     let queued = 0;
     await Promise.all(targets.map(async (device) => {
       try {
-        const records = await this.api.getAllHistoryEvents({
+        const filter = {
           deviceSN: device.getSerial(),
           stationSN: device.getStationSerial(),
           storageType: StorageType.NONE,
-        }, 1);
-        const latest = records
+        };
+        const recordFamilies = await Promise.all([
+          this.api.getAllHistoryEvents(filter, 10),
+          this.api.getAllVideoEvents(filter, 10),
+          this.api.getAllAlarmEvents(filter, 10),
+        ]);
+        const latest = recordFamilies.flat()
           .slice()
           .sort((left, right) => (right.start_time || right.create_time || 0) - (left.start_time || left.create_time || 0))[0];
         const image = [latest?.thumb_path, latest?.cloud_path]
@@ -1241,6 +1246,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     rootMainLogger.info("Saved-event Solar Wall Light Cam snapshots queued", {
       targets: targets.length,
       queued,
+      eventFamiliesQueried: 3,
       liveStreamsStarted: 0,
     });
   }
