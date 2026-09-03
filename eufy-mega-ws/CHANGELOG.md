@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.25 — 2026-09-03
+
+- Hydrate Solar Wall Light Cam dashboard stills from each camera station's native latest-recording
+  thumbnail command after startup; this is read-only and never starts a camera stream.
+- Accept the full validated Base64 and URL-encoded character set used by current Pro sign tokens.
+
 ## 1.6.24 — 2026-09-03
 
 - Recover current-app camera covers nested inside JSON or Base64 Mega device parameters, retaining

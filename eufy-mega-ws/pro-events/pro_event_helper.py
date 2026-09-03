@@ -513,7 +513,7 @@ async def sign_token(url: str, headers: dict[str, str]) -> str:
             token = body.get("data") if isinstance(body, dict) else body if isinstance(body, str) else None
             if response.status != 200 or not isinstance(token, str) or not token:
                 raise RuntimeError("HomeBase Pro WebRTC sign request was rejected")
-            if len(token) > 4096 or re.fullmatch(r"[A-Za-z0-9._~-]{16,4096}", token) is None:
+            if len(token) > 4096 or re.fullmatch(r"[A-Za-z0-9._~+/%=-]{8,4096}", token) is None:
                 raise RuntimeError("HomeBase Pro WebRTC sign response was invalid")
             return token
 

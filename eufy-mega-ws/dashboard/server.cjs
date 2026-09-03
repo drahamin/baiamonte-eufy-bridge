@@ -192,6 +192,48 @@ async function refreshAicSummary() {
   });
 }
 
+async function refreshSolarWallSnapshots() {
+  return bridgeSession(21, async (state, send, waitForEvent) => {
+    const targets = [];
+    for (const station of state.stations || []) {
+      const serialNumber = typeof station === "string" ? station : station.serialNumber;
+      const properties = typeof station === "string"
+        ? (await send("station.get_properties", { serialNumber })).properties || {}
+        : station;
+      if (properties.model !== "T81A0") continue;
+      const commands = (await send("station.get_commands", { serialNumber })).commands || [];
+      if (commands.includes("stationDatabaseQueryLatestInfo") || commands.includes("database_query_latest_info")) {
+        targets.push(serialNumber);
+      }
+    }
+
+    const outcomes = await Promise.all(targets.map(async (serialNumber) => {
+      try {
+        const eventPromise = waitForEvent((message) =>
+          message.source === "station"
+          && message.event === "database query latest"
+          && message.serialNumber === serialNumber
+        );
+        const guardedEventPromise = eventPromise.then(
+          (matchedEvent) => ({ matchedEvent }),
+          () => ({ matchedEvent: undefined }),
+        );
+        await send("station.database_query_latest_info", { serialNumber });
+        const event = (await guardedEventPromise).matchedEvent;
+        return event ? "received" : "unavailable";
+      } catch {
+        return "unavailable";
+      }
+    }));
+    return {
+      queriedAt: new Date().toISOString(),
+      liveStreamsStarted: 0,
+      targets: targets.length,
+      responses: outcomes.filter((outcome) => outcome === "received").length,
+    };
+  });
+}
+
 function groupModels(items) {
   const models = new Map();
   for (const item of items) {
@@ -464,6 +506,16 @@ http.createServer(async (request, response) => {
     }
     return;
   }
+  if (pathname.endsWith("/api/solar-wall-snapshot-refresh") && request.method === "POST") {
+    try {
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      response.end(JSON.stringify(await refreshSolarWallSnapshots()));
+    } catch (error) {
+      response.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Snapshot query unavailable" }));
+    }
+    return;
+  }
   if (pathname.endsWith("/health")) {
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end('{"ok":true}');
@@ -477,4 +529,7 @@ http.createServer(async (request, response) => {
   response.end(html);
 }).listen(dashboardPort, "0.0.0.0", () => {
   console.log(`Baiamonte eufy Bridge dashboard listening on ${dashboardPort}`);
+  setTimeout(() => {
+    refreshSolarWallSnapshots().catch(() => undefined);
+  }, 30000);
 });
