@@ -33,12 +33,15 @@ def test_bridge_events_are_bounded_and_processed_off_the_result_path():
     assert "await self._process_events" not in source
 
 
-def test_pro_dashboard_waits_for_bounded_helper_completion():
+def test_pro_dashboard_uses_bounded_wait_and_awaits_before_headers():
     source = (
         ROOT / "eufy-mega-ws" / "dashboard" / "server.cjs"
     ).read_text(encoding="utf-8")
 
-    assert "const bridgeSessionTimeoutMs = 65000" in source
-    assert "const bridgeEventTimeoutMs = 62000" in source
+    assert "const bridgeSessionTimeoutMs = 50000" in source
+    assert "const bridgeEventTimeoutMs = 40000" in source
     assert "}, bridgeSessionTimeoutMs);" in source
     assert "}, bridgeEventTimeoutMs);" in source
+    assert "const result = await refreshAicSummary();" in source
+    assert "const result = await refreshSolarWallSnapshots();" in source
+    assert "JSON.stringify(await refreshAicSummary())" not in source

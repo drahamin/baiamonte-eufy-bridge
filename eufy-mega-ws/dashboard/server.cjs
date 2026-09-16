@@ -9,8 +9,8 @@ const { summarizeHomeBaseTransition } = require("./homebase-transition.cjs");
 const dashboardPort = Number(process.env.BAIAMONTE_DASHBOARD_PORT || 8099);
 const bridgePort = Number(process.env.BAIAMONTE_BRIDGE_PORT || 3000);
 const bridgeHost = process.env.BAIAMONTE_BRIDGE_HOST || "127.0.0.1";
-const bridgeSessionTimeoutMs = 65000;
-const bridgeEventTimeoutMs = 62000;
+const bridgeSessionTimeoutMs = 50000;
+const bridgeEventTimeoutMs = 40000;
 const html = fs.readFileSync(path.join(__dirname, "index.html"));
 const aiPattern = /(^ai[A-Z_]|person|human|face|familiar|vehicle|pet|animal|dog|cat|package|cry|sound|motion|detection|recognition|loiter|leaving|radar)/i;
 const ptzPropertyPattern = /(pan|tilt|zoom|track|privacy|preset|calibrat|patrol|cruise|rotation|angle)/i;
@@ -500,8 +500,9 @@ http.createServer(async (request, response) => {
   }
   if (pathname.endsWith("/api/aic-refresh-summary") && request.method === "POST") {
     try {
+      const result = await refreshAicSummary();
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-      response.end(JSON.stringify(await refreshAicSummary()));
+      response.end(JSON.stringify(result));
     } catch (error) {
       response.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
       response.end(JSON.stringify({ error: error instanceof Error ? error.message : "AIC query unavailable" }));
@@ -510,8 +511,9 @@ http.createServer(async (request, response) => {
   }
   if (pathname.endsWith("/api/solar-wall-snapshot-refresh") && request.method === "POST") {
     try {
+      const result = await refreshSolarWallSnapshots();
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-      response.end(JSON.stringify(await refreshSolarWallSnapshots()));
+      response.end(JSON.stringify(result));
     } catch (error) {
       response.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
       response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Snapshot query unavailable" }));

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.32 — 2026-09-16
+
+- Await optional Pro and Solar evidence queries before sending HTTP headers, so
+  a timeout returns a clean diagnostic error instead of stopping the dashboard.
+- Restore the efficient 40-second evidence ceiling while durable snapshots and
+  normal bridge controls continue independently.
+
 ## 1.6.31 — 2026-09-16
 
 - Keep the diagnostic listener open through the Pro helper's existing
