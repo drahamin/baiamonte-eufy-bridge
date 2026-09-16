@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.29 — 2026-09-16
+
+- Bound HomeBase Professional historical snapshot backfill to two quiet cameras
+  per evidence refresh and rotate the slice daily, keeping current AIC events
+  within Home Assistant's timeout while retaining eventual old-still coverage.
+- Keep the Pro refresh read-only and snapshot-only; it starts no camera stream.
+
 ## 1.6.28 — 2026-09-03
 
 - Search the authenticated history, video, and alarm record families for the newest valid S120

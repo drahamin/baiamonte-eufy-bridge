@@ -28,6 +28,8 @@ from aiortc.sdp import candidate_from_sdp
 from aiortc.rtcdtlstransport import RTCCertificate
 from OpenSSL import crypto
 
+from query_budget import bounded_backfill_serials
+
 
 # HomeBase Pro presents an RSA certificate. aiortc defaults to ECDSA-only
 # suites, so add the current browser-compatible RSA suites as well.
@@ -407,7 +409,14 @@ class EventCollector:
             self.records.extend(history[:MAX_RESULT_RECORDS])
             self.pictures.extend(pictures[:MAX_RESULT_RECORDS])
             self.evidence.extend(smart[:MAX_RESULT_RECORDS])
-            self.pending_filters = sorted(self.expected - set(self.latest))
+            # Keep the current-window query responsive. Quiet cameras are
+            # backfilled two at a time on a daily rotation instead of issuing
+            # an unbounded sequence of fifteen-year searches in one session.
+            self.pending_filters = bounded_backfill_serials(
+                self.expected,
+                set(self.latest),
+                self.end_seconds,
+            )
             self.phase = "filters"
         elif self.phase == "filters":
             self.records.extend(history[:1])
