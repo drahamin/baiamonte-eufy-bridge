@@ -9,6 +9,8 @@ const { summarizeHomeBaseTransition } = require("./homebase-transition.cjs");
 const dashboardPort = Number(process.env.BAIAMONTE_DASHBOARD_PORT || 8099);
 const bridgePort = Number(process.env.BAIAMONTE_BRIDGE_PORT || 3000);
 const bridgeHost = process.env.BAIAMONTE_BRIDGE_HOST || "127.0.0.1";
+const bridgeSessionTimeoutMs = 65000;
+const bridgeEventTimeoutMs = 62000;
 const html = fs.readFileSync(path.join(__dirname, "index.html"));
 const aiPattern = /(^ai[A-Z_]|person|human|face|familiar|vehicle|pet|animal|dog|cat|package|cry|sound|motion|detection|recognition|loiter|leaving|radar)/i;
 const ptzPropertyPattern = /(pan|tilt|zoom|track|privacy|preset|calibrat|patrol|cruise|rotation|angle)/i;
@@ -68,7 +70,7 @@ function bridgeSession(schemaVersion, onState) {
     const timer = setTimeout(() => {
       if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) socket.terminate();
       finish(reject, new Error("Bridge query timed out"));
-    }, 50000);
+    }, bridgeSessionTimeoutMs);
     const send = (command, body = {}) => new Promise((yes, no) => {
       const messageId = `dashboard-${++sequence}`;
       pending.set(messageId, { yes, no });
@@ -79,7 +81,7 @@ function bridgeSession(schemaVersion, onState) {
         const index = eventWaiters.findIndex((item) => item.yes === yes);
         if (index >= 0) eventWaiters.splice(index, 1);
         no(new Error("Bridge event timed out"));
-      }, 40000);
+      }, bridgeEventTimeoutMs);
       eventWaiters.push({ predicate, yes, timeout });
     });
     socket.on("open", () => {

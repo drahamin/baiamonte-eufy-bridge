@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.31 — 2026-09-16
+
+- Keep the diagnostic listener open through the Pro helper's existing
+  60-second hard ceiling instead of discarding valid late AIC evidence at 40
+  seconds. The query remains bounded and starts no livestream.
+
 ## 1.6.30 — 2026-09-16
 
 - Keep the bounded HomeBase Professional query budget inside the executable
