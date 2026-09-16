@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.30 — 2026-09-16
+
+- Keep the bounded HomeBase Professional query budget inside the executable
+  helper so every add-on build contains the runtime dependency.
+
 ## 1.6.29 — 2026-09-16
 
 - Bound HomeBase Professional historical snapshot backfill to two quiet cameras

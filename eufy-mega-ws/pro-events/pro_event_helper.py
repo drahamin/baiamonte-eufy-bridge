@@ -28,9 +28,6 @@ from aiortc.sdp import candidate_from_sdp
 from aiortc.rtcdtlstransport import RTCCertificate
 from OpenSSL import crypto
 
-from query_budget import bounded_backfill_serials
-
-
 # HomeBase Pro presents an RSA certificate. aiortc defaults to ECDSA-only
 # suites, so add the current browser-compatible RSA suites as well.
 _original_ssl_context = RTCCertificate._create_ssl_context
@@ -88,6 +85,22 @@ USER_AGENT = (
 )
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_RESULT_RECORDS = 300
+
+
+def bounded_backfill_serials(
+    expected: set[str],
+    current: set[str],
+    at_seconds: int,
+    limit: int = 2,
+) -> list[str]:
+    """Rotate a bounded missing-camera history slice from day to day."""
+    missing = sorted(expected - current)
+    safe_limit = max(0, min(int(limit), len(missing)))
+    if not safe_limit:
+        return []
+    offset = (max(0, int(at_seconds)) // 86_400) % len(missing)
+    rotated = missing[offset:] + missing[:offset]
+    return rotated[:safe_limit]
 
 
 def log(message: str) -> None:
