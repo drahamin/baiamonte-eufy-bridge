@@ -103,7 +103,13 @@ RUN \
     && echo "f9b49bca7611956f75f6198d1d05f5132e72a1fd1002522c15db15114584b227  /opt/baiamonte-pro-events/worker/libsctp_0_0_4.wasm" | sha256sum -c - \
     && chmod 0755 /opt/baiamonte-pro-events/pro_event_helper.py \
     && (node /opt/baiamonte-pro-events/sctp_oracle.cjs </dev/null >/tmp/sctp-selftest.out 2>/tmp/sctp-selftest.err & \
-        oracle_pid=$!; sleep 1; kill "${oracle_pid}"; wait "${oracle_pid}" || true) \
+        oracle_pid=$!; ready=0; \
+        for attempt in 1 2 3 4 5 6 7 8 9 10; do \
+            if grep -q '"event":"ready"' /tmp/sctp-selftest.out; then ready=1; break; fi; \
+            sleep 1; \
+        done; \
+        kill "${oracle_pid}" 2>/dev/null || true; wait "${oracle_pid}" || true; \
+        test "${ready}" -eq 1) \
     && grep -q '"event":"ready"' /tmp/sctp-selftest.out \
     && rm -f /tmp/sctp-selftest.out /tmp/sctp-selftest.err
 COPY run.sh /

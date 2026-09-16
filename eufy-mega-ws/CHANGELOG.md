@@ -6,6 +6,8 @@
   per evidence refresh and rotate the slice daily, keeping current AIC events
   within Home Assistant's timeout while retaining eventual old-still coverage.
 - Keep the Pro refresh read-only and snapshot-only; it starts no camera stream.
+- Give the SCTP helper self-test up to ten seconds on Home Assistant hardware so
+  a slow first WebAssembly startup cannot fail an otherwise healthy update.
 
 ## 1.6.28 — 2026-09-03
 
