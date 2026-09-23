@@ -95,6 +95,7 @@ jobs:
       - name: Pack patched client
         run: |
           npm ci --prefix ../eufy-security-client
+          npm run build --prefix ../eufy-security-client
           npm pack ../eufy-security-client --pack-destination /tmp
 
       - name: Install exact dependencies
