@@ -4018,7 +4018,12 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
               try {
                 const bytes = Buffer.from(inlineData, "base64");
                 const type = this.getCachedSnapshotType(bytes);
-                if (type && bytes.length > 0 && bytes.length <= this.SNAPSHOT_CACHE_MAX_BYTES) {
+                if (
+                  type &&
+                  bytes.length > 0 &&
+                  bytes.length <= this.SNAPSHOT_CACHE_MAX_BYTES &&
+                  device.hasProperty(PropertyName.DevicePicture)
+                ) {
                   device.updateProperty(PropertyName.DevicePicture, { data: bytes, type } as Picture, true);
                   usedInline = true;
                 }

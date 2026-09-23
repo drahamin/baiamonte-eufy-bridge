@@ -99,9 +99,9 @@ describe("native Mega inventory augmentation", () => {
       dataPoints: 2,
       synthesized: 1,
       observedDataPoints: 1,
-      knownDataPoints: 0,
+      knownDataPoints: 1,
       classifiedDataPoints: 0,
-      unknownDataPoints: 1,
+      unknownDataPoints: 0,
       effectiveAvailable: 2,
       effectiveDataPoints: 3,
     });
@@ -109,7 +109,7 @@ describe("native Mega inventory augmentation", () => {
       expect.objectContaining({
         observedSchemas: expect.objectContaining({
           models: expect.objectContaining({
-            T8600: expect.objectContaining({ knownIds: [], unknownIds: [60001] }),
+            T8600: expect.objectContaining({ knownIds: [60001], unknownIds: [] }),
           }),
         }),
       })

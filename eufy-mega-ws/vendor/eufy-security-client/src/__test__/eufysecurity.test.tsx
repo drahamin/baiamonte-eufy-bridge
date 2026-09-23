@@ -116,6 +116,7 @@ describe("EufySecurity snapshot cache", () => {
       dashboardSnapshotQueue: [],
       dashboardSnapshotActive: 0,
       dashboardSnapshotUrls: new Map(),
+      dashboardSnapshotRequestedAt: new Map(),
       getStation: jest.fn().mockResolvedValue(station),
     });
     const device = {

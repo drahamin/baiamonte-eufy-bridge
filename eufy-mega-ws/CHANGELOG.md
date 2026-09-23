@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.34 — 2026-09-23
+
+- Ignore inline HomeBase Pro thumbnails for unsupported/unknown device classes instead of
+  force-writing a nonexistent picture property; supported cameras continue to cache normally.
+- Repair the full client test suite after the expanded Mega parameter dictionary.
+
 ## 1.6.33 — 2026-09-23
 
 - Name and classify 22 additional current-app Mega parameters, including dual-camera PTZ/AI,
