@@ -31,7 +31,8 @@ jobs:
           manifest = json.loads(Path("custom_components/eufy_security/manifest.json").read_text())
           assert manifest["domain"] == "eufy_security"
           assert manifest["name"] == "Baiamonte Eufy Security"
-          assert manifest["version"] == "9.3.4"
+          version = tuple(int(part) for part in manifest["version"].split("."))
+          assert version >= (9, 6, 20)
           assert manifest["requirements"] == []
           for path in Path("custom_components/eufy_security/translations").glob("*.json"):
               json.loads(path.read_text())
@@ -91,8 +92,15 @@ jobs:
           cache: npm
           cache-dependency-path: eufy-mega-ws/vendor/eufy-security-ws/package-lock.json
 
+      - name: Pack patched client
+        run: |
+          npm ci --prefix ../eufy-security-client
+          npm pack ../eufy-security-client --pack-destination /tmp
+
       - name: Install exact dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm install --no-save /tmp/eufy-security-client-4.1.1-mega.31.tgz
 
       - name: Run unit tests
         run: npm test -- --runInBand
@@ -101,7 +109,9 @@ jobs:
         run: npm run build
 
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=moderate
+        run: |
+          test "$(node -p "require('./node_modules/qs/package.json').version")" = "6.16.0"
+          npm audit --omit=dev --audit-level=high
 
   addon:
     name: Home Assistant add-on
@@ -163,4 +173,4 @@ jobs:
       - name: Verify runtime client
         run: |
           docker run --rm --entrypoint node eufy-mega-ws:test --input-type=module -e \
-            "import client from '/usr/src/app/node_modules/eufy-security-ws/node_modules/eufy-security-client/package.json' with { type: 'json' }; const contract = await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/const.js'); if (client.version !== '4.1.1-mega.23' || contract.maxSchemaVersion !== 21) process.exit(1); await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/index.js')"
+            "import client from '/usr/src/app/node_modules/eufy-security-ws/node_modules/eufy-security-client/package.json' with { type: 'json' }; const contract = await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/const.js'); if (client.version !== '4.1.1-mega.31' || contract.maxSchemaVersion !== 21) process.exit(1); await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/index.js')"

@@ -1,5 +1,9 @@
 # Changelog
 
+## 9.6.20 — 2026-09-23
+
+- Report the installed companion version consistently in diagnostics and documentation.
+
 ## 9.6.19 — 2026-09-23
 
 - Fall back to the HomeBase Professional's direct, read-only station database index when its

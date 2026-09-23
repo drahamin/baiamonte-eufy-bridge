@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.35 — 2026-09-23
+
+- Update `qs` to 6.16.0 to resolve two moderate denial-of-service advisories.
+- Make CI build the Schema-21 server against the vendored Baiamonte client and validate the
+  current companion/runtime versions instead of obsolete release pins.
+
 ## 1.6.34 — 2026-09-23
 
 - Ignore inline HomeBase Pro thumbnails for unsupported/unknown device classes instead of
