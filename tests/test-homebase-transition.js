@@ -5,7 +5,7 @@ const { summarizeHomeBaseTransition } = require("../eufy-mega-ws/dashboard/homeb
 
 const stations = [
   { serialNumber: "old-private", model: "T8030", localRecordIndex: true, dateRecordIndex: true, thumbnailDownload: true },
-  { serialNumber: "new-private", model: "T9000", localRecordIndex: false, dateRecordIndex: false, thumbnailDownload: true },
+  { serialNumber: "new-private", model: "T9000", localRecordIndex: true, dateRecordIndex: true, thumbnailDownload: true },
 ];
 const cameras = [
   { serialNumber: "camera-a", stationSerialNumber: "old-private", model: "T8423", snapshot: true, streaming: true },

@@ -15626,13 +15626,16 @@ export class Station extends TypedEmitter<StationEvents> {
     for (const serial of serialNumbers) {
       devices.push({ device_sn: serial });
     }
+    // The Professional app sends database reads on the station channel (255). Older HomeBases
+    // retain their proven channel-0 wire shape.
+    const channel = this.isStationHomeBasePro() ? Station.CHANNEL : 0;
     this.p2pSession.sendCommandWithStringPayload(
       {
         commandType: CommandType.CMD_SET_PAYLOAD,
         value: JSON.stringify({
           account_id: this.rawStation.member.admin_user_id,
           cmd: CommandType.CMD_DATABASE,
-          mChannel: 0,
+          mChannel: channel,
           mValue3: 0,
           payload: {
             cmd: CommandType.CMD_DATABASE_QUERY_LOCAL,
@@ -15657,7 +15660,7 @@ export class Station extends TypedEmitter<StationEvents> {
             transaction: `${new Date().getTime()}`,
           },
         }),
-        channel: 0,
+        channel,
       },
       {
         command: commandData,
@@ -15704,13 +15707,14 @@ export class Station extends TypedEmitter<StationEvents> {
     const startDateStr = format(startDate, "YYYYMMDD");
     const endDateStr = format(endDate, "YYYYMMDD");
 
+    const channel = this.isStationHomeBasePro() ? Station.CHANNEL : 0;
     this.p2pSession.sendCommandWithStringPayload(
       {
         commandType: CommandType.CMD_SET_PAYLOAD,
         value: JSON.stringify({
           account_id: this.rawStation.member.admin_user_id,
           cmd: CommandType.CMD_DATABASE,
-          mChannel: 0,
+          mChannel: channel,
           mValue3: 0,
           payload: {
             cmd: CommandType.CMD_DATABASE_QUERY_BY_DATE,
@@ -15735,7 +15739,7 @@ export class Station extends TypedEmitter<StationEvents> {
             transaction: `${new Date().getTime()}`,
           },
         }),
-        channel: 0,
+        channel,
       },
       {
         command: commandData,

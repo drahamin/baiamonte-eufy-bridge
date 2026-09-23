@@ -197,9 +197,12 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 if station_serial and station.serial_no != station_serial:
                     return [], None, None
                 commands = set(station.commands or [])
+                aic_warning = None
                 if {"database_query_aic_events", "stationDatabaseQueryAicEvents"} & commands:
                     try:
-                        async with semaphore, asyncio.timeout(45):
+                        # Leave enough of the overall 45-second evidence budget for the Pro's
+                        # direct station database index when the optional WebRTC AIC view is slow.
+                        async with semaphore, asyncio.timeout(20):
                             raw_aic = await station.database_query_aic_events(
                                 start.isoformat(), end.isoformat(), min(max_results, 200)
                             )
@@ -237,21 +240,21 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         WebSocketConnectionException,
                         asyncio.TimeoutError,
                     ) as exc:
-                        return [], station.model, f"{station.model}: {type(exc).__name__}"
+                        aic_warning = f"{station.model} AIC: {type(exc).__name__}"
                     except Exception as exc:
                         _LOGGER.warning(
                             "HomeBase %s AIC evidence index unavailable: %s",
                             station.model,
                             type(exc).__name__,
                         )
-                        return [], station.model, f"{station.model}: {type(exc).__name__}"
+                        aic_warning = f"{station.model} AIC: {type(exc).__name__}"
                 if source == "latest":
-                    return [], None, None
+                    return [], station.model if aic_warning else None, aic_warning
                 if "database_query_local" not in (station.commands or []):
                     # Station command capabilities are legacy CommandName values; unlike device
                     # commands, schema 21 does not snake-case them.
                     if "stationDatabaseQueryLocal" not in (station.commands or []):
-                        return [], None, None
+                        return [], station.model if aic_warning else None, aic_warning
                 serial_numbers = [device_serial] if device_serial else [
                     device.serial_no
                     for device in self.devices.values()
@@ -276,21 +279,25 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         self._add_ai_image_urls(event)
                         self._remember_evidence(event["event_id"], "local", record)
                         station_events.append(event)
-                    return station_events, station.model, None
+                    return station_events, station.model, aic_warning
                 except (
                     RuntimeError,
                     ValueError,
                     WebSocketConnectionException,
                     asyncio.TimeoutError,
                 ) as exc:
-                    return [], station.model, f"{station.model}: {type(exc).__name__}"
+                    local_warning = f"{station.model} local: {type(exc).__name__}"
+                    warning = "; ".join(filter(None, (aic_warning, local_warning)))
+                    return [], station.model, warning
                 except Exception as exc:
                     _LOGGER.warning(
                         "HomeBase %s evidence index unavailable: %s",
                         station.model,
                         type(exc).__name__,
                     )
-                    return [], station.model, f"{station.model}: {type(exc).__name__}"
+                    local_warning = f"{station.model} local: {type(exc).__name__}"
+                    warning = "; ".join(filter(None, (aic_warning, local_warning)))
+                    return [], station.model, warning
 
             tasks = [
                 asyncio.create_task(query_station(station))

@@ -120,6 +120,204 @@ type ObservedMegaMetadata = {
  */
 const observedMegaMetadata = new Map<number, ObservedMegaMetadata>([
   [
+    3100,
+    {
+      code: "BATTERY_POWER_DATA",
+      name: "Battery power data",
+      confidence: "verified",
+      classification: "camera_power",
+    },
+  ],
+  [
+    6057,
+    {
+      code: "OUTDOOR_EVENT_AI_MARK",
+      name: "Outdoor event AI mark",
+      confidence: "verified",
+      classification: "camera_ai",
+    },
+  ],
+  [
+    6200,
+    {
+      code: "WIFI_NAME",
+      name: "Wi-Fi network name",
+      confidence: "verified",
+      classification: "network_configuration",
+    },
+  ],
+  [
+    6201,
+    {
+      code: "PRESET_ZONE",
+      name: "Preset zone",
+      confidence: "verified",
+      classification: "camera_ptz",
+    },
+  ],
+  [
+    6204,
+    {
+      code: "DUAL_CAMERA_CALIBRATION_DATA",
+      name: "Dual-camera calibration data",
+      confidence: "classified",
+      classification: "camera_calibration",
+    },
+  ],
+  [
+    6205,
+    {
+      code: "DUAL_CAMERA_VIDEO_TYPE",
+      name: "Dual-camera video type",
+      confidence: "verified",
+      classification: "camera_video",
+    },
+  ],
+  [
+    6206,
+    {
+      code: "CURRENT_NETWORK_TYPE",
+      name: "Current network type",
+      confidence: "verified",
+      classification: "network_diagnostics",
+    },
+  ],
+  [
+    6210,
+    {
+      code: "PRESET_LOCATION",
+      name: "Preset location",
+      confidence: "verified",
+      classification: "camera_ptz",
+    },
+  ],
+  [
+    6214,
+    {
+      code: "DUAL_CAMERA_IGNORE_OBJECT_REGION",
+      name: "Dual-camera ignored-object region",
+      confidence: "verified",
+      classification: "camera_ai",
+    },
+  ],
+  [
+    6234,
+    {
+      code: "SECOND_CAMERA_HOT_ZONE",
+      name: "Second-camera hot zone",
+      confidence: "verified",
+      classification: "camera_ai",
+    },
+  ],
+  [
+    6248,
+    {
+      code: "PRIVACY_ZONES_STATUS",
+      name: "Privacy zones status",
+      confidence: "verified",
+      classification: "camera_privacy",
+    },
+  ],
+  [
+    6253,
+    {
+      code: "MOTION_AT_NIGHT",
+      name: "Motion detection at night",
+      confidence: "verified",
+      classification: "camera_detection",
+    },
+  ],
+  [
+    6257,
+    {
+      code: "PRE_RECORD",
+      name: "Pre-recording",
+      confidence: "verified",
+      classification: "camera_recording",
+    },
+  ],
+  [
+    6266,
+    {
+      code: "OUT_OF_VIEW_ACTIVITY_ZONE",
+      name: "Out-of-view activity zone",
+      confidence: "verified",
+      classification: "camera_ai",
+    },
+  ],
+  [
+    6467,
+    {
+      code: "ADAPTIVE_BRIGHTNESS",
+      name: "Adaptive brightness",
+      confidence: "verified",
+      classification: "camera_light",
+    },
+  ],
+  [
+    6484,
+    {
+      code: "SUPPLY_LIGHT_MODE",
+      name: "Supply light mode",
+      confidence: "verified",
+      classification: "camera_light",
+    },
+  ],
+  [
+    8005,
+    {
+      code: "DISPLAY_MODEL_NAME",
+      name: "Smart Display model name",
+      confidence: "verified",
+      classification: "smart_display_identity",
+    },
+  ],
+  [
+    8006,
+    {
+      code: "DISPLAY_MODEL_CODE",
+      name: "Smart Display model code",
+      confidence: "verified",
+      classification: "smart_display_identity",
+    },
+  ],
+  [
+    9208,
+    {
+      code: "IMAGE_HDR",
+      name: "Image HDR",
+      confidence: "verified",
+      classification: "camera_image",
+    },
+  ],
+  [
+    60001,
+    {
+      code: "WIFI_PASSWORD_FIELD",
+      name: "Wi-Fi credential field",
+      confidence: "verified",
+      classification: "sensitive_network_credential",
+    },
+  ],
+  [
+    60009,
+    {
+      code: "MULTI_ROUTE_CONNECT",
+      name: "Multi-route connection",
+      confidence: "verified",
+      classification: "network_configuration",
+    },
+  ],
+  [
+    60011,
+    {
+      code: "DEVICE_MULTI_SWITCH_EXTENDED",
+      name: "Extended device multi-switch",
+      confidence: "verified",
+      classification: "device_configuration",
+    },
+  ],
+  [
     HOMEBASE_PRO_LTE_STATUS_PARAM,
     {
       code: "HOMEBASE_PRO_LTE_DIAGNOSTICS",
@@ -175,6 +373,14 @@ const observedMegaMetadata = new Map<number, ObservedMegaMetadata>([
   ],
 ]);
 
+// These app-named fields are product-independent (or occupy a dedicated product family's ID
+// range) and can be applied outside T9000. The remaining exact entries above are deliberately
+// HomeBase Professional scoped, except for the two older global fields retained below.
+const portableObservedMegaMetadataIds = new Set([
+  3100, 6057, 6200, 6201, 6204, 6205, 6206, 6210, 6214, 6234, 6248, 6253, 6257, 6266, 6467, 6484,
+  8005, 8006, 9208, 60001, 60009, 60011,
+]);
+
 const crossProductPlatformIds = new Set([1418, 1419, 1420, 1509, 1510, 1511, 1512, 1513]);
 const commonCameraPlatformIds = new Set([1067, 1154, 1197, 1198, 1299, 1309, 3103]);
 const stationPlatformIds = new Set([1062, 1155, 1284, 1285, 1296, 6287]);
@@ -186,7 +392,11 @@ const homeBaseProCellularReservedIds = new Set([5006, 5007, 5008, 5009, 5010, 50
 
 const classifyObservedMegaParameter = (type: number, productCode?: string): ObservedMegaMetadata | undefined => {
   const exact = observedMegaMetadata.get(type);
-  if (exact && (type === 7013 || type === 6445 || productCode === "T9000")) return exact;
+  if (
+    exact &&
+    (portableObservedMegaMetadataIds.has(type) || type === 7013 || type === 6445 || productCode === "T9000")
+  )
+    return exact;
   if (crossProductPlatformIds.has(type))
     return {
       code: `MEGA_CROSS_PRODUCT_PLATFORM_${type}`,

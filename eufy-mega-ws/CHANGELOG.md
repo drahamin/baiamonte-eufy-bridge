@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.33 — 2026-09-23
+
+- Name and classify 22 additional current-app Mega parameters, including dual-camera PTZ/AI,
+  privacy, pre-recording, Smart Display identity, HDR and network fields. All inventory-derived
+  catalogs remain read-only and credential values remain private.
+- Expose the HomeBase Professional's read-only local, date and count recording indexes and send
+  those database requests on the T9000 station channel used by the current app.
+- Retain thumbnails, authenticated account history and AIC evidence as independent fallbacks.
+
 ## 1.6.32 — 2026-09-16
 
 - Await optional Pro and Solar evidence queries before sending HTTP headers, so

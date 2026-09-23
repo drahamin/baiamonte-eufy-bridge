@@ -11028,12 +11028,16 @@ export const StationCommands: Commands = {
     CommandName.StationDatabaseCountByDate,
     CommandName.StationDatabaseDelete,
   ],
-  // App 6.0.80 identifies the T9000 home-page path as GET_LATEST_RECORD_INFO and consumes the
-  // returned HomeBase thumbnail path. Keep this catalog read-only: no reboot, alarm or deletion.
+  // Current app traffic reads the T9000 history database as well as its latest/AIC views. Keep
+  // this catalog read-only: expose bounded indexes and image download, but no reboot, alarm or
+  // deletion.
   [DeviceType.HOMEBASE_PRO]: [
     CommandName.StationDownloadImage,
     CommandName.StationDatabaseQueryLatestInfo,
     CommandName.StationDatabaseQueryAicEvents,
+    CommandName.StationDatabaseQueryLocal,
+    CommandName.StationDatabaseQueryByDate,
+    CommandName.StationDatabaseCountByDate,
   ],
   [DeviceType.HOMEBASE_MINI]: [
     CommandName.StationReboot,

@@ -1,5 +1,13 @@
 # Changelog
 
+## 9.6.19 — 2026-09-23
+
+- Fall back to the HomeBase Professional's direct, read-only station database index when its
+  optional AIC/WebRTC evidence view is unavailable, while preserving any successful account and
+  AIC evidence already collected.
+- Reserve part of the bounded evidence-query budget for that native fallback so a slow optional
+  Pro endpoint cannot consume the entire request window.
+
 ## 9.6.18 — 2026-08-31
 
 - Keep cached camera frames and tokenized image URLs current on product-scoped

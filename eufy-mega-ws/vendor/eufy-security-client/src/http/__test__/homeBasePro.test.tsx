@@ -2,7 +2,7 @@ import { DeviceType, GenericTypeProperty, PropertyName, StationCommands, Station
 import { buildAicEventQueryPayload } from "../station";
 
 describe("HomeBase Professional S1 catalog", () => {
-  it("identifies T9000 and exposes only verified properties and read-only image commands", () => {
+  it("identifies T9000 and exposes verified read-only image and history commands", () => {
     const properties = StationProperties[DeviceType.HOMEBASE_PRO];
 
     expect(GenericTypeProperty.states?.[DeviceType.HOMEBASE_PRO]).toContain("T9000");
@@ -16,6 +16,9 @@ describe("HomeBase Professional S1 catalog", () => {
       "stationDownloadImage",
       "stationDatabaseQueryLatestInfo",
       "stationDatabaseQueryAicEvents",
+      "stationDatabaseQueryLocal",
+      "stationDatabaseQueryByDate",
+      "stationDatabaseCoundByDate",
     ]);
     expect(StationCommands[DeviceType.HOMEBASE_PRO]).not.toContain("stationDatabaseDelete");
     expect(StationCommands[DeviceType.HOMEBASE_PRO]).not.toContain("stationReboot");

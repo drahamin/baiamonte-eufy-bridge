@@ -58,7 +58,13 @@ describe("MegaHTTPApi", () => {
     });
     expect(catalogs.T87A0.data_point_list).toEqual([
       expect.objectContaining({ dp_id: 1011, code: "CAMERA_PIR", mode: "ro", known: true }),
-      expect.objectContaining({ dp_id: 60001, code: "param_60001", mode: "ro", known: false }),
+      expect.objectContaining({
+        dp_id: 60001,
+        code: "WIFI_PASSWORD_FIELD",
+        mode: "ro",
+        known: true,
+        classification: "sensitive_network_credential",
+      }),
     ]);
     expect(JSON.stringify(catalogs)).not.toContain("private-serial");
     expect(JSON.stringify(catalogs)).not.toContain("private-value");
@@ -171,6 +177,42 @@ describe("MegaHTTPApi", () => {
       ])
     );
     expect(JSON.stringify(catalog)).not.toContain('power_source":5');
+  });
+
+  it("names current-app camera and Smart Display fields without retaining values", () => {
+    const catalogs = buildObservedMegaProductCatalogs({
+      devices: [
+        {
+          device_model: "T817L",
+          params: [
+            { param_type: 6201, param_value: "private-preset-zone" },
+            { param_type: 6257, param_value: "1" },
+            { param_type: 9208, param_value: "1" },
+          ],
+        },
+        {
+          device_model: "T87A0",
+          params: [
+            { param_type: 8005, param_value: "private-display-name" },
+            { param_type: 8006, param_value: "private-display-model" },
+          ],
+        },
+      ],
+    });
+    expect(catalogs.T817L.data_point_list).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ dp_id: 6201, code: "PRESET_ZONE", known: true }),
+        expect.objectContaining({ dp_id: 6257, code: "PRE_RECORD", known: true }),
+        expect.objectContaining({ dp_id: 9208, code: "IMAGE_HDR", known: true }),
+      ])
+    );
+    expect(catalogs.T87A0.data_point_list).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ dp_id: 8005, code: "DISPLAY_MODEL_NAME", known: true }),
+        expect.objectContaining({ dp_id: 8006, code: "DISPLAY_MODEL_CODE", known: true }),
+      ])
+    );
+    expect(JSON.stringify(catalogs)).not.toContain("private-");
   });
 
   afterEach(() => jest.clearAllMocks());
