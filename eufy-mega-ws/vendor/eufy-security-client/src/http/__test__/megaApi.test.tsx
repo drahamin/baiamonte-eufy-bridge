@@ -190,6 +190,10 @@ describe("MegaHTTPApi", () => {
             { param_type: 6201, param_value: "private-preset-zone" },
             { param_type: 6257, param_value: "1" },
             { param_type: 9208, param_value: "1" },
+            {
+              param_type: 9209,
+              param_value: JSON.stringify({ brightness: 128, contrast: 128, saturation: 128, sharpness: 0 }),
+            },
           ],
         },
         {
@@ -213,6 +217,12 @@ describe("MegaHTTPApi", () => {
         expect.objectContaining({ dp_id: 6201, code: "PRESET_ZONE", known: true }),
         expect.objectContaining({ dp_id: 6257, code: "PRE_RECORD", known: true }),
         expect.objectContaining({ dp_id: 9208, code: "IMAGE_HDR", known: true }),
+        expect.objectContaining({
+          dp_id: 9209,
+          code: "IMAGE_TUNING",
+          known: true,
+          value_shapes: ["object{brightness:integer,contrast:integer,saturation:integer,sharpness:integer}"],
+        }),
       ])
     );
     expect(catalogs.T87A0.data_point_list).toEqual(
@@ -222,6 +232,46 @@ describe("MegaHTTPApi", () => {
       ])
     );
     expect(JSON.stringify(catalogs)).not.toContain("private-");
+  });
+
+  it("uses model-scoped structural evidence to classify undocumented camera configuration fields", () => {
+    const catalogs = buildObservedMegaProductCatalogs({
+      devices: [
+        {
+          device_model: "T817L",
+          params: [
+            { param_type: 6270, param_value: JSON.stringify({ enable: 0, mode: 0, duration: 0, start_time: 0 }) },
+            { param_type: 6463, param_value: JSON.stringify({ timeout: 0 }) },
+            { param_type: 6464, param_value: JSON.stringify({ mode: 0 }) },
+          ],
+        },
+        {
+          device_model: "T84A1",
+          params: [{ param_type: 6344, param_value: JSON.stringify({ start_h: "23", start_m: "0", end_h: "6", end_m: "0" }) }],
+        },
+        {
+          device_model: "T86P2",
+          params: [{ param_type: 6431, param_value: JSON.stringify({ enable: 1, is_back: 1 }) }],
+        },
+        { device_model: "T9999", params: [{ param_type: 6431, param_value: "0" }] },
+      ],
+    });
+    expect(catalogs.T817L.data_point_list).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ dp_id: 6270, confidence: "classified", classification: "camera_schedule" }),
+        expect.objectContaining({ dp_id: 6463, confidence: "classified", classification: "camera_configuration" }),
+        expect.objectContaining({ dp_id: 6464, confidence: "classified", classification: "camera_configuration" }),
+      ])
+    );
+    expect(catalogs.T84A1.data_point_list[0]).toEqual(
+      expect.objectContaining({ dp_id: 6344, confidence: "classified", classification: "wall_light_schedule" })
+    );
+    expect(catalogs.T86P2.data_point_list[0]).toEqual(
+      expect.objectContaining({ dp_id: 6431, confidence: "classified", classification: "camera_ptz" })
+    );
+    expect(catalogs.T9999.data_point_list[0]).toEqual(
+      expect.objectContaining({ dp_id: 6431, confidence: "unresolved", classification: "unresolved" })
+    );
   });
 
   it("retains only field/type fingerprints for unresolved structured values", () => {

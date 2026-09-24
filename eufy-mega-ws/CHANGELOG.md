@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.37 — 2026-09-24
+
+- Promote C31 image tuning `9209` from unresolved to verified using its brightness, contrast,
+  saturation, sharpness and chroma payload.
+- Classify five additional model-scoped structures from value-free field evidence: C31 timed-mode,
+  timeout and mode configuration, S100 wall-light time window, and PTZ return configuration.
+
 ## 1.6.36 — 2026-09-24
 
 - Name the current-app Mega fields `6037` (indoor pan/cruise schedule) and `6082`

@@ -264,6 +264,51 @@ const observedMegaMetadata = new Map<number, ObservedMegaMetadata>([
     },
   ],
   [
+    6270,
+    {
+      code: "CAMERA_TIMED_MODE_CONFIGURATION",
+      name: "Camera timed-mode configuration",
+      confidence: "classified",
+      classification: "camera_schedule",
+    },
+  ],
+  [
+    6344,
+    {
+      code: "WALL_LIGHT_TIME_WINDOW",
+      name: "Wall-light time window",
+      confidence: "classified",
+      classification: "wall_light_schedule",
+    },
+  ],
+  [
+    6431,
+    {
+      code: "PTZ_RETURN_CONFIGURATION",
+      name: "PTZ return configuration",
+      confidence: "classified",
+      classification: "camera_ptz",
+    },
+  ],
+  [
+    6463,
+    {
+      code: "CAMERA_TIMEOUT_CONFIGURATION",
+      name: "Camera timeout configuration",
+      confidence: "classified",
+      classification: "camera_configuration",
+    },
+  ],
+  [
+    6464,
+    {
+      code: "CAMERA_MODE_CONFIGURATION",
+      name: "Camera mode configuration",
+      confidence: "classified",
+      classification: "camera_configuration",
+    },
+  ],
+  [
     6467,
     {
       code: "ADAPTIVE_BRIGHTNESS",
@@ -304,6 +349,15 @@ const observedMegaMetadata = new Map<number, ObservedMegaMetadata>([
     {
       code: "IMAGE_HDR",
       name: "Image HDR",
+      confidence: "verified",
+      classification: "camera_image",
+    },
+  ],
+  [
+    9209,
+    {
+      code: "IMAGE_TUNING",
+      name: "Image tuning",
       confidence: "verified",
       classification: "camera_image",
     },
@@ -410,9 +464,13 @@ const homeBaseProCellularReservedIds = new Set([5006, 5007, 5008, 5009, 5010, 50
 
 const classifyObservedMegaParameter = (type: number, productCode?: string): ObservedMegaMetadata | undefined => {
   const exact = observedMegaMetadata.get(type);
+  const productScopedExact =
+    (productCode === "T817L" && [6270, 6463, 6464, 9209].includes(type)) ||
+    (productCode === "T84A1" && type === 6344) ||
+    (productCode === "T86P2" && type === 6431);
   if (
     exact &&
-    (portableObservedMegaMetadataIds.has(type) || type === 7013 || type === 6445 || productCode === "T9000")
+    (portableObservedMegaMetadataIds.has(type) || productScopedExact || type === 7013 || type === 6445 || productCode === "T9000")
   )
     return exact;
   if (crossProductPlatformIds.has(type))

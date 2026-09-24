@@ -101,7 +101,7 @@ jobs:
       - name: Install exact dependencies
         run: |
           npm ci
-          npm install --no-save /tmp/eufy-security-client-4.1.1-mega.32.tgz
+          npm install --no-save /tmp/eufy-security-client-4.1.1-mega.33.tgz
 
       - name: Run unit tests
         run: npm test -- --runInBand
@@ -174,4 +174,4 @@ jobs:
       - name: Verify runtime client
         run: |
           docker run --rm --entrypoint node eufy-mega-ws:test --input-type=module -e \
-            "import client from '/usr/src/app/node_modules/eufy-security-ws/node_modules/eufy-security-client/package.json' with { type: 'json' }; const contract = await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/const.js'); if (client.version !== '4.1.1-mega.32' || contract.maxSchemaVersion !== 21) process.exit(1); await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/index.js')"
+            "import client from '/usr/src/app/node_modules/eufy-security-ws/node_modules/eufy-security-client/package.json' with { type: 'json' }; const contract = await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/const.js'); if (client.version !== '4.1.1-mega.33' || contract.maxSchemaVersion !== 21) process.exit(1); await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/index.js')"
