@@ -116,6 +116,8 @@ export interface MegaObservedDataPointDescriptor {
   classification: string;
   /** Identifier-free value shapes seen for this model/ID (never raw values). */
   value_profiles: string[];
+  /** Value-free object field/type fingerprints used to identify undocumented IDs safely. */
+  value_shapes: string[];
 }
 
 export interface MegaObservedProductCatalog {

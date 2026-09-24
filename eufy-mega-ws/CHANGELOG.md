@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.36 — 2026-09-24
+
+- Name the current-app Mega fields `6037` (indoor pan/cruise schedule) and `6082`
+  (indoor spotlight brightness) across the camera models that report them.
+- Add value-free object field/type fingerprints to unresolved Mega diagnostics so remaining IDs
+  can be investigated without retaining parameter values, identifiers or nested content.
+
 ## 1.6.35 — 2026-09-23
 
 - Update `qs` to 6.16.0 to resolve two moderate denial-of-service advisories.

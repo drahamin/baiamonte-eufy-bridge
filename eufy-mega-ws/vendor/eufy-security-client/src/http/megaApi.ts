@@ -138,6 +138,24 @@ const observedMegaMetadata = new Map<number, ObservedMegaMetadata>([
     },
   ],
   [
+    6037,
+    {
+      code: "INDOOR_SPAN_CRUISE_SCHEDULE",
+      name: "Indoor pan/cruise schedule",
+      confidence: "verified",
+      classification: "camera_ptz_schedule",
+    },
+  ],
+  [
+    6082,
+    {
+      code: "INDOOR_SPOT_BRIGHTNESS",
+      name: "Indoor spotlight brightness",
+      confidence: "verified",
+      classification: "camera_light",
+    },
+  ],
+  [
     6200,
     {
       code: "WIFI_NAME",
@@ -377,8 +395,8 @@ const observedMegaMetadata = new Map<number, ObservedMegaMetadata>([
 // range) and can be applied outside T9000. The remaining exact entries above are deliberately
 // HomeBase Professional scoped, except for the two older global fields retained below.
 const portableObservedMegaMetadataIds = new Set([
-  3100, 6057, 6200, 6201, 6204, 6205, 6206, 6210, 6214, 6234, 6248, 6253, 6257, 6266, 6467, 6484,
-  8005, 8006, 9208, 60001, 60009, 60011,
+  3100, 6037, 6057, 6082, 6200, 6201, 6204, 6205, 6206, 6210, 6214, 6234, 6248, 6253, 6257, 6266,
+  6467, 6484, 8005, 8006, 9208, 60001, 60009, 60011,
 ]);
 
 const crossProductPlatformIds = new Set([1418, 1419, 1420, 1509, 1510, 1511, 1512, 1513]);
@@ -507,6 +525,45 @@ const safeValueProfile = (value: unknown): string => {
   return "text";
 };
 
+const safeStructuredValue = (value: unknown): unknown => {
+  if (value && typeof value === "object") return value;
+  if (typeof value !== "string" || value.length > 65536) return undefined;
+  try {
+    return JSON.parse(value);
+  } catch {
+    // Try the same bounded Base64 envelope accepted by safeValueProfile.
+  }
+  if (value.length < 4 || value.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return undefined;
+  try {
+    return JSON.parse(Buffer.from(value, "base64").toString("utf8"));
+  } catch {
+    return undefined;
+  }
+};
+
+const safeShapeType = (value: unknown): string => {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "decimal";
+  return typeof value;
+};
+
+/**
+ * Return field names and primitive types only. Values, array contents, nested payloads and
+ * identifier-like dynamic keys are deliberately omitted. This provides enough evidence to map
+ * undocumented structures without leaking account or device data into diagnostics.
+ */
+const safeValueShape = (value: unknown): string | undefined => {
+  const structured = safeStructuredValue(value);
+  if (!structured || Array.isArray(structured) || typeof structured !== "object") return undefined;
+  const fields = Object.entries(structured as Record<string, unknown>)
+    .filter(([key]) => /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(key))
+    .slice(0, 32)
+    .map(([key, fieldValue]) => `${key}:${safeShapeType(fieldValue)}`)
+    .sort();
+  return fields.length ? `object{${fields.join(",")}}` : "object{}";
+};
+
 /**
  * Build identifier/value-free, read-only catalogs from the native parameters actually reported by
  * each product. This is the fallback for accounts where Eufy's catalog endpoint succeeds but
@@ -516,11 +573,13 @@ export const buildObservedMegaProductCatalogs = (value: unknown): Record<string,
   const inventory = value as { devices?: Array<Record<string, unknown>> };
   const byProduct = new Map<string, Set<number>>();
   const profilesByProduct = new Map<string, Map<number, Set<string>>>();
+  const shapesByProduct = new Map<string, Map<number, Set<string>>>();
   for (const device of Array.isArray(inventory?.devices) ? inventory.devices : []) {
     const product = device.device_model ?? device.device_new_pn;
     if (typeof product !== "string" || !product || product.length > 64) continue;
     const types = byProduct.get(product) ?? new Set<number>();
     const profiles = profilesByProduct.get(product) ?? new Map<number, Set<string>>();
+    const shapes = shapesByProduct.get(product) ?? new Map<number, Set<string>>();
     for (const param of Array.isArray(device.params) ? (device.params as Array<Record<string, unknown>>) : []) {
       const candidate = typeof param.param_type === "string" ? Number(param.param_type) : param.param_type;
       if (typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate >= 0) {
@@ -528,10 +587,17 @@ export const buildObservedMegaProductCatalogs = (value: unknown): Record<string,
         const valueProfiles = profiles.get(candidate) ?? new Set<string>();
         valueProfiles.add(safeValueProfile(param.param_value));
         profiles.set(candidate, valueProfiles);
+        const shape = safeValueShape(param.param_value);
+        if (shape) {
+          const valueShapes = shapes.get(candidate) ?? new Set<string>();
+          valueShapes.add(shape);
+          shapes.set(candidate, valueShapes);
+        }
       }
     }
     byProduct.set(product, types);
     profilesByProduct.set(product, profiles);
+    shapesByProduct.set(product, shapes);
   }
 
   return Object.fromEntries(
@@ -560,6 +626,7 @@ export const buildObservedMegaProductCatalogs = (value: unknown): Record<string,
                   : ("unresolved" as const),
               classification: knownName ? "legacy_enum" : (metadata?.classification ?? "unresolved"),
               value_profiles: Array.from(profilesByProduct.get(productCode)?.get(dp_id) ?? []).sort(),
+              value_shapes: Array.from(shapesByProduct.get(productCode)?.get(dp_id) ?? []).sort(),
             };
           }),
       },

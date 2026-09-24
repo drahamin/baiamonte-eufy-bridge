@@ -531,7 +531,11 @@ export class MegaTransition {
                   .sort((a, b) => a - b),
                 unresolvedDetails: catalog.data_point_list
                   .filter((point) => point.confidence === "unresolved")
-                  .map((point) => ({ id: point.dp_id, profiles: point.value_profiles }))
+                  .map((point) => ({
+                    id: point.dp_id,
+                    profiles: point.value_profiles,
+                    shapes: point.value_shapes,
+                  }))
                   .sort((a, b) => a.id - b.id),
                 classifiedIds: catalog.data_point_list
                   .filter((point) => point.confidence === "classified")

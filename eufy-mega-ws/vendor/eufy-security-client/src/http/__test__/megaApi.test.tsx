@@ -185,6 +185,8 @@ describe("MegaHTTPApi", () => {
         {
           device_model: "T817L",
           params: [
+            { param_type: 6037, param_value: Buffer.from(JSON.stringify({ start_time: "private-time" })).toString("base64") },
+            { param_type: 6082, param_value: "75" },
             { param_type: 6201, param_value: "private-preset-zone" },
             { param_type: 6257, param_value: "1" },
             { param_type: 9208, param_value: "1" },
@@ -201,6 +203,13 @@ describe("MegaHTTPApi", () => {
     });
     expect(catalogs.T817L.data_point_list).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          dp_id: 6037,
+          code: "INDOOR_SPAN_CRUISE_SCHEDULE",
+          known: true,
+          value_shapes: ["object{start_time:string}"],
+        }),
+        expect.objectContaining({ dp_id: 6082, code: "INDOOR_SPOT_BRIGHTNESS", known: true }),
         expect.objectContaining({ dp_id: 6201, code: "PRESET_ZONE", known: true }),
         expect.objectContaining({ dp_id: 6257, code: "PRE_RECORD", known: true }),
         expect.objectContaining({ dp_id: 9208, code: "IMAGE_HDR", known: true }),
@@ -213,6 +222,31 @@ describe("MegaHTTPApi", () => {
       ])
     );
     expect(JSON.stringify(catalogs)).not.toContain("private-");
+  });
+
+  it("retains only field/type fingerprints for unresolved structured values", () => {
+    const catalog = buildObservedMegaProductCatalogs({
+      devices: [
+        {
+          device_model: "T9999",
+          params: [
+            {
+              param_type: 7777,
+              param_value: JSON.stringify({ enabled: true, count: 3, serial: "private-serial", nested: { secret: 1 } }),
+            },
+          ],
+        },
+      ],
+    }).T9999.data_point_list[0];
+    expect(catalog).toEqual(
+      expect.objectContaining({
+        confidence: "unresolved",
+        value_profiles: ["json_object"],
+        value_shapes: ["object{count:integer,enabled:boolean,nested:object,serial:string}"],
+      })
+    );
+    expect(JSON.stringify(catalog)).not.toContain("private-serial");
+    expect(JSON.stringify(catalog)).not.toContain("secret");
   });
 
   afterEach(() => jest.clearAllMocks());
