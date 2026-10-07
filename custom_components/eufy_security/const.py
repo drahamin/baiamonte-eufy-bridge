@@ -21,7 +21,7 @@ _LOGGER: logging.Logger = logging.getLogger(__package__)
 # Base component constants
 NAME = "Baiamonte Eufy Security"
 DOMAIN = "eufy_security"
-VERSION = "9.6.20"
+VERSION = "9.6.21"
 COORDINATOR = "coordinator"
 DISCONNECTED = "eufy-security-ws-disconnected"
 BRIDGE_DEVICE_ID = "baiamonte_eufy_bridge"

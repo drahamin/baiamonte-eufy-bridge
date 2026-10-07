@@ -41,7 +41,7 @@ from .evidence import (
     normalize_cloud_event,
     normalize_local_event,
 )
-from .snapshot import disk_cache_source, is_valid_snapshot
+from .snapshot import disk_cache_source, evidence_identity, is_valid_snapshot
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -66,6 +66,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_bridge_error: str | None = None
         self._evidence_records: dict[str, dict] = {}
         self._evidence_video_cache: dict[str, bytes] = {}
+        self._last_snapshot_event_ids: dict[str, str] = {}
         self.camera_snapshot_refreshers = []
         self._daily_snapshot_task: asyncio.Task | None = None
         self._daily_snapshot_unsub = None
@@ -372,25 +373,38 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
     def _remember_evidence(self, event_id: str, source: str, record: dict) -> None:
         """Keep bounded raw lookup material in memory for protected media requests."""
         self._evidence_records[event_id] = {"source": source, "record": record}
-        while len(self._evidence_records) > 500:
+        while len(self._evidence_records) > 2000:
             self._evidence_records.pop(next(iter(self._evidence_records)))
 
     async def _daily_snapshot_loop(self) -> None:
-        """Refresh non-live snapshots daily without delaying Home Assistant startup."""
+        """Refresh non-live snapshots without delaying Home Assistant startup."""
         try:
-            # Let inventory settle, then use one bounded index query to populate
-            # app-style event images. This path never starts a livestream.
+            # Let inventory settle. Cloud evidence is inexpensive enough to poll
+            # twice an hour; every fourth pass also reconciles the HomeBase Pro
+            # AIC index. Neither path starts a livestream.
             await asyncio.sleep(60)
+            cycle = 0
             while True:
                 try:
                     async with asyncio.timeout(10 * 60):
-                        await self.refresh_latest_snapshots()
-                except (asyncio.TimeoutError, RuntimeError, WebSocketConnectionException) as exc:
+                        await self.refresh_latest_snapshots(
+                            source="latest" if cycle % 4 == 0 else "cloud"
+                        )
+                except (
+                    asyncio.TimeoutError,
+                    RuntimeError,
+                    WebSocketConnectionException,
+                ) as exc:
                     _LOGGER.warning(
-                        "Daily non-live snapshot refresh was deferred: %s",
+                        "Non-live snapshot refresh was deferred: %s",
                         type(exc).__name__,
                     )
-                await asyncio.sleep(24 * 60 * 60)
+                except Exception as exc:  # Keep the lifecycle worker alive.
+                    _LOGGER.exception(
+                        "Non-live snapshot refresh failed: %s", type(exc).__name__
+                    )
+                cycle += 1
+                await asyncio.sleep(30 * 60)
         except asyncio.CancelledError:
             return
 
@@ -406,20 +420,34 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         if self._daily_snapshot_task is None:
             self._daily_snapshot_task = self.hass.async_create_background_task(
                 self._daily_snapshot_loop(),
-                "baiamonte_eufy_daily_snapshot_refresh",
+                "baiamonte_eufy_snapshot_refresh",
             )
 
-    async def refresh_latest_snapshots(self) -> dict:
+    async def refresh_latest_snapshots(self, *, source: str = "latest") -> dict:
         """Select the newest cloud/HomeBase thumbnail for every matching camera."""
         # The account index includes event metadata for HomeBase-backed cameras
         # without opening dozens of local station database sessions in the
         # background. Full local history remains an explicit panel action.
-        result = await self.search_evidence(source="latest", days=1, max_results=200)
-        latest: dict[str, dict] = {}
+        result = await self.search_evidence(source=source, days=7, max_results=500)
+        latest_by_serial: dict[str, dict] = {}
+        latest_by_channel: dict[tuple[str, int], dict] = {}
+        latest_by_name: dict[str, dict] = {}
         for event in result.get("events", []):
+            if not event.get("thumbnail_url"):
+                continue
+            retained = self._evidence_records.get(event.get("event_id"), {})
+            serial, station, channel = evidence_identity(retained)
+            if serial and serial not in latest_by_serial:
+                latest_by_serial[serial] = event
+            if (
+                station
+                and channel is not None
+                and (station, channel) not in latest_by_channel
+            ):
+                latest_by_channel[(station, channel)] = event
             name = self._snapshot_name(event.get("device_name"))
-            if name and event.get("thumbnail_url") and name not in latest:
-                latest[name] = event
+            if name and name not in latest_by_name:
+                latest_by_name[name] = event
 
         # HomeBase Pro can retain an earlier device label in AIC records after the
         # user renames a camera or separates a shared account. Resolve that alias
@@ -431,7 +459,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             if "doorbell" in self._snapshot_name(device.name)
         ]
         doorbell_events = [
-            event for name, event in latest.items() if "doorbell" in name
+            event for name, event in latest_by_name.items() if "doorbell" in name
         ]
         unique_doorbell_event = (
             doorbell_events[0]
@@ -440,28 +468,73 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
         updated = 0
+        unchanged = 0
+        matched_by_serial = 0
+        matched_by_channel = 0
+        matched_by_name = 0
         for device in self.devices.values():
-            candidates = [
-                event
-                for name, event in latest.items()
-                if name == self._snapshot_name(device.name)
-                or name in self._snapshot_name(device.name)
-                or self._snapshot_name(device.name) in name
-            ]
+            if not getattr(device, "is_camera", False):
+                continue
+            event = latest_by_serial.get(device.serial_no)
+            if event is not None:
+                matched_by_serial += 1
+            if event is None:
+                station = device.properties.get("stationSerialNumber")
+                channel = self._device_channel(device)
+                if station and channel is not None:
+                    event = latest_by_channel.get((str(station), channel))
+                    if event is not None:
+                        matched_by_channel += 1
+            candidates = []
+            device_name = self._snapshot_name(device.name)
+            if event is None and device_name:
+                candidates = [
+                    candidate
+                    for name, candidate in latest_by_name.items()
+                    if name == device_name or name in device_name or device_name in name
+                ]
+                if candidates:
+                    event = candidates[0]
+                    matched_by_name += 1
             if (
-                not candidates
+                event is None
                 and unique_doorbell_event is not None
                 and device is doorbell_devices[0]
             ):
-                candidates = [unique_doorbell_event]
-            if not candidates:
+                event = unique_doorbell_event
+                matched_by_name += 1
+            if event is None:
                 continue
-            event = candidates[0]
+            event_id = event["event_id"]
+            try:
+                event_time = datetime.fromisoformat(
+                    event["start"].replace("Z", "+00:00")
+                )
+                if event_time.tzinfo is None:
+                    event_time = event_time.replace(tzinfo=timezone.utc)
+            except (AttributeError, TypeError, ValueError):
+                event_time = None
+            current_time = getattr(device, "image_last_updated", None)
+            if current_time is not None and current_time.tzinfo is None:
+                current_time = current_time.replace(tzinfo=timezone.utc)
+            if (
+                event_time is not None
+                and current_time is not None
+                and event_time <= current_time
+                and self._valid_snapshot(device.picture_bytes)
+            ):
+                self._last_snapshot_event_ids[device.serial_no] = event_id
+                unchanged += 1
+                continue
+            if (
+                self._last_snapshot_event_ids.get(device.serial_no) == event_id
+                and self._valid_snapshot(device.picture_bytes)
+            ):
+                unchanged += 1
+                continue
             try:
                 async with asyncio.timeout(15):
-                    content, content_type = await self.evidence_thumbnail(
-                        event["event_id"]
-                    )
+                    content, content_type = await self.evidence_thumbnail(event_id)
             except (ValueError, RuntimeError, asyncio.TimeoutError):
                 continue
             if not self._valid_snapshot(content):
@@ -470,13 +543,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 "data": content,
                 "type": {"mime": content_type},
             }
-            try:
-                device.image_last_updated = datetime.fromisoformat(
-                    event["start"].replace("Z", "+00:00")
-                )
-            except (AttributeError, TypeError, ValueError):
-                device.image_last_updated = datetime.now(timezone.utc)
+            device.image_last_updated = event_time or datetime.now(timezone.utc)
             device.snapshot_source = event.get("source") or "hybrid_index"
+            self._last_snapshot_event_ids[device.serial_no] = event_id
+            device.notify_state_update()
             updated += 1
 
         if updated:
@@ -484,6 +554,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             self._schedule_snapshot_cache_write()
         return {
             "updated": updated,
+            "unchanged": unchanged,
+            "matched_by_serial": matched_by_serial,
+            "matched_by_channel": matched_by_channel,
+            "matched_by_name": matched_by_name,
             # P2P/FFmpeg snapshot capture is deliberately excluded from this
             # background worker. On camera-heavy accounts it can starve Core and
             # Supervisor even when sessions are serialized. Live stays explicit.
@@ -710,8 +784,17 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 return inline, "image/jpeg"
             if inline.startswith(b"\x89PNG\r\n\x1a\n"):
                 return inline, "image/png"
-            station_serial = record.get("station_sn")
-            file = record.get("thumb_path")
+            station_serial = self._record_field(record, "station_sn", "stationSn")
+            files = [
+                candidate
+                for candidate in (
+                    self._record_field(record, "snapshot_cloud", "snapshotCloud"),
+                    self._record_field(record, "thumb_path", "thumbPath"),
+                    self._record_field(record, "thumbnail_path", "thumbnailPath"),
+                    self._record_field(record, "cover_path", "coverPath"),
+                )
+                if candidate
+            ]
         elif source == "aic":
             history = record.get("history") if isinstance(record.get("history"), dict) else record
             pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
@@ -774,19 +857,47 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             raise ValueError("This event has no retrievable HomeBase thumbnail")
         else:
             history = record.get("history") if isinstance(record.get("history"), dict) else record
-            station_serial = record.get("station_sn") or history.get("station_sn")
-            file = history.get("thumb_path")
-        if isinstance(file, str) and file.startswith("https://"):
-            return await self._download_trusted_eufy_image(file)
+            station_serial = record.get("station_sn") or self._record_field(
+                history, "station_sn", "stationSn"
+            )
+            files = [
+                candidate
+                for candidate in (
+                    self._record_field(history, "snapshot_cloud", "snapshotCloud"),
+                    self._record_field(history, "thumb_path", "thumbPath"),
+                    self._record_field(history, "thumbnail_path", "thumbnailPath"),
+                    self._record_field(history, "crop_path", "cropPath"),
+                )
+                if candidate
+            ]
+        last_error = None
+        for file in files:
+            if isinstance(file, str) and file.startswith("https://"):
+                try:
+                    return await self._download_trusted_eufy_image(file)
+                except (ValueError, RuntimeError, aiohttp.ClientError) as exc:
+                    last_error = exc
         station = self.stations.get(station_serial)
-        if station is None or not file:
-            raise ValueError("This event has no retrievable HomeBase thumbnail")
-        picture = await station.download_image(file)
-        data = self._buffer_bytes(picture.get("data"))
-        if not data:
-            raise ValueError("HomeBase returned an empty thumbnail")
-        image_type = picture.get("type") if isinstance(picture.get("type"), dict) else {}
-        return data, image_type.get("mime") or "application/octet-stream"
+        if station is not None:
+            for file in files:
+                if not isinstance(file, str) or file.startswith("https://"):
+                    continue
+                try:
+                    picture = await station.download_image(file)
+                    data = self._buffer_bytes(picture.get("data"))
+                    if not data:
+                        continue
+                    image_type = (
+                        picture.get("type")
+                        if isinstance(picture.get("type"), dict)
+                        else {}
+                    )
+                    return data, image_type.get("mime") or "application/octet-stream"
+                except (ValueError, RuntimeError, WebSocketConnectionException) as exc:
+                    last_error = exc
+        if last_error is not None:
+            raise ValueError("HomeBase thumbnail sources were unavailable") from last_error
+        raise ValueError("This event has no retrievable HomeBase thumbnail")
 
     async def _download_trusted_eufy_image(self, source_url: str) -> tuple[bytes, str]:
         """Fetch one bounded signed Eufy image without revealing its URL."""

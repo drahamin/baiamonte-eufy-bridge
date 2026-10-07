@@ -14,6 +14,50 @@ MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024
 MAX_ENHANCE_BYTES = 3 * 1024 * 1024
 
 
+def evidence_identity(wrapper: object) -> tuple[str | None, str | None, int | None]:
+    """Return camera, station and channel identity from a retained evidence row.
+
+    HomeBase Pro firmware moves these identifiers between the joined wrapper,
+    history row and ``latest_update.event``. Keep the extraction in one small,
+    dependency-free helper so snapshot matching never has to rely on a mutable
+    camera display name.
+    """
+    if not isinstance(wrapper, dict):
+        return None, None, None
+    record = wrapper.get("record") if isinstance(wrapper.get("record"), dict) else wrapper
+    history = record.get("history") if isinstance(record.get("history"), dict) else {}
+    latest = record.get("latest_update") if isinstance(record.get("latest_update"), dict) else {}
+    latest_event = latest.get("event") if isinstance(latest.get("event"), dict) else {}
+    candidates = (record, history, latest, latest_event)
+
+    def first_text(*names: str) -> str | None:
+        for candidate in candidates:
+            for name in names:
+                value = candidate.get(name)
+                if value not in (None, ""):
+                    return str(value)[:128]
+        return None
+
+    channel = None
+    for candidate in candidates:
+        for name in ("device_channel", "deviceChannel", "channel", "mChannel"):
+            try:
+                value = int(candidate.get(name))
+            except (TypeError, ValueError):
+                continue
+            if 0 <= value <= 255:
+                channel = value
+                break
+        if channel is not None:
+            break
+
+    return (
+        first_text("device_sn", "deviceSn", "device_serial", "deviceSerial"),
+        first_text("station_sn", "stationSn", "aic_sn", "aicSn"),
+        channel,
+    )
+
+
 def disk_cache_source(source: object) -> str:
     """Mark restored evidence once, even across repeated Core restarts."""
     value = str(source or "event")

@@ -409,7 +409,13 @@ def normalize_cloud_event(record: dict[str, Any]) -> dict[str, Any]:
         "video_type": record.get("video_type"),
         "viewed": bool(record.get("viewed")),
         "favorite": bool(record.get("is_favorite")),
-        "has_thumbnail": bool(record.get("thumb_path") or record.get("thumb_data")),
+        "has_thumbnail": bool(
+            record.get("thumb_path")
+            or record.get("thumbnail_path")
+            or record.get("snapshot_cloud")
+            or record.get("cover_path")
+            or record.get("thumb_data")
+        ),
         "has_video": bool(
             record.get("storage_path")
             or record.get("hevc_storage_path")

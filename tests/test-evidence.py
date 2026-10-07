@@ -39,6 +39,20 @@ def test_cloud_ai_details() -> None:
     ]
 
 
+def test_current_app_cloud_snapshot_is_advertised() -> None:
+    """Current app snapshot fields must produce a protected thumbnail route."""
+    normalized = evidence.normalize_cloud_event(
+        {
+            "station_sn": "station-private",
+            "device_sn": "camera-private",
+            "start_time": 1_700_000_000,
+            "snapshot_cloud": "https://example.invalid/private.jpg",
+        }
+    )
+    assert normalized["has_thumbnail"] is True
+    assert "snapshot_cloud" not in normalized
+
+
 def test_local_ai_details() -> None:
     """HomeBase crop semantics remain useful without the local disk path."""
     result = evidence.local_ai_details(

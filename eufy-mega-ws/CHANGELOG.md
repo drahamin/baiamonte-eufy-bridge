@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.38 — 2026-10-07
+
+- Recognize nested current-app cover, image and thumbnail fields when seeding saved-event snapshots
+  for Solar Wall Light cameras; downloads remain serialized and never start a livestream.
+- Ship companion 9.6.21 with frequent cloud evidence refresh, periodic HomeBase Pro reconciliation,
+  seven-day quiet-camera coverage and serial/channel-first camera matching.
+
 ## 1.6.37 — 2026-09-24
 
 - Promote C31 image tuning `9209` from unresolved to verified using its brightness, contrast,

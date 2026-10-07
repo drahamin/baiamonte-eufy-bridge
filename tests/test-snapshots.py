@@ -41,3 +41,21 @@ def test_disk_cache_source_is_idempotent_across_restarts() -> None:
     assert snapshot.disk_cache_source("push_event") == "disk_cache:push_event"
     assert snapshot.disk_cache_source("disk_cache:push_event") == "disk_cache:push_event"
     assert snapshot.disk_cache_source("disk_cache:disk_cache:push_event") == "disk_cache:push_event"
+
+
+def test_evidence_identity_prefers_serial_and_finds_nested_pro_channel() -> None:
+    assert snapshot.evidence_identity(
+        {
+            "record": {
+                "device_sn": "camera-current",
+                "history": {"device_sn": "camera-old", "stationSn": "homebase-pro"},
+                "latest_update": {"event": {"deviceChannel": "7"}},
+            }
+        }
+    ) == ("camera-current", "homebase-pro", 7)
+
+
+def test_evidence_identity_supports_current_app_spellings() -> None:
+    assert snapshot.evidence_identity(
+        {"deviceSerial": "camera-new", "aicSn": "pro-new", "mChannel": 3}
+    ) == ("camera-new", "pro-new", 3)

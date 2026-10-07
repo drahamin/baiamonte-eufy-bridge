@@ -1,5 +1,14 @@
 # Changelog
 
+## 9.6.21 — 2026-10-07
+
+- Refresh authenticated cloud evidence every 30 minutes and reconcile HomeBase Pro AIC evidence
+  every two hours, using a seven-day window for quiet cameras without starting livestreams.
+- Match event snapshots to cameras by serial or unambiguous station channel before using names, so
+  account splits and renamed devices cannot leave cards stale or attach evidence to the wrong camera.
+- Reuse an unchanged event image instead of downloading it again, and recognize current-app cloud,
+  cover and thumbnail field spellings when selecting the newest saved still.
+
 ## 9.6.20 — 2026-09-23
 
 - Report the installed companion version consistently in diagnostics and documentation.

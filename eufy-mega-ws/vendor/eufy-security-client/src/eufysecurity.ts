@@ -1229,7 +1229,11 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
         const latest = recordFamilies.flat()
           .slice()
           .sort((left, right) => (right.start_time || right.create_time || 0) - (left.start_time || left.create_time || 0))[0];
-        const image = [latest?.thumb_path, latest?.cloud_path]
+        const image = [
+          HTTPApi.selectDashboardCoverDeep(latest)?.path,
+          latest?.thumb_path,
+          latest?.cloud_path,
+        ]
           .find((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 4096);
         if (!image) return;
         if (device.hasProperty(PropertyName.DevicePictureUrl)) {
