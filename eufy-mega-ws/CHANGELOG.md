@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.39 — 2026-10-07
+
+- Classify all 36 remaining observed Mega datapoint occurrences by their evidenced product
+  subsystem while keeping them read-only and distinct from verified semantic names.
+- Cover repeated camera platform/configuration fields, the Solar Wall Light block, wired-camera
+  field `7000`, Smart Display platform/firmware/configuration fields, and newer Mega capability
+  fields `9207` and `9210`.
+
 ## 1.6.38 — 2026-10-07
 
 - Recognize nested current-app cover, image and thumbnail fields when seeding saved-event snapshots

@@ -459,8 +459,23 @@ const stationPlatformIds = new Set([1062, 1155, 1284, 1285, 1296, 6287]);
 const deviceTelemetryIds = new Set([6252, 6254, 6458, 6482]);
 const homeBaseProPlatformIds = new Set([1299, 1313, 1314, 1315, 1663]);
 const wiredCameraSettingIds = new Set([1416, 6036, 6037, 6082, 6084, 6110, 6111, 6112, 6113, 6114]);
-const megaCapabilityIds = new Set([9201, 9202, 9235, 9236, 9237, 9238, 9257, 9258, 9273]);
+const megaCapabilityIds = new Set([9201, 9202, 9207, 9210, 9235, 9236, 9237, 9238, 9257, 9258, 9273]);
 const homeBaseProCellularReservedIds = new Set([5006, 5007, 5008, 5009, 5010, 5011, 5012, 6224, 6225]);
+
+// These blocks are not named by the legacy protocol and Eufy's Mega catalog service currently
+// returns an empty list for the observed products. Repetition across models and value shape are
+// sufficient to classify their owning subsystem, but not to claim a user-facing semantic name.
+const observedCameraPlatformIds = new Set([1416, 1423, 6285, 6456, 6481]);
+const observedCameraConfigurationIds = new Set([6461, 6469, 6474]);
+const wallLightCameraPlatformIds = new Set([
+  6305, 6331, 6336, 6339, 6343, 6348, 6350, 6351, 6352, 6360, 6365, 6371, 6377,
+]);
+const wiredCameraPlatformModels = new Set(["T8400", "T8441", "T8442"]);
+const smartDisplayPlatformIds = new Map<number, Pick<ObservedMegaMetadata, "classification" | "name">>([
+  [8002, { name: "Smart Display platform field 8002", classification: "smart_display_platform" }],
+  [8003, { name: "Smart Display software component version", classification: "smart_display_firmware" }],
+  [8004, { name: "Smart Display configuration payload", classification: "smart_display_configuration" }],
+]);
 
 const classifyObservedMegaParameter = (type: number, productCode?: string): ObservedMegaMetadata | undefined => {
   const exact = observedMegaMetadata.get(type);
@@ -487,6 +502,43 @@ const classifyObservedMegaParameter = (type: number, productCode?: string): Obse
       confidence: "classified",
       classification: "mega_capability",
     };
+  if (productCode !== "T9000" && observedCameraPlatformIds.has(type))
+    return {
+      code: `CAMERA_OBSERVED_PLATFORM_${type}`,
+      name: `Camera observed platform field ${type}`,
+      confidence: "classified",
+      classification: "camera_platform",
+    };
+  if (productCode !== "T9000" && observedCameraConfigurationIds.has(type))
+    return {
+      code: `CAMERA_OBSERVED_CONFIGURATION_${type}`,
+      name: `Camera observed configuration field ${type}`,
+      confidence: "classified",
+      classification: "camera_configuration",
+    };
+  if (productCode === "T84A1" && wallLightCameraPlatformIds.has(type))
+    return {
+      code: `WALL_LIGHT_CAMERA_PLATFORM_${type}`,
+      name: `Wall-light camera platform field ${type}`,
+      confidence: "classified",
+      classification: "wall_light_camera_platform",
+    };
+  if (wiredCameraPlatformModels.has(productCode ?? "") && type === 7000)
+    return {
+      code: "WIRED_CAMERA_PLATFORM_7000",
+      name: "Wired camera platform field 7000",
+      confidence: "classified",
+      classification: "wired_camera_platform",
+    };
+  if (productCode === "T87A0" && smartDisplayPlatformIds.has(type)) {
+    const metadata = smartDisplayPlatformIds.get(type)!;
+    return {
+      code: `SMART_DISPLAY_PLATFORM_${type}`,
+      name: metadata.name,
+      confidence: "classified",
+      classification: metadata.classification,
+    };
+  }
   if (productCode !== "T9000" && commonCameraPlatformIds.has(type))
     return {
       code: `CAMERA_PLATFORM_${type}`,

@@ -274,6 +274,60 @@ describe("MegaHTTPApi", () => {
     );
   });
 
+  it("classifies current observed product blocks without inventing verified semantics", () => {
+    const catalogs = buildObservedMegaProductCatalogs({
+      devices: [
+        {
+          device_model: "T817L",
+          params: [
+            { param_type: 1423, param_value: "0" },
+            { param_type: 6461, param_value: JSON.stringify({ enable: 1 }) },
+            { param_type: 9207, param_value: "[]" },
+            { param_type: 9210, param_value: "1" },
+          ],
+        },
+        {
+          device_model: "T84A1",
+          params: [{ param_type: 6331, param_value: "0" }],
+        },
+        {
+          device_model: "T8442",
+          params: [{ param_type: 7000, param_value: "1" }],
+        },
+        {
+          device_model: "T87A0",
+          params: [
+            { param_type: 8002, param_value: "1" },
+            { param_type: 8003, param_value: "1.2.3" },
+            { param_type: 8004, param_value: "opaque" },
+          ],
+        },
+      ],
+    });
+
+    expect(catalogs.T817L.data_point_list).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ dp_id: 1423, confidence: "classified", classification: "camera_platform" }),
+        expect.objectContaining({ dp_id: 6461, confidence: "classified", classification: "camera_configuration" }),
+        expect.objectContaining({ dp_id: 9207, confidence: "classified", classification: "mega_capability" }),
+        expect.objectContaining({ dp_id: 9210, confidence: "classified", classification: "mega_capability" }),
+      ])
+    );
+    expect(catalogs.T84A1.data_point_list[0]).toEqual(
+      expect.objectContaining({ dp_id: 6331, confidence: "classified", classification: "wall_light_camera_platform" })
+    );
+    expect(catalogs.T8442.data_point_list[0]).toEqual(
+      expect.objectContaining({ dp_id: 7000, confidence: "classified", classification: "wired_camera_platform" })
+    );
+    expect(catalogs.T87A0.data_point_list).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ dp_id: 8002, confidence: "classified", classification: "smart_display_platform" }),
+        expect.objectContaining({ dp_id: 8003, confidence: "classified", classification: "smart_display_firmware" }),
+        expect.objectContaining({ dp_id: 8004, confidence: "classified", classification: "smart_display_configuration" }),
+      ])
+    );
+  });
+
   it("retains only field/type fingerprints for unresolved structured values", () => {
     const catalog = buildObservedMegaProductCatalogs({
       devices: [
