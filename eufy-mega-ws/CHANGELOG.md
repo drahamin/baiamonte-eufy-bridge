@@ -6,6 +6,8 @@
   for Solar Wall Light cameras; downloads remain serialized and never start a livestream.
 - Ship companion 9.6.21 with frequent cloud evidence refresh, periodic HomeBase Pro reconciliation,
   seven-day quiet-camera coverage and serial/channel-first camera matching.
+- Refresh locked transitive dependencies to resolve the current `http-cache-semantics` cache
+  disclosure and `ip-address` network-classification advisories in the production runtime.
 
 ## 1.6.37 — 2026-09-24
 
