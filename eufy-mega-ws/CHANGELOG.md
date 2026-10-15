@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.40 — 2026-10-15
+
+- Backport the successor SDK's measured 4 MiB UDP receive-buffer request to reduce dropped camera
+  keyframe bursts and improve P2P live-view stability on small or busy Home Assistant hosts.
+- Ship Baiamonte Eufy Security 9.6.22 with clean WebSocket recovery and native light entities while
+  retaining compatibility switches for existing automations.
+- Keep the Baiamonte bridge on its proven Mega/HomeBase Pro implementation because the new upstream
+  successor still lacks equivalent HomeBase Pro P2P, HomeBase 3 recording and model coverage.
+
 ## 1.6.39 — 2026-10-07
 
 - Classify all 36 remaining observed Mega datapoint occurrences by their evidenced product

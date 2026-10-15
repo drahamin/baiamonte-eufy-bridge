@@ -33,6 +33,42 @@ def test_bridge_events_are_bounded_and_processed_off_the_result_path():
     assert "await self._process_events" not in source
 
 
+def test_bridge_error_frames_reconnect_without_unhandled_task_exception():
+    source = (
+        ROOT
+        / "custom_components"
+        / "eufy_security"
+        / "eufy_security_api"
+        / "web_socket_client.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'elif msg.type == aiohttp.WSMsgType.ERROR:' in source
+    assert 'raise WebSocketConnectionException("Bridge WebSocket transport error")' not in source
+    assert '"Bridge WebSocket transport error; reconnecting: %s"' in source
+
+
+def test_current_sdk_receive_buffer_and_native_light_are_backported():
+    session_source = (
+        ROOT
+        / "eufy-mega-ws"
+        / "vendor"
+        / "eufy-security-client"
+        / "src"
+        / "p2p"
+        / "session.ts"
+    ).read_text(encoding="utf-8")
+    constants = (
+        ROOT / "custom_components" / "eufy_security" / "const.py"
+    ).read_text(encoding="utf-8")
+    light = (
+        ROOT / "custom_components" / "eufy_security" / "light.py"
+    ).read_text(encoding="utf-8")
+
+    assert "UDP_RECVBUFFERSIZE_BYTES = 4 * 1024 * 1024" in session_source
+    assert "Platform.LIGHT" in constants
+    assert "class EufyLightEntity" in light
+
+
 def test_pro_dashboard_uses_bounded_wait_and_awaits_before_headers():
     source = (
         ROOT / "eufy-mega-ws" / "dashboard" / "server.cjs"

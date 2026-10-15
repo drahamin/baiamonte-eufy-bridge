@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.22 — 2026-10-15
+
+- Recover cleanly from WebSocket transport-error frames so the coordinator can reconnect without
+  leaving an unhandled receive-task exception or unavailable entities.
+- Expose Eufy camera and wall-camera lights as native Home Assistant light entities while retaining
+  the former switch entities, hidden by default, for existing automations.
+
 ## 9.6.21 — 2026-10-07
 
 - Refresh authenticated cloud evidence every 30 minutes and reconcile HomeBase Pro AIC evidence

@@ -389,7 +389,10 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     expectedSeqNoWait: this.MAX_EXPECTED_SEQNO_WAIT,
   };
 
-  private readonly UDP_RECVBUFFERSIZE_BYTES = 1048576;
+  // Current eufy-sdk field measurements show that a 1 MiB socket can drop a
+  // keyframe burst on small/busy hosts. Request 4 MiB; the kernel may clamp it,
+  // and the existing diagnostic records the effective value when it does.
+  private readonly UDP_RECVBUFFERSIZE_BYTES = 4 * 1024 * 1024;
   private readonly MAX_PAYLOAD_BYTES = 1028;
   private readonly MAX_PACKET_BYTES = 1024;
   private readonly MAX_VIDEO_PACKET_BYTES = 655360;

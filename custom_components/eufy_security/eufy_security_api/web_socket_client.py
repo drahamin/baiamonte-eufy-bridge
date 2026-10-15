@@ -90,7 +90,14 @@ class WebSocketClient:
             }:
                 return
             elif msg.type == aiohttp.WSMsgType.ERROR:
-                raise WebSocketConnectionException("Bridge WebSocket transport error")
+                # aiohttp places the transport exception in ``data`` for ERROR
+                # frames. End the receive loop cleanly so the coordinator's
+                # close callback can reconnect; raising here leaves a noisy
+                # unhandled task exception and can strand entities unavailable.
+                _LOGGER.warning(
+                    "Bridge WebSocket transport error; reconnecting: %s", msg.data
+                )
+                return
             else:
                 _LOGGER.debug("Ignored unsupported bridge WebSocket frame type")
 

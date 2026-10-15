@@ -4,6 +4,7 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
@@ -19,6 +20,7 @@ from .eufy_security_api.util import get_child_value
 from .util import get_product_properties_by_filter
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
+LIGHT_PROPERTY = "light"
 
 
 async def async_setup_entry(
@@ -34,7 +36,10 @@ async def async_setup_entry(
         PlatformToPropertyType[Platform.SWITCH.name].value,
     )
     entities = [
-        EufySwitchEntity(coordinator, metadata) for metadata in product_properties
+        EufyLightCompatibilitySwitch(coordinator, metadata)
+        if metadata.name == LIGHT_PROPERTY
+        else EufySwitchEntity(coordinator, metadata)
+        for metadata in product_properties
     ]
     async_add_entities(entities)
 
@@ -59,3 +64,16 @@ class EufySwitchEntity(SwitchEntity, EufySecurityEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the entity on."""
         await self.product.set_property(self.metadata, True)
+
+
+class EufyLightCompatibilitySwitch(EufySwitchEntity):
+    """Retain the former light switch for existing automations."""
+
+    _attr_entity_registry_visible_default = False
+
+    def __init__(
+        self, coordinator: EufySecurityDataUpdateCoordinator, metadata: Metadata
+    ) -> None:
+        super().__init__(coordinator, metadata)
+        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_icon = "mdi:car-light-high"
