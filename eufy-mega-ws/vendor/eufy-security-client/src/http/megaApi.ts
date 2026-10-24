@@ -523,6 +523,13 @@ const classifyObservedMegaParameter = (type: number, productCode?: string): Obse
       confidence: "classified",
       classification: "wall_light_camera_platform",
     };
+  if (productCode === "T8171" && type === 60013)
+    return {
+      code: "SOLOCAM_E42_CONFIGURATION_60013",
+      name: "SoloCam E42 configuration field 60013",
+      confidence: "classified",
+      classification: "camera_configuration",
+    };
   if (wiredCameraPlatformModels.has(productCode ?? "") && type === 7000)
     return {
       code: "WIRED_CAMERA_PLATFORM_7000",

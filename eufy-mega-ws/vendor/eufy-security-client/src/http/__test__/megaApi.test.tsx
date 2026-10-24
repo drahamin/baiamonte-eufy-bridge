@@ -147,6 +147,28 @@ describe("MegaHTTPApi", () => {
     );
   });
 
+  it("classifies the observed SoloCam E42 field without assigning an unsupported semantic control", () => {
+    const catalogs = buildObservedMegaProductCatalogs({
+      devices: [
+        { device_model: "T8171", params: [{ param_type: 60013, param_value: "1" }] },
+        { device_model: "T9999", params: [{ param_type: 60013, param_value: "1" }] },
+      ],
+    });
+
+    expect(catalogs.T8171.data_point_list).toEqual([
+      expect.objectContaining({
+        dp_id: 60013,
+        confidence: "classified",
+        classification: "camera_configuration",
+        mode: "ro",
+        known: false,
+      }),
+    ]);
+    expect(catalogs.T9999.data_point_list).toEqual([
+      expect.objectContaining({ dp_id: 60013, confidence: "unresolved", known: false }),
+    ]);
+  });
+
   it("promotes the structured power-source schema without exposing its value", () => {
     const catalog = buildObservedMegaProductCatalogs({
       devices: [

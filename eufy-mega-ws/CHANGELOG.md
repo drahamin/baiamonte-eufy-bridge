@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.42 — 2026-10-24
+
+- Classify newly observed SoloCam E42/T8171 Mega field `60013` as a read-only camera
+  configuration field. No speculative control or user-facing semantic name is assigned.
+
 ## 1.6.41 — 2026-10-24
 
 - Update the locked Node and Python runtime dependencies to their current compatible patch releases,
