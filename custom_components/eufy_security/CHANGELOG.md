@@ -6,7 +6,6 @@
   security audit; entity IDs and the explicit-only livestream policy remain unchanged.
 - Confirm model-safe controls for the connected T8134, T8171 and T8442 cameras against the newest
   available protocol evidence without exposing unsupported PTZ, spotlight or night-vision actions.
-- Classify the companion under Home Assistant's current Security & safety integration category.
 
 ## 9.6.22 — 2026-10-15
 

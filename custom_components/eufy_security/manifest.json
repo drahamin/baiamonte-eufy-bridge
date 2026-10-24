@@ -1,7 +1,6 @@
 {
   "domain": "eufy_security",
   "name": "Baiamonte Eufy Security",
-  "categories": ["security_safety"],
   "codeowners": ["@drahamin"],
   "config_flow": true,
   "dependencies": ["ffmpeg", "frontend", "panel_custom", "stream"],
