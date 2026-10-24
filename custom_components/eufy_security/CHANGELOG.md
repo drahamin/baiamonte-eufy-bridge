@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.23 — 2026-10-24
+
+- Ship with Baiamonte eufy Bridge 1.6.41 after a current SDK, device-capability, dependency and
+  security audit; entity IDs and the explicit-only livestream policy remain unchanged.
+- Confirm model-safe controls for the connected T8134, T8171 and T8442 cameras against the newest
+  available protocol evidence without exposing unsupported PTZ, spotlight or night-vision actions.
+
 ## 9.6.22 — 2026-10-15
 
 - Recover cleanly from WebSocket transport-error frames so the coordinator can reconnect without

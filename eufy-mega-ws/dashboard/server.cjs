@@ -17,6 +17,16 @@ const ptzPropertyPattern = /(pan|tilt|zoom|track|privacy|preset|calibrat|patrol|
 let cache;
 let cacheTime = 0;
 
+function safeErrorMessage(error, fallback) {
+  if (!(error instanceof Error)) return fallback;
+  return error.message
+    .replace(/\b(?:https?|wss?|rtsp):\/\/\S+/gi, "[redacted-url]")
+    .replace(/\b(x-auth-token|authorization|credential|password|passcode|bearer|token)\s*[:=]?\s*["']?[^\s,"'}]+/gi, "$1=[redacted]")
+    .replace(/\b[\w.+-]+@[\w.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]")
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]")
+    .replace(/\b[A-Z0-9]{10,}\b/g, "[redacted-identifier]");
+}
+
 // Return structure only: no names, IDs, coordinates, URLs, recognition results, or other values.
 function safeValueShape(value) {
   if (value === undefined) return { kind: "missing", count: 0, keys: [], fieldTypes: {} };
@@ -482,7 +492,7 @@ async function currentStatus() {
       brand: "Baiamonte eufy Bridge",
       generatedAt: new Date().toISOString(),
       bridge: { available: false, port: bridgePort, schema: 21 },
-      error: error instanceof Error ? error.message : "Bridge unavailable",
+      error: safeErrorMessage(error, "Bridge unavailable"),
       mega: megaStatus(),
       snapshotCache: snapshotCacheStatus(),
     };
@@ -505,7 +515,7 @@ http.createServer(async (request, response) => {
       response.end(JSON.stringify(result));
     } catch (error) {
       response.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "AIC query unavailable" }));
+      response.end(JSON.stringify({ error: safeErrorMessage(error, "AIC query unavailable") }));
     }
     return;
   }
@@ -516,7 +526,7 @@ http.createServer(async (request, response) => {
       response.end(JSON.stringify(result));
     } catch (error) {
       response.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-      response.end(JSON.stringify({ error: error instanceof Error ? error.message : "Snapshot query unavailable" }));
+      response.end(JSON.stringify({ error: safeErrorMessage(error, "Snapshot query unavailable") }));
     }
     return;
   }

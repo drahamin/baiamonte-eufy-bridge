@@ -81,3 +81,34 @@ def test_pro_dashboard_uses_bounded_wait_and_awaits_before_headers():
     assert "const result = await refreshAicSummary();" in source
     assert "const result = await refreshSolarWallSnapshots();" in source
     assert "JSON.stringify(await refreshAicSummary())" not in source
+
+
+def test_bridge_owned_errors_and_malformed_messages_are_redacted():
+    server = (
+        ROOT
+        / "eufy-mega-ws"
+        / "vendor"
+        / "eufy-security-ws"
+        / "src"
+        / "lib"
+        / "server.ts"
+    ).read_text(encoding="utf-8")
+    logging = (
+        ROOT
+        / "eufy-mega-ws"
+        / "vendor"
+        / "eufy-security-ws"
+        / "src"
+        / "lib"
+        / "logging.ts"
+    ).read_text(encoding="utf-8")
+    dashboard = (
+        ROOT / "eufy-mega-ws" / "dashboard" / "server.cjs"
+    ).read_text(encoding="utf-8")
+
+    assert "redactErrorForLog(error)" in server
+    assert "Unable to parse local WebSocket message" in server
+    assert "Unable to parse data:" not in server
+    assert "export const redactSensitiveText" in logging
+    assert "function safeErrorMessage" in dashboard
+    assert 'error: safeErrorMessage(error, "Bridge unavailable")' in dashboard

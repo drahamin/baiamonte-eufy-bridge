@@ -109,7 +109,9 @@ export enum LockPushEvent {
   OTA_STATUS = 770,
   LOCK_ONLINE = 771,
 
+  // eslint-disable-next-line @typescript-eslint/no-duplicate-enum-values
   UNLOCKED = 261,
+  // eslint-disable-next-line @typescript-eslint/no-duplicate-enum-values
   LOCKED = 264,
 }
 

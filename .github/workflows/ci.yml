@@ -14,10 +14,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Use Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -54,10 +54,10 @@ jobs:
         working-directory: eufy-mega-ws/vendor/eufy-security-client
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -68,6 +68,9 @@ jobs:
 
       - name: Run unit tests
         run: npm test -- --runInBand
+
+      - name: Run static checks
+        run: npm run lint
 
       - name: Compile distributable
         run: npm run build
@@ -83,10 +86,10 @@ jobs:
         working-directory: eufy-mega-ws/vendor/eufy-security-ws
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -101,10 +104,13 @@ jobs:
       - name: Install exact dependencies
         run: |
           npm ci
-          npm install --no-save /tmp/eufy-security-client-4.1.1-mega.36.tgz
+          npm install --no-save /tmp/eufy-security-client-4.1.1-mega.37.tgz
 
       - name: Run unit tests
         run: npm test -- --runInBand
+
+      - name: Run static checks
+        run: npm run lint
 
       - name: Compile distributable
         run: npm run build
@@ -120,10 +126,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Use Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -174,4 +180,4 @@ jobs:
       - name: Verify runtime client
         run: |
           docker run --rm --entrypoint node eufy-mega-ws:test --input-type=module -e \
-            "import client from '/usr/src/app/node_modules/eufy-security-ws/node_modules/eufy-security-client/package.json' with { type: 'json' }; const contract = await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/const.js'); if (client.version !== '4.1.1-mega.36' || contract.maxSchemaVersion !== 21) process.exit(1); await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/index.js')"
+            "import client from '/usr/src/app/node_modules/eufy-security-ws/node_modules/eufy-security-client/package.json' with { type: 'json' }; const contract = await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/const.js'); if (client.version !== '4.1.1-mega.37' || contract.maxSchemaVersion !== 21) process.exit(1); await import('/usr/src/app/node_modules/eufy-security-ws/dist/lib/index.js')"

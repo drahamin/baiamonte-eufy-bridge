@@ -16,6 +16,28 @@ export enum LogLevel {
 
 export type LogLevelName = keyof typeof LogLevel;
 
+/** Remove credentials and account identifiers before bridge-owned logs expose an error. */
+export const redactSensitiveText = (value: string): string =>
+  value
+    .replace(/\b(?:https?|wss?|rtsp):\/\/\S+/gi, "[redacted-url]")
+    .replace(
+      /\b(x-auth-token|authorization|credential|password|passcode|bearer|token)\s*[:=]?\s*["']?[^\s,"'}]+/gi,
+      "$1=[redacted]",
+    )
+    .replace(/\b[\w.+-]+@[\w.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]")
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]")
+    .replace(/\b[A-Z0-9]{10,}\b/g, "[redacted-identifier]");
+
+/** Preserve an error's useful type and message without forwarding custom secret-bearing fields. */
+export const redactErrorForLog = (
+  error: unknown,
+): { name: string; message: string } => {
+  if (error instanceof Error) {
+    return { name: error.name, message: redactSensitiveText(error.message) };
+  }
+  return { name: "Error", message: redactSensitiveText(String(error)) };
+};
+
 export const convertLogLevelToDriver = function (
   level: LogLevelName,
 ): EufyLogLevel {

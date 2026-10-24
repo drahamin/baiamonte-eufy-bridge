@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.41 — 2026-10-24
+
+- Update the locked Node and Python runtime dependencies to their current compatible patch releases,
+  including `ip-address` 10.7.4 and Handlebars 4.7.10, clearing all current npm advisories.
+- Redact credentials, account identifiers, signed URLs and addresses from bridge-owned error logs and
+  dashboard error responses; malformed local WebSocket payloads are no longer echoed into logs.
+- Make client builds fully locked and offline after dependency installation, restore working ESLint 9
+  checks for both vendored modules, and enforce those checks in CI.
+- Update the Home Assistant CI actions to their current Node 24 releases and ship Baiamonte Eufy
+  Security 9.6.23 with the audited bridge/client cohort.
+- Revalidate current successor-SDK discoveries against the connected fleet: T8134 remains fixed-lens,
+  T8171 has no false spotlight, and T8442 retains its verified direct night-vision control.
+
 ## 1.6.40 — 2026-10-15
 
 - Backport the successor SDK's measured 4 MiB UDP receive-buffer request to reduce dropped camera

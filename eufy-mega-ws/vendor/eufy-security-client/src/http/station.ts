@@ -627,8 +627,11 @@ export class Station extends TypedEmitter<StationEvents> {
               return value !== undefined
                 ? isNotificationSwitchMode(Number.parseInt(value), NotificationSwitchMode.KEYPAD)
                 : false;
+            default:
+              break;
           }
         }
+        // Falls through for an unknown legacy notification property.
         case CommandType.CMD_HUB_NOTIFY_ALARM:
           return value !== undefined ? (value === "1" ? true : false) : false;
         case CommandType.CMD_HUB_ALARM_TONE:

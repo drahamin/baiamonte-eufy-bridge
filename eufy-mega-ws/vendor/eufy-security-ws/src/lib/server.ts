@@ -57,7 +57,11 @@ import { ServerCommand } from "./command.js";
 import { DriverMessageHandler } from "./driver/message_handler.js";
 import { IncomingMessageDriver } from "./driver/incoming_message.js";
 import { dumpState } from "./state.js";
-import { LogLevel, LoggingEventForwarder } from "./logging.js";
+import {
+  LogLevel,
+  LoggingEventForwarder,
+  redactErrorForLog,
+} from "./logging.js";
 import { ServerEvent } from "./event.js";
 import { DriverEvent } from "./driver/event.js";
 
@@ -137,11 +141,14 @@ export class Client {
     try {
       dataString = this.rawDataToString(data);
       msg = JSON.parse(dataString);
-    } catch (err) {
-      // We don't have the message ID. Just close it.
-      this.logger.debug(
-        `Unable to parse data: ${Buffer.isBuffer(data) ? data.toString("utf-8").substring(0, 100) : String(data).substring(0, 100)}`,
-      );
+    } catch (_err) {
+      // We do not have a message ID. Never echo the malformed payload: it may
+      // contain a verify code, credential, serial number, or signed URL.
+      this.logger.debug("Unable to parse local WebSocket message", {
+        bytes: Buffer.isBuffer(data)
+          ? data.length
+          : this.rawDataToString(data).length,
+      });
       this.socket.close();
       return;
     }
@@ -195,54 +202,54 @@ export class Client {
       throw new UnknownCommandError(msg.command);
     } catch (error: unknown) {
       if (error instanceof BaseError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(msg.messageId, error.errorCode);
       }
       if (error instanceof DeviceNotFoundError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(msg.messageId, ErrorCode.deviceNotFound);
       }
       if (error instanceof StationNotFoundError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(msg.messageId, ErrorCode.stationNotFound);
       }
       if (error instanceof NotSupportedError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceNotSupported,
         );
       }
       if (error instanceof WrongStationError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceWrongStation,
         );
       }
       if (error instanceof InvalidPropertyValueError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceInvalidPropertyValue,
         );
       }
       if (error instanceof ReadOnlyPropertyError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceReadOnlyProperty,
         );
       }
       if (error instanceof InvalidCountryCodeError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.invalidCountryCode,
         );
       }
       if (error instanceof InvalidLanguageCodeError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.invalidLanguageCode,
@@ -252,7 +259,7 @@ export class Client {
         error instanceof InvalidPropertyError ||
         error instanceof EufyInvalidPropertyError
       ) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceInvalidProperty,
@@ -262,7 +269,7 @@ export class Client {
         error instanceof LivestreamAlreadyRunningError ||
         error instanceof EufyLivestreamAlreadyRunningError
       ) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceLivestreamAlreadyRunning,
@@ -272,7 +279,7 @@ export class Client {
         error instanceof LivestreamNotRunningError ||
         error instanceof EufyLivestreamNotRunningError
       ) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceLivestreamNotRunning,
@@ -282,77 +289,77 @@ export class Client {
         error instanceof PropertyNotSupportedError ||
         error instanceof EufyPropertyNotSupportedError
       ) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.devicePropertyNotSupported,
         );
       }
       if (error instanceof InvalidCommandValueError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceInvalidCommandValue,
         );
       }
       if (error instanceof DownloadAlreadyRunningError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceDownloadAlreadyRunning,
         );
       }
       if (error instanceof DownloadNotRunningError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceDownloadNotRunning,
         );
       }
       if (error instanceof DownloadOnlyOneAtATimeError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceOnlyOneDownloadAtATime,
         );
       }
       if (error instanceof TalkbackAlreadyRunningError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceTalkbackAlreadyRunning,
         );
       }
       if (error instanceof TalkbackNotRunningError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceTalkbackNotRunning,
         );
       }
       if (error instanceof TalkbackOnlyOneAtATimeError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceOnlyOneTalkbackAtATime,
         );
       }
       if (error instanceof StationConnectTimeoutError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.stationConnectionTimeout,
         );
       }
       if (error instanceof RTSPPropertyNotEnabledError) {
-        this.logger.error("Message error", error);
+        this.logger.error("Message error", redactErrorForLog(error));
         return this.sendResultError(
           msg.messageId,
           ErrorCode.deviceRTSPPropertyNotEnabled,
         );
       }
 
-      this.logger.error("Unexpected error", error as Error);
+      this.logger.error("Unexpected error", redactErrorForLog(error));
       this.sendResultError(msg.messageId, ErrorCode.unknownError);
     }
   }
