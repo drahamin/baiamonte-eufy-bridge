@@ -383,11 +383,19 @@ class Camera(Device):
         _LOGGER.debug("Selected %s stream provider", self.stream_provider.name)
 
     async def _handle_property_changed(self, event: Event):
+        property_name = event.data[MessageField.NAME.value]
+        previous_value = self.properties.get(property_name)
         await super()._handle_property_changed(event)
         _LOGGER.debug(
-            f"camera _handle_property_changed - {event.data[MessageField.NAME.value]}"
+            "camera _handle_property_changed - %s", property_name
         )
 
-        if event.data[MessageField.NAME.value] == MessageField.PICTURE.value:
+        if (
+            property_name == MessageField.PICTURE.value
+            and event.data[MessageField.VALUE.value] != previous_value
+        ):
+            # The bridge replays current properties when it connects. Do not call
+            # an unchanged, potentially old cover image fresh. A genuinely
+            # changed picture still rotates HA's camera token immediately.
             self.image_last_updated = datetime.datetime.now(datetime.timezone.utc)
             self.snapshot_source = "push_event"

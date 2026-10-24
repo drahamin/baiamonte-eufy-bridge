@@ -16,10 +16,10 @@ from datetime import datetime, timedelta, timezone
 import aiohttp
 from homeassistant.components.persistent_notification import async_create
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
-from homeassistant.core import CoreState, Event, HomeAssistant, callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import aiohttp_client
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DISCONNECTED, DOMAIN
@@ -41,7 +41,12 @@ from .evidence import (
     normalize_cloud_event,
     normalize_local_event,
 )
-from .snapshot import disk_cache_source, evidence_identity, is_valid_snapshot
+from .snapshot import (
+    disk_cache_source,
+    evidence_identity,
+    is_valid_snapshot,
+    snapshot_source_has_capture_time,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -83,7 +88,12 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             # A large camera inventory must never hold Home Assistant's entire
             # startup sequence offline. The bridge can retry through the normal
             # ConfigEntryNotReady path after Core is available.
-            async with asyncio.timeout(75):
+            # The Baiamonte account currently has more than fifty products. Keep
+            # the conservative three-product bridge concurrency, but allow enough
+            # wall time for the bounded sequential property/metadata/command
+            # reads to finish on a busy HomeBase. Core's HTTP server remains
+            # available while config-entry setup is pending.
+            async with asyncio.timeout(180):
                 await self._api.connect()
                 await self._refresh_bridge_status()
                 await self._restore_snapshot_cache()
@@ -92,18 +102,13 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                     self._daily_snapshot_task is None
                     and self._daily_snapshot_unsub is None
                 ):
-                    if self.hass.state == CoreState.running:
-                        self._start_daily_snapshot_task()
-                    else:
-                        # Do not create the long-lived sleeper during integration
-                        # setup: HA waits for setup-created tasks before declaring
-                        # startup complete.
-                        self._daily_snapshot_unsub = (
-                            self.hass.bus.async_listen_once(
-                                EVENT_HOMEASSISTANT_STARTED,
-                                self._async_home_assistant_started,
-                            )
-                        )
+                    # Defer creation until setup has returned, but do not depend
+                    # on the global HA-started event. A slow unrelated integration
+                    # (for example Alexa) must not prevent Eufy maintenance from
+                    # starting after this integration is ready.
+                    self._daily_snapshot_unsub = async_call_later(
+                        self.hass, 5, self._async_start_snapshot_maintenance
+                    )
         except CaptchaRequiredException as exc:
             self.config.captcha_id = exc.captcha_id
             self.config.captcha_img = exc.captcha_img
@@ -117,7 +122,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             raise ConfigEntryNotReady() from exc
         except asyncio.TimeoutError as exc:
             raise ConfigEntryNotReady(
-                "Baiamonte eufy Bridge inventory did not finish within 75 seconds"
+                "Baiamonte eufy Bridge inventory did not finish within 180 seconds"
             ) from exc
 
     @property
@@ -387,8 +392,17 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             while True:
                 try:
                     async with asyncio.timeout(10 * 60):
-                        await self.refresh_latest_snapshots(
-                            source="latest" if cycle % 4 == 0 else "cloud"
+                        source = (
+                            "latest" if cycle > 0 and cycle % 4 == 0 else "cloud"
+                        )
+                        summary = await self.refresh_latest_snapshots(source=source)
+                        _LOGGER.info(
+                            "Non-live Eufy snapshot refresh completed: "
+                            "source=%s updated=%s unchanged=%s indexed=%s",
+                            source,
+                            summary["updated"],
+                            summary["unchanged"],
+                            summary["indexed_events"],
                         )
                 except (
                     asyncio.TimeoutError,
@@ -409,8 +423,8 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             return
 
     @callback
-    def _async_home_assistant_started(self, _event: Event) -> None:
-        """Start snapshot maintenance only after bootstrap has completed."""
+    def _async_start_snapshot_maintenance(self, _now: datetime) -> None:
+        """Start snapshot maintenance after this integration has completed setup."""
         self._daily_snapshot_unsub = None
         self._start_daily_snapshot_task()
 
@@ -520,6 +534,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             if (
                 event_time is not None
                 and current_time is not None
+                and snapshot_source_has_capture_time(
+                    getattr(device, "snapshot_source", None)
+                )
                 and event_time <= current_time
                 and self._valid_snapshot(device.picture_bytes)
             ):
@@ -547,6 +564,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             device.snapshot_source = event.get("source") or "hybrid_index"
             self._last_snapshot_event_ids[device.serial_no] = event_id
             device.notify_state_update()
+            # Persist successful cameras incrementally. A slow or unavailable
+            # camera later in the estate must not delay durability for the
+            # images already delivered to Home Assistant.
+            self._schedule_snapshot_cache_write()
             updated += 1
 
         if updated:

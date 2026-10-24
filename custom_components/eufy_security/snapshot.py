@@ -66,6 +66,19 @@ def disk_cache_source(source: object) -> str:
     return f"disk_cache:{value or 'event'}"
 
 
+def snapshot_source_has_capture_time(source: object) -> bool:
+    """Return whether ``image_last_updated`` is the image capture time.
+
+    A websocket ``picture`` property has no capture timestamp. Its local receipt
+    time must not outrank a dated cloud/HomeBase event because bridges replay
+    those properties during startup and the underlying image can be days old.
+    """
+    value = str(source or "")
+    while value.startswith("disk_cache:"):
+        value = value.removeprefix("disk_cache:")
+    return value not in {"", "push_cache", "push_event"}
+
+
 def is_valid_snapshot(content: object) -> bool:
     """Return whether content is a bounded JPEG, PNG, or WebP image."""
     if not isinstance(content, (bytes, bytearray, memoryview)):

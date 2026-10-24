@@ -43,6 +43,20 @@ def test_disk_cache_source_is_idempotent_across_restarts() -> None:
     assert snapshot.disk_cache_source("disk_cache:disk_cache:push_event") == "disk_cache:push_event"
 
 
+def test_push_receipt_time_does_not_outrank_dated_evidence() -> None:
+    assert snapshot.snapshot_source_has_capture_time(None) is False
+    assert snapshot.snapshot_source_has_capture_time("push_cache") is False
+    assert snapshot.snapshot_source_has_capture_time("push_event") is False
+    assert snapshot.snapshot_source_has_capture_time("disk_cache:push_event") is False
+
+
+def test_dated_evidence_source_can_be_compared_by_time() -> None:
+    assert snapshot.snapshot_source_has_capture_time("account_index") is True
+    assert snapshot.snapshot_source_has_capture_time("homebase_pro_aic") is True
+    assert snapshot.snapshot_source_has_capture_time("hybrid_index") is True
+    assert snapshot.snapshot_source_has_capture_time("disk_cache:hybrid_index") is True
+
+
 def test_evidence_identity_prefers_serial_and_finds_nested_pro_channel() -> None:
     assert snapshot.evidence_identity(
         {

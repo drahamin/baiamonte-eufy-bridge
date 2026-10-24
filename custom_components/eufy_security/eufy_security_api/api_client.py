@@ -136,9 +136,10 @@ class ApiClient:
 
     async def _get_products(self, product_type: ProductType, products: list) -> dict:
         """Build product inventory with bounded bridge request concurrency."""
-        # Two products at a time keeps a large estate within Home Assistant's
-        # setup window without recreating the former reconnect burst.
-        semaphore = asyncio.Semaphore(2)
+        # Three products at a time lets the current 53-product estate finish its
+        # bounded bootstrap reliably. Requests inside each product remain
+        # sequential, so this stays well below the former twelve-request burst.
+        semaphore = asyncio.Semaphore(3)
 
         async def build_product(serial_no: str):
             async with semaphore:
@@ -166,7 +167,7 @@ class ApiClient:
     async def _build_product(self, product_type: ProductType, serial_no: str):
         """Build one product from bridge properties, metadata and commands."""
         product: Product = None
-        # Product construction is already bounded to two concurrent products
+        # Product construction is already bounded to three concurrent products
         # in ``_get_products``. Keep each product's reads sequential so a large
         # camera account cannot create a twelve-request reconnect burst that
         # starves Home Assistant's event loop.
