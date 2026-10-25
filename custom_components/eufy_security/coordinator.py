@@ -478,7 +478,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         # A busy multi-home account can fill the broad result window before a
         # quiet camera's last event appears.  Query only cameras that still have
         # no verified pixels by immutable serial, over the full supported
-        # history window.  This remains cloud/HomeBase evidence retrieval: it
+        # history window.  Quiet solar cameras can legitimately keep the same
+        # cover for months, so use a one-year serial-scoped window while keeping
+        # the response capped at twenty rows.  This remains cloud/HomeBase evidence retrieval: it
         # never starts P2P or live video.  Rate-limit misses so the twice-hourly
         # maintenance worker does not repeatedly scan dormant cameras.
         now = self.hass.loop.time()
@@ -500,7 +502,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 async with semaphore, asyncio.timeout(35):
                     return await self.search_evidence(
                         source="cloud",
-                        days=31,
+                        days=365,
                         max_results=20,
                         device_serial=device.serial_no,
                     )
@@ -537,6 +539,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
         updated = 0
         unchanged = 0
+        thumbnail_failures = 0
         matched_by_serial = 0
         matched_by_channel = 0
         matched_by_name = 0
@@ -607,8 +610,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 async with asyncio.timeout(15):
                     content, content_type = await self.evidence_thumbnail(event_id)
             except (ValueError, RuntimeError, asyncio.TimeoutError):
+                thumbnail_failures += 1
                 continue
             if not self._valid_snapshot(content):
+                thumbnail_failures += 1
                 continue
             device.properties["picture"] = {
                 "data": content,
@@ -640,6 +645,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             "indexed_events": len(result.get("events", [])),
             "targeted_queries": len(targeted_devices),
             "targeted_events": targeted_events,
+            "thumbnail_failures": thumbnail_failures,
             "warnings": [*result.get("warnings", []), *targeted_warnings],
         }
 

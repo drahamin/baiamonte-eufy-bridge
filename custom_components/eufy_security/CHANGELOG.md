@@ -1,5 +1,10 @@
 # Changelog
 
+## 9.6.33 — 2026-10-25
+
+- Extend only missing-camera serial recovery to one year for quiet solar cameras whose official app cover can be months old.
+- Add bounded evidence-thumbnail failure totals to the non-live refresh response.
+
 ## 9.6.32 — 2026-10-25
 
 - Use the shared defensive snapshot decoder during quiet-camera recovery so an empty bridge picture cannot interrupt the estate-wide maintenance pass.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.47 — 2026-10-25
+
+- Recover months-old official-app cover images for quiet cameras with a serial-scoped, twenty-result, one-year evidence window.
+- Report failed evidence-thumbnail downloads separately from event matching so snapshot diagnostics are actionable.
+
 ## 1.6.46 — 2026-10-25
 
 - Safely recognize cameras whose bridge `picture` property is empty or malformed while selecting serial-scoped snapshot recovery targets.
