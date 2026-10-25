@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.45 — 2026-10-25
+
+- Recover quiet-camera snapshots with a serial-scoped 31-day account/HomeBase evidence lookup when the broad recent-event window has no verified pixels.
+- Rate-limit targeted recovery and keep it entirely non-live so large camera accounts remain stable.
+
 ## 1.6.44 — 2026-10-25
 
 - Recover an explicit snapshot request from a stale bridge-side PREPARING livestream by releasing

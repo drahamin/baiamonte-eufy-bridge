@@ -74,6 +74,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self._evidence_video_cache: dict[str, bytes] = {}
         self._evidence_recognition_image_cache: dict[str, tuple[bytes, str]] = {}
         self._last_snapshot_event_ids: dict[str, str] = {}
+        self._targeted_snapshot_refresh_at: dict[str, float] = {}
         self.camera_snapshot_refreshers = []
         self._daily_snapshot_task: asyncio.Task | None = None
         self._daily_snapshot_unsub = None
@@ -452,9 +453,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         latest_by_serial: dict[str, dict] = {}
         latest_by_channel: dict[tuple[str, int], dict] = {}
         latest_by_name: dict[str, dict] = {}
-        for event in result.get("events", []):
+
+        def index_event(event: dict) -> None:
             if not event.get("thumbnail_url"):
-                continue
+                return
             retained = self._evidence_records.get(event.get("event_id"), {})
             serial, station, channel = evidence_identity(retained)
             if serial and serial not in latest_by_serial:
@@ -468,6 +470,51 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             name = self._snapshot_name(event.get("device_name"))
             if name and name not in latest_by_name:
                 latest_by_name[name] = event
+
+        for event in result.get("events", []):
+            index_event(event)
+
+        # A busy multi-home account can fill the broad result window before a
+        # quiet camera's last event appears.  Query only cameras that still have
+        # no verified pixels by immutable serial, over the full supported
+        # history window.  This remains cloud/HomeBase evidence retrieval: it
+        # never starts P2P or live video.  Rate-limit misses so the twice-hourly
+        # maintenance worker does not repeatedly scan dormant cameras.
+        now = self.hass.loop.time()
+        targeted_devices = [
+            device
+            for device in self.devices.values()
+            if getattr(device, "is_camera", False)
+            and not self._valid_snapshot(device.picture_bytes)
+            and device.serial_no not in latest_by_serial
+            and now - self._targeted_snapshot_refresh_at.get(device.serial_no, 0) >= 6 * 60 * 60
+        ]
+        targeted_events = 0
+        targeted_warnings: list[str] = []
+        semaphore = asyncio.Semaphore(2)
+
+        async def query_missing_camera(device):
+            self._targeted_snapshot_refresh_at[device.serial_no] = now
+            try:
+                async with semaphore, asyncio.timeout(35):
+                    return await self.search_evidence(
+                        source="cloud",
+                        days=31,
+                        max_results=20,
+                        device_serial=device.serial_no,
+                    )
+            except (RuntimeError, asyncio.TimeoutError, WebSocketConnectionException) as exc:
+                return {"events": [], "warnings": [f"targeted snapshot: {type(exc).__name__}"]}
+
+        if targeted_devices:
+            targeted_results = await asyncio.gather(
+                *(query_missing_camera(device) for device in targeted_devices)
+            )
+            for targeted in targeted_results:
+                targeted_warnings.extend(targeted.get("warnings", []))
+                for event in targeted.get("events", []):
+                    index_event(event)
+                    targeted_events += 1
 
         # HomeBase Pro can retain an earlier device label in AIC records after the
         # user renames a camera or separates a shared account. Resolve that alias
@@ -590,7 +637,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             # Supervisor even when sessions are serialized. Live stays explicit.
             "scheduled_live_captures": 0,
             "indexed_events": len(result.get("events", [])),
-            "warnings": result.get("warnings", []),
+            "targeted_queries": len(targeted_devices),
+            "targeted_events": targeted_events,
+            "warnings": [*result.get("warnings", []), *targeted_warnings],
         }
 
     @staticmethod

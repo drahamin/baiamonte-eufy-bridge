@@ -1,5 +1,10 @@
 # Changelog
 
+## 9.6.31 — 2026-10-25
+
+- Recover missing quiet-camera stills by immutable device serial from up to 31 days of authenticated event evidence.
+- Keep targeted recovery rate-limited and non-live, with diagnostic query and match totals.
+
 ## 9.6.30 — 2026-10-25
 
 - Repair explicit still capture after an interrupted P2P start leaves the bridge session in a stale
