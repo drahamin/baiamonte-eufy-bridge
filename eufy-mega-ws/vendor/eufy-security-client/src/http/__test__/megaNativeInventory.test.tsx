@@ -2,6 +2,7 @@ const mockLogger = { error: jest.fn(), debug: jest.fn(), info: jest.fn(), warn: 
 jest.mock("../../logging", () => ({ rootMainLogger: mockLogger }));
 
 import { findMegaArray, MegaTransition, MegaTransitionHost, translateNativeMegaDevice } from "../megaTransition";
+import { summarizeE10OtaRecords } from "../otaDiagnostics";
 import { DeviceType } from "../types";
 
 const host = {
@@ -137,5 +138,101 @@ describe("native Mega inventory augmentation", () => {
     await transition.refreshProductDataPointCatalogs();
 
     expect(getProductDataPointsDecrypted.mock.calls.map(([code]: [string]) => code)).toEqual(["T9999_NEW", "T9999"]);
+  });
+});
+
+describe("E10 OTA diagnostics", () => {
+  it("prefers the targeted response and retains only safe package metadata", () => {
+    const result = summarizeE10OtaRecords(
+      [
+        {
+          rom_version_name: "V2.12.04",
+          device_sn: "T87A0-SECRET",
+          access_token: "secret",
+          full_package: {
+            file_name: "T87A0-update.zip",
+            file_size: 123456,
+            file_md5: "0123456789abcdef0123456789ABCDEF",
+            file_path: "https://updates.eufy.com/private/file.zip?token=secret",
+          },
+          delta_package: {
+            file_name: "delta.bin",
+            file_size: 42,
+            file_path: "https://cdn.example.invalid/delta.bin?signature=secret",
+          },
+        },
+      ],
+      [{ device_type: "T87A0_ota", rom_version_name: "WRONG" }]
+    );
+
+    expect(result).toEqual({
+      recordFound: true,
+      returnedFieldNames: ["access_token", "delta_package", "device_sn", "full_package", "rom_version_name"],
+      packageObjects: [
+        {
+          name: "delta_package",
+          returnedFieldNames: ["file_name", "file_path", "file_size"],
+          filename: "delta.bin",
+          size: 42,
+          md5: null,
+          filePathPresent: true,
+          urlHostname: "cdn.example.invalid",
+        },
+        {
+          name: "full_package",
+          returnedFieldNames: ["file_md5", "file_name", "file_path", "file_size"],
+          filename: "T87A0-update.zip",
+          size: 123456,
+          md5: "0123456789abcdef0123456789abcdef",
+          filePathPresent: true,
+          urlHostname: "updates.eufy.com",
+        },
+      ],
+      rom_version_name: "V2.12.04",
+    });
+    expect(JSON.stringify(result)).not.toContain("SECRET");
+    expect(JSON.stringify(result)).not.toContain("token=");
+    expect(JSON.stringify(result)).not.toContain("signature=");
+  });
+
+  it("matches a batch E10 record and rejects unsafe values", () => {
+    expect(
+      summarizeE10OtaRecords(
+        [],
+        [
+          { device_type: "T8400_ota", rom_version_name: "wrong" },
+          {
+            device_type: "T87A0_ota",
+            rom_version_name: "V2.12.04?token=secret",
+            full_package: {
+              file_name: "../unsafe.zip",
+              file_size: -1,
+              file_md5: "not-an-md5",
+              file_path: "http://updates.eufy.com/file.zip?token=secret",
+            },
+          },
+        ]
+      )
+    ).toMatchObject({
+      recordFound: true,
+      rom_version_name: null,
+      packageObjects: [
+        {
+          filename: null,
+          size: null,
+          md5: null,
+          filePathPresent: true,
+          urlHostname: null,
+        },
+      ],
+    });
+  });
+
+  it("reports no record without leaking batch data", () => {
+    expect(summarizeE10OtaRecords([], [{ device_type: "T8400_ota", full_package: { file_path: "secret" } }])).toEqual({
+      recordFound: false,
+      returnedFieldNames: [],
+      packageObjects: [],
+    });
   });
 });
