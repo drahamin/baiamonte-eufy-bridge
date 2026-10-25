@@ -14,6 +14,7 @@ import { DeviceType, ResponseErrorCode } from "./types";
 import { ensureError } from "../error";
 import { getError } from "../utils";
 import { formatCapabilitySummary } from "./cloudCapabilities";
+import { summarizeE10OtaRecords } from "./otaDiagnostics";
 
 /**
  * Everything specific to the transitional v6 "eufy_mega" backend lives in this single file so it can
@@ -612,9 +613,11 @@ export class MegaTransition {
             this.nativeRomVersions ??= await mega.getRomVersionsDecrypted(romRequests);
             const records = romRecords(this.nativeRomVersions);
             const e10Request = romRequests.find((request) => request.device_type === "T87A0_ota");
+            let targetedE10Records: Record<string, unknown>[] = [];
             if (e10Request) {
               try {
-                records.push(...romRecords(await mega.getRomVersionDecrypted(e10Request)));
+                targetedE10Records = romRecords(await mega.getRomVersionDecrypted(e10Request));
+                records.push(...targetedE10Records);
               } catch {
                 // Batch results may still include the E10.
               }
@@ -629,6 +632,7 @@ export class MegaTransition {
               packages: records.filter((record) => safeString(recordOf(record.full_package).file_path).length > 0)
                 .length,
             };
+            discovery.e10Ota = summarizeE10OtaRecords(targetedE10Records, records);
             try {
               discovery.firmware = await this.saveE10Firmware(records);
             } catch (err) {

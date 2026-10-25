@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.49 — 2026-10-25
+
+- Persist a privacy-safe Smart Display E10 OTA summary from the existing read-only firmware query,
+  including version, package field names, filename, size, checksum, URL hostname and path presence.
+- Keep device identifiers, tokens, query strings and raw package URLs out of status and logs; this
+  diagnostic never downloads firmware or starts a device upgrade.
+
 ## 1.6.48 — 2026-10-25
 
 - Recover a missing camera from its assigned HomeBase AIC/local database as well as cloud history, scoped by both immutable station and camera serials.
