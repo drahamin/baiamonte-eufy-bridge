@@ -149,6 +149,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
   private dashboardSnapshotUrls: Map<string, string> = new Map<string, string>();
   private dashboardSnapshotRequestedAt: Map<string, number> = new Map<string, number>();
   private dashboardSnapshotTimer?: NodeJS.Timeout;
+  private missingSnapshotCursor = 0;
   private readonly DASHBOARD_SNAPSHOT_REFRESH_MS = 25 * 60 * 1000;
 
   private pushService!: PushNotificationService;
@@ -1155,7 +1156,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     });
     if (this.devicesLoaded !== undefined) await this.devicesLoaded;
     await this.augmentNativeMegaDevices();
-    await this.hydrateSolarWallSnapshotsFromHistory();
+    await this.hydrateMissingSnapshotsFromHistory();
     if (this.refreshEufySecurityCloudTimeout !== undefined) clearTimeout(this.refreshEufySecurityCloudTimeout);
     if (this.config.pollingIntervalMinutes > 0)
       this.refreshEufySecurityCloudTimeout = setTimeout(
@@ -1203,18 +1204,41 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     if (this.devicesLoaded !== undefined) await this.devicesLoaded;
   }
 
-  /** Seed app-style stills for S120 cameras from their latest authenticated saved event. */
-  private async hydrateSolarWallSnapshotsFromHistory(): Promise<void> {
-    const targets = Object.values(this.devices).filter((device) =>
-      device.getModel() === "T81A0"
-      && (!device.hasProperty(PropertyName.DevicePicture)
-        || device.getPropertyValue(PropertyName.DevicePicture) === undefined
-        || device.getPropertyValue(PropertyName.DevicePicture) === null)
+  /** Seed missing camera stills from authenticated saved events without opening live video. */
+  private async hydrateMissingSnapshotsFromHistory(): Promise<void> {
+    const missing = Object.values(this.devices)
+      .filter((device) =>
+        device.isCamera()
+        && device.hasProperty(PropertyName.DevicePicture)
+        && (device.getPropertyValue(PropertyName.DevicePicture) === undefined
+          || device.getPropertyValue(PropertyName.DevicePicture) === null)
+      )
+      .sort((left, right) => {
+        // Repair operationally important indoor/water views first, then retain
+        // the earlier S120 recovery priority before processing the rest.
+        const priority = (device: Device): number => {
+          const name = device.getName().toLowerCase();
+          if (name.includes("cistern") || name.includes("cisterna")) return 0;
+          if (device.getModel() === "T81A0") return 1;
+          return 2;
+        };
+        return priority(left) - priority(right) || left.getName().localeCompare(right.getName());
+      });
+    // Keep account traffic and bridge memory bounded. Subsequent cloud polls
+    // continue with the next cameras, while successful stills leave the queue.
+    if (missing.length === 0) {
+      this.missingSnapshotCursor = 0;
+      return;
+    }
+    const start = this.missingSnapshotCursor % missing.length;
+    const targets = Array.from(
+      { length: Math.min(4, missing.length) },
+      (_, index) => missing[(start + index) % missing.length]
     );
-    if (targets.length === 0) return;
+    this.missingSnapshotCursor = (start + targets.length) % missing.length;
 
     let queued = 0;
-    await Promise.all(targets.map(async (device) => {
+    for (const device of targets) {
       try {
         const filter = {
           deviceSN: device.getSerial(),
@@ -1222,32 +1246,40 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
           storageType: StorageType.NONE,
         };
         const recordFamilies = await Promise.all([
-          this.api.getAllHistoryEvents(filter, 10),
-          this.api.getAllVideoEvents(filter, 10),
-          this.api.getAllAlarmEvents(filter, 10),
+          this.api.getAllHistoryEvents(filter, 25),
+          this.api.getAllVideoEvents(filter, 25),
+          this.api.getAllAlarmEvents(filter, 25),
         ]);
-        const latest = recordFamilies.flat()
+        const candidates = recordFamilies.flat()
           .slice()
-          .sort((left, right) => (right.start_time || right.create_time || 0) - (left.start_time || left.create_time || 0))[0];
-        const image = [
-          HTTPApi.selectDashboardCoverDeep(latest)?.path,
-          latest?.thumb_path,
-          latest?.cloud_path,
-        ]
-          .find((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 4096);
-        if (!image) return;
+          .sort((left, right) => (right.start_time || right.create_time || 0) - (left.start_time || left.create_time || 0));
+        let image: string | undefined;
+        for (const record of candidates) {
+          image = [
+            HTTPApi.selectDashboardCoverDeep(record)?.path,
+            record?.thumb_path,
+            record?.cloud_path,
+          ].find(
+            (value): value is string =>
+              typeof value === "string" && value.length > 0 && value.length <= 4096
+          );
+          if (image) break;
+        }
+        if (!image) continue;
         if (device.hasProperty(PropertyName.DevicePictureUrl)) {
           device.updateProperty(PropertyName.DevicePictureUrl, image, true);
         }
         this.queueDashboardSnapshot(device, image);
         queued++;
       } catch (err) {
-        rootMainLogger.debug("Saved-event snapshot unavailable for a Solar Wall Light Cam", {
+        rootMainLogger.debug("Saved-event snapshot unavailable for a camera", {
           error: getError(ensureError(err)),
+          model: device.getModel(),
         });
       }
-    }));
-    rootMainLogger.info("Saved-event Solar Wall Light Cam snapshots queued", {
+    }
+    rootMainLogger.info("Saved-event camera snapshots queued", {
+      missing: missing.length,
       targets: targets.length,
       queued,
       eventFamiliesQueried: 3,

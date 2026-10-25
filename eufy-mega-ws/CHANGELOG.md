@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.43 — 2026-10-25
+
+- Recover missing camera stills, including Cistern Internal, from authenticated saved-event
+  thumbnails without starting live video. Recovery is serialized in four-camera batches and
+  rotates across the inventory to avoid overloading Home Assistant or Eufy's account services.
+- Skip newer event rows that contain no usable image and continue to the most recent retained
+  thumbnail, rather than leaving the Home Assistant camera proxy empty.
+
 ## 1.6.42 — 2026-10-24
 
 - Classify newly observed SoloCam E42/T8171 Mega field `60013` as a read-only camera

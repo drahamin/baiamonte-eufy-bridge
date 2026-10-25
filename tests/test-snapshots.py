@@ -83,6 +83,26 @@ def test_recognition_image_uses_stored_recording_without_live_video() -> None:
     assert 'url = "/api/baiamonte_eufy/evidence/{event_id}/recognition-image"' in http
 
 
+def test_missing_camera_snapshots_use_bounded_saved_event_recovery() -> None:
+    root = Path(__file__).resolve().parents[1]
+    client = (
+        root
+        / "eufy-mega-ws/vendor/eufy-security-client/src/eufysecurity.ts"
+    ).read_text()
+    method = client[
+        client.index("private async hydrateMissingSnapshotsFromHistory"):
+        client.index("public close(): void")
+    ]
+
+    assert "Math.min(4, missing.length)" in method
+    assert "getAllHistoryEvents(filter, 25)" in method
+    assert "getAllVideoEvents(filter, 25)" in method
+    assert "getAllAlarmEvents(filter, 25)" in method
+    assert "for (const record of candidates)" in method
+    assert "startLivestream" not in method
+    assert "start_livestream" not in method
+
+
 def test_evidence_identity_prefers_serial_and_finds_nested_pro_channel() -> None:
     assert snapshot.evidence_identity(
         {
