@@ -91,6 +91,17 @@ def is_valid_snapshot(content: object) -> bool:
     )
 
 
+def snapshot_dimensions(content: object) -> tuple[int, int]:
+    """Return verified image dimensions without trusting remote metadata."""
+    if Image is None or not is_valid_snapshot(content):
+        return 0, 0
+    try:
+        with Image.open(BytesIO(bytes(content))) as image:
+            return int(image.width), int(image.height)
+    except (OSError, ValueError):
+        return 0, 0
+
+
 @lru_cache(maxsize=12)
 def enhance_dashboard_snapshot(content: bytes) -> bytes:
     """Improve Eufy cover thumbnails without touching live video.

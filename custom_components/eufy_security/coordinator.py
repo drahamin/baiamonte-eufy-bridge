@@ -45,6 +45,7 @@ from .snapshot import (
     disk_cache_source,
     evidence_identity,
     is_valid_snapshot,
+    snapshot_dimensions,
     snapshot_source_has_capture_time,
 )
 
@@ -71,6 +72,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self.last_bridge_error: str | None = None
         self._evidence_records: dict[str, dict] = {}
         self._evidence_video_cache: dict[str, bytes] = {}
+        self._evidence_recognition_image_cache: dict[str, tuple[bytes, str]] = {}
         self._last_snapshot_event_ids: dict[str, str] = {}
         self.camera_snapshot_refreshers = []
         self._daily_snapshot_task: asyncio.Task | None = None
@@ -366,6 +368,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 event["thumbnail_url"] = f"/api/baiamonte_eufy/evidence/{event_id}/thumbnail"
             if event.get("has_video"):
                 event["video_url"] = f"/api/baiamonte_eufy/evidence/{event_id}/video"
+            if event.get("has_thumbnail") or event.get("has_video"):
+                event["recognition_image_url"] = (
+                    f"/api/baiamonte_eufy/evidence/{event_id}/recognition-image"
+                )
         return {
             "source": source,
             "window_days": days,
@@ -1034,6 +1040,86 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         while len(self._evidence_video_cache) > 4:
             self._evidence_video_cache.pop(next(iter(self._evidence_video_cache)))
         return mp4
+
+    async def evidence_recognition_image(self, event_id: str) -> tuple[bytes, str]:
+        """Return the best stored event still without opening a live stream."""
+        cached = self._evidence_recognition_image_cache.get(event_id)
+        if cached is not None:
+            return cached
+        thumbnail = b""
+        thumbnail_type = "image/jpeg"
+        try:
+            thumbnail, thumbnail_type = await self.evidence_thumbnail(event_id)
+        except (ValueError, RuntimeError, asyncio.TimeoutError):
+            pass
+        best = (
+            (thumbnail, thumbnail_type)
+            if self._valid_snapshot(thumbnail)
+            else (b"", "image/jpeg")
+        )
+        width, height = snapshot_dimensions(best[0])
+        # A dated HomeBase thumbnail remains the safe fallback. Download the
+        # already-recorded clip only when the thumbnail is below recognition
+        # quality; this never starts or holds a live camera session.
+        if width * height < 921_600 or width < 1280:
+            try:
+                video = await self.evidence_video(event_id)
+                frame = await self._recording_still(video)
+                frame_width, frame_height = snapshot_dimensions(frame)
+                if frame_width * frame_height > width * height:
+                    best = (frame, "image/jpeg")
+            except (ValueError, RuntimeError, asyncio.TimeoutError):
+                pass
+        if not self._valid_snapshot(best[0]):
+            raise ValueError("This event has no usable stored recognition image")
+        self._evidence_recognition_image_cache[event_id] = best
+        while len(self._evidence_recognition_image_cache) > 8:
+            self._evidence_recognition_image_cache.pop(
+                next(iter(self._evidence_recognition_image_cache))
+            )
+        return best
+
+    async def _recording_still(self, mp4: bytes) -> bytes:
+        """Extract a high-quality still from a stored HomeBase recording."""
+        ffmpeg = await asyncio.to_thread(shutil.which, "ffmpeg")
+        if ffmpeg is None:
+            raise RuntimeError("Home Assistant ffmpeg is unavailable")
+        directory = await asyncio.to_thread(
+            tempfile.mkdtemp,
+            prefix="baiamonte-eufy-still-",
+            dir=self.hass.config.path(".storage"),
+        )
+        input_file = os.path.join(directory, "recording.mp4")
+        output_file = os.path.join(directory, "recognition.jpg")
+        try:
+            await asyncio.to_thread(self._write_bytes, input_file, mp4)
+            process = await asyncio.create_subprocess_exec(
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-ss",
+                "1",
+                "-i",
+                input_file,
+                "-frames:v",
+                "1",
+                "-q:v",
+                "2",
+                output_file,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await process.communicate()
+            if process.returncode != 0:
+                detail = stderr.decode(errors="replace")[-300:]
+                raise RuntimeError(
+                    f"ffmpeg could not extract a recognition still: {detail}"
+                )
+            return await asyncio.to_thread(self._read_bytes, output_file)
+        finally:
+            await asyncio.to_thread(shutil.rmtree, directory, True)
 
     async def _remux_recording(self, video: bytes, audio: bytes, metadata: dict) -> bytes:
         """Put the bridge's elementary streams into a browser-compatible MP4 container."""

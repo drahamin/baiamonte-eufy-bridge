@@ -57,6 +57,32 @@ def test_dated_evidence_source_can_be_compared_by_time() -> None:
     assert snapshot.snapshot_source_has_capture_time("disk_cache:hybrid_index") is True
 
 
+def test_snapshot_dimensions_reads_verified_image_geometry() -> None:
+    from io import BytesIO
+    from PIL import Image
+
+    output = BytesIO()
+    Image.new("RGB", (1920, 1080), "navy").save(output, format="JPEG")
+
+    assert snapshot.snapshot_dimensions(output.getvalue()) == (1920, 1080)
+    assert snapshot.snapshot_dimensions(b"not-an-image") == (0, 0)
+
+
+def test_recognition_image_uses_stored_recording_without_live_video() -> None:
+    root = Path(__file__).resolve().parents[1]
+    coordinator = (root / "custom_components/eufy_security/coordinator.py").read_text()
+    http = (root / "custom_components/eufy_security/http.py").read_text()
+    method = coordinator[
+        coordinator.index("async def evidence_recognition_image"):
+        coordinator.index("async def _remux_recording")
+    ]
+
+    assert "video = await self.evidence_video(event_id)" in method
+    assert "await self._recording_still(video)" in method
+    assert "start_livestream" not in method
+    assert 'url = "/api/baiamonte_eufy/evidence/{event_id}/recognition-image"' in http
+
+
 def test_evidence_identity_prefers_serial_and_finds_nested_pro_channel() -> None:
     assert snapshot.evidence_identity(
         {

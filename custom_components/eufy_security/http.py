@@ -84,6 +84,35 @@ class EvidenceVideoView(HomeAssistantView):
         return web.Response(body=content, content_type="video/mp4", headers=headers)
 
 
+class EvidenceRecognitionImageView(HomeAssistantView):
+    """Serve the best stored HomeBase image for bounded recognition work."""
+
+    url = "/api/baiamonte_eufy/evidence/{event_id}/recognition-image"
+    name = "api:baiamonte_eufy:evidence:recognition-image"
+    requires_auth = True
+
+    def __init__(self, coordinator_getter) -> None:
+        self._coordinator_getter = coordinator_getter
+
+    async def get(self, request: web.Request, event_id: str) -> web.Response:
+        try:
+            content, content_type = await self._coordinator_getter(
+                request.app[KEY_HASS]
+            ).evidence_recognition_image(event_id)
+        except KeyError as exc:
+            raise web.HTTPNotFound(text="Search for the event again") from exc
+        except (ValueError, RuntimeError, asyncio.TimeoutError) as exc:
+            raise web.HTTPBadRequest(text=str(exc)) from exc
+        return web.Response(
+            body=content,
+            content_type=content_type,
+            headers={
+                "Cache-Control": "private, max-age=300",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+
 class EvidenceAIImageView(HomeAssistantView):
     """Serve a proxied AI face/crop image to authenticated HA users."""
 
@@ -152,5 +181,6 @@ def register_evidence_views(hass: HomeAssistant, coordinator_getter) -> None:
     """Register the protected media routes once."""
     hass.http.register_view(EvidenceThumbnailView(coordinator_getter))
     hass.http.register_view(EvidenceVideoView(coordinator_getter))
+    hass.http.register_view(EvidenceRecognitionImageView(coordinator_getter))
     hass.http.register_view(EvidenceAIImageView(coordinator_getter))
     hass.http.register_view(SnapshotRefreshDiagnosticsView(coordinator_getter))
