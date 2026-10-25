@@ -1,5 +1,11 @@
 # Changelog
 
+## 9.6.30 — 2026-10-25
+
+- Repair explicit still capture after an interrupted P2P start leaves the bridge session in a stale
+  preparing state. Recovery remains user-triggered, serialized and bounded; automatic camera-card
+  polling continues to use retained event images only.
+
 ## 9.6.23 — 2026-10-24
 
 - Ship with Baiamonte eufy Bridge 1.6.41 after a current SDK, device-capability, dependency and

@@ -103,6 +103,20 @@ def test_missing_camera_snapshots_use_bounded_saved_event_recovery() -> None:
     assert "start_livestream" not in method
 
 
+def test_explicit_snapshot_recovers_a_stale_preparing_stream_once() -> None:
+    root = Path(__file__).resolve().parents[1]
+    camera = (root / "custom_components/eufy_security/camera.py").read_text()
+    method = camera[
+        camera.index("async def async_refresh_stale_snapshot"):
+        camera.index("async def _start_livestream")
+    ]
+
+    assert "for attempt in range(2)" in method
+    assert "self.product.stream_status = StreamStatus.IDLE" in method
+    assert "if not self.is_streaming" in method
+    assert "if started:" in method
+
+
 def test_evidence_identity_prefers_serial_and_finds_nested_pro_channel() -> None:
     assert snapshot.evidence_identity(
         {

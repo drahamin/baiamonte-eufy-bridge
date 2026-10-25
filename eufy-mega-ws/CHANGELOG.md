@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.44 — 2026-10-25
+
+- Recover an explicit snapshot request from a stale bridge-side PREPARING livestream by releasing
+  the orphaned session and retrying once under the existing hard timeout.
+- Reuse a genuinely active user-started stream for the requested still without opening a second
+  P2P session or stopping a stream the snapshot action did not start.
+
 ## 1.6.43 — 2026-10-25
 
 - Recover missing camera stills, including Cistern Internal, from authenticated saved-event

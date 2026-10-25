@@ -299,7 +299,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             and datetime.now(timezone.utc) - updated_at < timedelta(hours=24)
         ):
             return False
-        if self.is_streaming or not {
+        if not {
             "start_livestream",
             "stop_livestream",
         }.issubset(set(self.product.commands or [])):
@@ -308,10 +308,40 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         async with self._scheduled_snapshot_lock:
             started = False
             try:
-                async with asyncio.timeout(STREAM_TIMEOUT_SECONDS):
-                    started = await self.product.start_livestream()
-                if not started:
-                    return False
+                # A user-opened stream can supply the explicit still without a
+                # second P2P command. If the bridge instead retained a stale
+                # PREPARING session, release it and retry once inside the same
+                # bounded action. This prevents "already running" from leaving
+                # a camera permanently unable to establish its first cache.
+                if not self.is_streaming:
+                    for attempt in range(2):
+                        try:
+                            async with asyncio.timeout(STREAM_TIMEOUT_SECONDS):
+                                started = await self.product.start_livestream()
+                        except (
+                            asyncio.TimeoutError,
+                            FailedCommandException,
+                            WebSocketConnectionException,
+                        ):
+                            started = False
+                        if started:
+                            break
+                        if self.product.stream_status != StreamStatus.IDLE:
+                            try:
+                                async with asyncio.timeout(8):
+                                    await self.product.stop_livestream()
+                            except (
+                                asyncio.TimeoutError,
+                                FailedCommandException,
+                                WebSocketConnectionException,
+                            ):
+                                pass
+                            self.product.stream_status = StreamStatus.IDLE
+                            await self._stop_hass_streaming()
+                        if attempt == 0:
+                            await asyncio.sleep(0.75)
+                    if not started:
+                        return False
 
                 frame = None
                 deadline = asyncio.get_running_loop().time() + STREAM_TIMEOUT_SECONDS
