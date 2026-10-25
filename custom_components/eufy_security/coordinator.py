@@ -501,9 +501,12 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             try:
                 async with semaphore, asyncio.timeout(35):
                     return await self.search_evidence(
-                        source="cloud",
+                        source="hybrid",
                         days=365,
                         max_results=20,
+                        station_serial=str(
+                            device.properties.get("stationSerialNumber") or ""
+                        ),
                         device_serial=device.serial_no,
                     )
             except (RuntimeError, asyncio.TimeoutError, WebSocketConnectionException) as exc:

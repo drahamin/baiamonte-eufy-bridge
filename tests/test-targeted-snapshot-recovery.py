@@ -12,10 +12,11 @@ def test_missing_snapshots_use_bounded_serial_scoped_history() -> None:
         "@staticmethod\n    def _snapshot_name", 1
     )[0]
 
-    assert 'source="cloud"' in method
+    assert 'source="hybrid"' in method
     assert "days=365" in method
     assert "max_results=20" in method
     assert "device_serial=device.serial_no" in method
+    assert 'device.properties.get("stationSerialNumber")' in method
     assert "asyncio.Semaphore(2)" in method
     assert "6 * 60 * 60" in method
     assert "product_snapshot_bytes(device)" in method

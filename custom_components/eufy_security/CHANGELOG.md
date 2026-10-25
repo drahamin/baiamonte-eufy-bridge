@@ -1,5 +1,9 @@
 # Changelog
 
+## 9.6.34 — 2026-10-25
+
+- Include the assigned HomeBase AIC/local evidence index in missing-camera recovery while retaining station-and-camera serial scoping.
+
 ## 9.6.33 — 2026-10-25
 
 - Extend only missing-camera serial recovery to one year for quiet solar cameras whose official app cover can be months old.

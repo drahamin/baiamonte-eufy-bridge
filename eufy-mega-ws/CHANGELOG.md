@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.48 — 2026-10-25
+
+- Recover a missing camera from its assigned HomeBase AIC/local database as well as cloud history, scoped by both immutable station and camera serials.
+- Keep all recovery non-live and bounded to the one relevant HomeBase per camera.
+
 ## 1.6.47 — 2026-10-25
 
 - Recover months-old official-app cover images for quiet cameras with a serial-scoped, twenty-result, one-year evidence window.
