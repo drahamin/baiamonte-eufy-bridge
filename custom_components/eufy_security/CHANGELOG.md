@@ -1,5 +1,9 @@
 # Changelog
 
+## 9.6.32 — 2026-10-25
+
+- Use the shared defensive snapshot decoder during quiet-camera recovery so an empty bridge picture cannot interrupt the estate-wide maintenance pass.
+
 ## 9.6.31 — 2026-10-25
 
 - Recover missing quiet-camera stills by immutable device serial from up to 31 days of authenticated event evidence.

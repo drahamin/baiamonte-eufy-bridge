@@ -17,6 +17,8 @@ def test_missing_snapshots_use_bounded_serial_scoped_history() -> None:
     assert "device_serial=device.serial_no" in method
     assert "asyncio.Semaphore(2)" in method
     assert "6 * 60 * 60" in method
+    assert "product_snapshot_bytes(device)" in method
+    assert "device.picture_bytes" not in method
     assert "start_p2p_livestream" not in method
 
 

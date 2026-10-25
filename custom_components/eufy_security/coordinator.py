@@ -45,6 +45,7 @@ from .snapshot import (
     disk_cache_source,
     evidence_identity,
     is_valid_snapshot,
+    product_snapshot_bytes,
     snapshot_dimensions,
     snapshot_source_has_capture_time,
 )
@@ -485,7 +486,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             device
             for device in self.devices.values()
             if getattr(device, "is_camera", False)
-            and not self._valid_snapshot(device.picture_bytes)
+            and not self._valid_snapshot(product_snapshot_bytes(device))
             and device.serial_no not in latest_by_serial
             and now - self._targeted_snapshot_refresh_at.get(device.serial_no, 0) >= 6 * 60 * 60
         ]
@@ -591,14 +592,14 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                     getattr(device, "snapshot_source", None)
                 )
                 and event_time <= current_time
-                and self._valid_snapshot(device.picture_bytes)
+                and self._valid_snapshot(product_snapshot_bytes(device))
             ):
                 self._last_snapshot_event_ids[device.serial_no] = event_id
                 unchanged += 1
                 continue
             if (
                 self._last_snapshot_event_ids.get(device.serial_no) == event_id
-                and self._valid_snapshot(device.picture_bytes)
+                and self._valid_snapshot(product_snapshot_bytes(device))
             ):
                 unchanged += 1
                 continue

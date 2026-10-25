@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.46 — 2026-10-25
+
+- Safely recognize cameras whose bridge `picture` property is empty or malformed while selecting serial-scoped snapshot recovery targets.
+
 ## 1.6.45 — 2026-10-25
 
 - Recover quiet-camera snapshots with a serial-scoped 31-day account/HomeBase evidence lookup when the broad recent-event window has no verified pixels.
