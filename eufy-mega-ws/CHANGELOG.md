@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.52 — 2026-10-26
+
+- Use the fast account event index for routine picture freshness while the HomeBase Pro AIC/local reconciliation continues in background.
+- Download independent event thumbnails four at a time with an eight-second per-image bound so one expired URL cannot stall the estate camera wall.
+
 ## 1.6.51 — 2026-10-26
 
 - Prevent overlapping manual, scheduled and startup snapshot refreshes from piling up behind sleeping HomeBases.

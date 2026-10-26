@@ -580,6 +580,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         matched_by_serial = 0
         matched_by_channel = 0
         matched_by_name = 0
+        pending_thumbnails = []
         for device in self.devices.values():
             if not getattr(device, "is_camera", False):
                 continue
@@ -643,15 +644,32 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             ):
                 unchanged += 1
                 continue
+            pending_thumbnails.append((device, event, event_id, event_time))
+
+        # Download independent event thumbnails concurrently. A broken signed
+        # URL for one camera must not make every later camera wait fifteen
+        # seconds in series or hold the whole refresh service for minutes.
+        thumbnail_semaphore = asyncio.Semaphore(4)
+
+        async def download_thumbnail(item):
+            device, event, event_id, event_time = item
             try:
-                async with asyncio.timeout(15):
+                async with thumbnail_semaphore, asyncio.timeout(8):
                     content, content_type = await self.evidence_thumbnail(event_id)
             except (ValueError, RuntimeError, asyncio.TimeoutError):
-                thumbnail_failures += 1
-                continue
+                return None
             if not self._valid_snapshot(content):
-                thumbnail_failures += 1
+                return None
+            return device, event, event_id, event_time, content, content_type
+
+        thumbnail_results = await asyncio.gather(
+            *(download_thumbnail(item) for item in pending_thumbnails)
+        )
+        thumbnail_failures = sum(result is None for result in thumbnail_results)
+        for thumbnail in thumbnail_results:
+            if thumbnail is None:
                 continue
+            device, event, event_id, event_time, content, content_type = thumbnail
             device.properties["picture"] = {
                 "data": content,
                 "type": {"mime": content_type},

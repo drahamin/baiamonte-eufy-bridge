@@ -36,6 +36,9 @@ def test_routine_refresh_does_not_wait_for_missing_camera_recovery() -> None:
     assert "if self._snapshot_refresh_lock.locked()" in coordinator
     assert '"deferred": True' in coordinator
     assert 'call.data.get("recover_missing", False)' in integration
+    assert 'source="cloud"' in integration
+    assert "thumbnail_semaphore = asyncio.Semaphore(4)" in coordinator
+    assert "asyncio.timeout(8)" in coordinator
 
 
 if __name__ == "__main__":
