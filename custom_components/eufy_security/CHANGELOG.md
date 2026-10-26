@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.35 — 2026-10-26
+
+- Keep camera state rendering and product-event callbacks limited to bounded byte validation.
+- Move optional JPEG enhancement to Home Assistant's executor only when a camera or image response is requested.
+- Limit bridge inventory bootstrap to two products at a time while other Home Assistant integrations start.
+- Prevent a large camera inventory from blocking Core's event loop during startup and reconnect bursts.
+
 ## 9.6.34 — 2026-10-25
 
 - Include the assigned HomeBase AIC/local evidence index in missing-camera recovery while retaining station-and-camera serial scoping.

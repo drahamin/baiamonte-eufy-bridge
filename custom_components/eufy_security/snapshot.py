@@ -145,11 +145,16 @@ def enhance_dashboard_snapshot(content: bytes) -> bytes:
 
 
 def product_snapshot_bytes(product, fallback: bytes | None = None) -> bytes | None:
-    """Return a product's verified frame without discarding a valid fallback."""
+    """Return a product's verified raw frame without CPU-heavy presentation work.
+
+    This helper is called from Home Assistant entity properties and update
+    callbacks.  JPEG enhancement belongs in the async image-serving path so a
+    large camera inventory cannot block Core's event loop while states render.
+    """
     try:
         content = product.picture_bytes
     except (KeyError, TypeError, ValueError):
         content = None
     if is_valid_snapshot(content):
-        return enhance_dashboard_snapshot(bytes(content))
-    return enhance_dashboard_snapshot(bytes(fallback)) if is_valid_snapshot(fallback) else None
+        return bytes(content)
+    return bytes(fallback) if is_valid_snapshot(fallback) else None

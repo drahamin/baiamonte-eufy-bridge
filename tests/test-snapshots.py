@@ -37,6 +37,26 @@ def test_malformed_product_snapshot_is_not_advertised() -> None:
     assert snapshot.product_snapshot_bytes(Product(b"not-an-image")) is None
 
 
+def test_product_state_snapshot_never_runs_dashboard_enhancement(monkeypatch) -> None:
+    current = b"\xff\xd8\xff" + (b"a" * 1200)
+    monkeypatch.setattr(
+        snapshot,
+        "enhance_dashboard_snapshot",
+        lambda _content: (_ for _ in ()).throw(AssertionError("must run in executor")),
+    )
+
+    assert snapshot.product_snapshot_bytes(Product(current)) == current
+
+
+def test_camera_and_image_enhancement_runs_in_executor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    camera = (root / "custom_components/eufy_security/camera.py").read_text()
+    image = (root / "custom_components/eufy_security/image.py").read_text()
+
+    assert "await self.hass.async_add_executor_job(" in camera
+    assert "await self.hass.async_add_executor_job(" in image
+
+
 def test_disk_cache_source_is_idempotent_across_restarts() -> None:
     assert snapshot.disk_cache_source("push_event") == "disk_cache:push_event"
     assert snapshot.disk_cache_source("disk_cache:push_event") == "disk_cache:push_event"

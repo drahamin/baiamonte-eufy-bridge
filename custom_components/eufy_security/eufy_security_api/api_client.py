@@ -136,10 +136,10 @@ class ApiClient:
 
     async def _get_products(self, product_type: ProductType, products: list) -> dict:
         """Build product inventory with bounded bridge request concurrency."""
-        # Three products at a time lets the current 53-product estate finish its
-        # bounded bootstrap reliably. Requests inside each product remain
-        # sequential, so this stays well below the former twelve-request burst.
-        semaphore = asyncio.Semaphore(3)
+        # Two products at a time keeps the current 53-product estate's bridge
+        # bootstrap moving without competing with Core startup, MQTT and other
+        # integrations. Requests inside each product remain sequential.
+        semaphore = asyncio.Semaphore(2)
 
         async def build_product(serial_no: str):
             async with semaphore:

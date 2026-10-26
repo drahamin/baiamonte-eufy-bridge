@@ -26,7 +26,7 @@ from .eufy_security_api.exceptions import (
     WebSocketConnectionException,
 )
 from .eufy_security_api.metadata import Metadata
-from .snapshot import is_valid_snapshot, product_snapshot_bytes
+from .snapshot import enhance_dashboard_snapshot, is_valid_snapshot, product_snapshot_bytes
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -277,7 +277,11 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         snapshot = product_snapshot_bytes(self.product, self._last_image)
         if snapshot is not None:
             self._last_image = snapshot
-        return self._last_image
+        if self._last_image is None:
+            return None
+        return await self.hass.async_add_executor_job(
+            enhance_dashboard_snapshot, self._last_image
+        )
 
     @callback
     def _handle_product_update(self) -> None:
