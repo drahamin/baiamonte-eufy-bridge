@@ -76,6 +76,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self._evidence_recognition_image_cache: dict[str, tuple[bytes, str]] = {}
         self._last_snapshot_event_ids: dict[str, str] = {}
         self._targeted_snapshot_refresh_at: dict[str, float] = {}
+        self._snapshot_refresh_lock = asyncio.Lock()
         self.camera_snapshot_refreshers = []
         self._daily_snapshot_task: asyncio.Task | None = None
         self._daily_snapshot_unsub = None
@@ -408,7 +409,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                             # Long serial-scoped recovery is useful for cameras
                             # with no pixels, but it must not hold normal event
                             # freshness behind several sleeping HomeBases.
-                            recover_missing=cycle == 0 or cycle % 12 == 0,
+                            recover_missing=cycle > 0 and cycle % 12 == 0,
                         )
                         _LOGGER.info(
                             "Non-live Eufy snapshot refresh completed: "
@@ -453,6 +454,30 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def refresh_latest_snapshots(
         self, *, source: str = "latest", recover_missing: bool = False
+    ) -> dict:
+        """Run one non-live snapshot refresh and reject overlapping refreshes."""
+        if self._snapshot_refresh_lock.locked():
+            return {
+                "updated": 0,
+                "unchanged": 0,
+                "matched_by_serial": 0,
+                "matched_by_channel": 0,
+                "matched_by_name": 0,
+                "scheduled_live_captures": 0,
+                "indexed_events": 0,
+                "targeted_queries": 0,
+                "targeted_events": 0,
+                "thumbnail_failures": 0,
+                "deferred": True,
+                "warnings": ["snapshot refresh already running"],
+            }
+        async with self._snapshot_refresh_lock:
+            return await self._refresh_latest_snapshots_unlocked(
+                source=source, recover_missing=recover_missing
+            )
+
+    async def _refresh_latest_snapshots_unlocked(
+        self, *, source: str, recover_missing: bool
     ) -> dict:
         """Select the newest cloud/HomeBase thumbnail for every matching camera."""
         # The account index includes event metadata for HomeBase-backed cameras
@@ -658,6 +683,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             "targeted_queries": len(targeted_devices),
             "targeted_events": targeted_events,
             "thumbnail_failures": thumbnail_failures,
+            "deferred": False,
             "warnings": [*result.get("warnings", []), *targeted_warnings],
         }
 

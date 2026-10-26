@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.51 — 2026-10-26
+
+- Prevent overlapping manual, scheduled and startup snapshot refreshes from piling up behind sleeping HomeBases.
+- Keep deep missing-camera recovery on the six-hour maintenance pass without running it immediately after every Home Assistant restart.
+
 ## 1.6.50 — 2026-10-26
 
 - Keep routine cloud and HomeBase event-picture refreshes responsive by moving the slow one-year recovery for cameras with no image to the six-hour maintenance pass or an explicit service option.
