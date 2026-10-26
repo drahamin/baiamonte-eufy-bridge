@@ -71,7 +71,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     async def handle_refresh_snapshots(call: ServiceCall) -> dict:
         """Refresh app-style cloud/Pro event snapshots without opening live video."""
-        return await _coordinator(hass).refresh_latest_snapshots()
+        return await _coordinator(hass).refresh_latest_snapshots(
+            recover_missing=call.data.get("recover_missing", False)
+        )
 
     hass.services.async_register(DOMAIN, "force_sync", handle_force_sync)
     hass.services.async_register(
@@ -108,6 +110,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         DOMAIN,
         "refresh_snapshots",
         handle_refresh_snapshots,
+        schema=vol.Schema(
+            {vol.Optional("recover_missing", default=False): cv.boolean}
+        ),
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

@@ -403,7 +403,13 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         source = (
                             "latest" if cycle > 0 and cycle % 4 == 0 else "cloud"
                         )
-                        summary = await self.refresh_latest_snapshots(source=source)
+                        summary = await self.refresh_latest_snapshots(
+                            source=source,
+                            # Long serial-scoped recovery is useful for cameras
+                            # with no pixels, but it must not hold normal event
+                            # freshness behind several sleeping HomeBases.
+                            recover_missing=cycle == 0 or cycle % 12 == 0,
+                        )
                         _LOGGER.info(
                             "Non-live Eufy snapshot refresh completed: "
                             "source=%s updated=%s unchanged=%s indexed=%s",
@@ -445,7 +451,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 "baiamonte_eufy_snapshot_refresh",
             )
 
-    async def refresh_latest_snapshots(self, *, source: str = "latest") -> dict:
+    async def refresh_latest_snapshots(
+        self, *, source: str = "latest", recover_missing: bool = False
+    ) -> dict:
         """Select the newest cloud/HomeBase thumbnail for every matching camera."""
         # The account index includes event metadata for HomeBase-backed cameras
         # without opening dozens of local station database sessions in the
@@ -487,6 +495,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         targeted_devices = [
             device
             for device in self.devices.values()
+            if recover_missing
             if getattr(device, "is_camera", False)
             and not self._valid_snapshot(product_snapshot_bytes(device))
             and device.serial_no not in latest_by_serial

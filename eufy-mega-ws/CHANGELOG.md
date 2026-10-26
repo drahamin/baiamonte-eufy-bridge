@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.50 — 2026-10-26
+
+- Keep routine cloud and HomeBase event-picture refreshes responsive by moving the slow one-year recovery for cameras with no image to the six-hour maintenance pass or an explicit service option.
+- Add a `recover_missing` option to the snapshot refresh service without ever starting live video automatically.
+
 ## 1.6.49 — 2026-10-25
 
 - Persist a privacy-safe Smart Display E10 OTA summary from the existing read-only firmware query,

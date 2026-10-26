@@ -25,5 +25,16 @@ def test_missing_snapshots_use_bounded_serial_scoped_history() -> None:
     assert '"thumbnail_failures": thumbnail_failures' in method
 
 
+def test_routine_refresh_does_not_wait_for_missing_camera_recovery() -> None:
+    coordinator = (ROOT / "custom_components/eufy_security/coordinator.py").read_text()
+    integration = (ROOT / "custom_components/eufy_security/__init__.py").read_text()
+
+    assert 'recover_missing: bool = False' in coordinator
+    assert "if recover_missing" in coordinator
+    assert "recover_missing=cycle == 0 or cycle % 12 == 0" in coordinator
+    assert 'call.data.get("recover_missing", False)' in integration
+
+
 if __name__ == "__main__":
     test_missing_snapshots_use_bounded_serial_scoped_history()
+    test_routine_refresh_does_not_wait_for_missing_camera_recovery()

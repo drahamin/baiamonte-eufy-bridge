@@ -86,6 +86,14 @@ refresh_homebase_storage:
 refresh_snapshots:
   name: Refresh latest Eufy snapshots
   description: Refresh camera cards from the account and HomeBase Professional event indexes. This never starts live video.
+  fields:
+    recover_missing:
+      name: Recover cameras without images
+      description: Also run the slower one-year HomeBase and cloud search for cameras that have never supplied a snapshot.
+      required: false
+      default: false
+      selector:
+        boolean:
 
 ptz:
   name: Central PTZ Service
