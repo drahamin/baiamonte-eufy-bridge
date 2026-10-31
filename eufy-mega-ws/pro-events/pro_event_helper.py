@@ -89,6 +89,9 @@ MAX_PERSON_RECORDS = 500
 ROSTER_RESPONSE_SECONDS = 3
 MAX_THUMBNAIL_IN_FLIGHT = 4
 THUMBNAIL_RESPONSE_SECONDS = 3
+# Some HomeBase Pro firmware silently drops per-device fifteen-year archive
+# queries. Current evidence must never wait on that optional compatibility path.
+LIVE_QUERY_BACKFILL_SERIALS = 0
 
 
 def bounded_backfill_serials(
@@ -490,6 +493,7 @@ class EventCollector:
                 self.expected,
                 set(self.latest),
                 self.end_seconds,
+                LIVE_QUERY_BACKFILL_SERIALS,
             )
             self.phase = "filters"
         elif self.phase == "filters":

@@ -59,6 +59,7 @@ COLLECTOR_NAMESPACE = {
     "MAX_PERSON_RECORDS": 500,
     "MAX_THUMBNAIL_IN_FLIGHT": 4,
     "THUMBNAIL_RESPONSE_SECONDS": 3,
+    "LIVE_QUERY_BACKFILL_SERIALS": 0,
 }
 exec(
     compile(
@@ -92,6 +93,12 @@ def test_backfill_rotates_without_duplicates() -> None:
 def test_empty_or_zero_limit_backfill_is_safe() -> None:
     assert bounded_backfill_serials({"camera-a"}, {"camera-a"}, 0) == []
     assert bounded_backfill_serials({"camera-a"}, set(), 0, limit=0) == []
+
+
+def test_live_query_does_not_block_on_optional_archive_backfills() -> None:
+    source = HELPER_PATH.read_text(encoding="utf-8")
+    assert "LIVE_QUERY_BACKFILL_SERIALS = 0" in source
+    assert "LIVE_QUERY_BACKFILL_SERIALS," in source
 
 
 def test_pro_helper_reads_face_roster_before_events_without_live_video() -> None:

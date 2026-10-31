@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.58 — 2026-10-31
+
+- Remove optional fifteen-year, per-camera archive backfills from the synchronous HomeBase Pro
+  evidence refresh because affected firmware silently drops them and blocks all current results.
+- Keep current 24-hour evidence, roster metadata, and bounded Pro thumbnails on the responsive path;
+  older evidence remains available through authenticated evidence/search access.
+
 ## 1.6.57 — 2026-10-31
 
 - Align the bridge dashboard's HomeBase Pro event wait with the helper's bounded 55/60-second
