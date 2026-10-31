@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.53 — 2026-10-31
+
+- Publish Baiamonte Eufy Security 9.6.36 with bounded reuse of explicitly opened P2P streams across
+  short phone, dashboard, and TV reconnects; live video remains opt-in and explicit Stop remains
+  immediate.
+- Refresh the Schema-21 server's locked `qs` runtime dependency to 6.17.1 and keep CI pinned to the
+  exact audited production version.
+
 ## 1.6.52 — 2026-10-26
 
 - Use the fast account event index for routine picture freshness while the HomeBase Pro AIC/local reconciliation continues in background.
