@@ -35,6 +35,7 @@
           "dashboard_port": "Baiamonte bridge diagnostics port",
           "show_sidebar_panel": "Pokaż Baiamonte Eufy Security na pasku bocznym",
           "no_stream_in_hass": "Nie używaj modułu STREAM w Home Assistant (jeśli nie oglądasz wideo w natywnym streamingu Home Assistant lub używasz WebRTC, włącz to ustawienia, aby zmniejszyć zużycie procesora",
+          "stream_linger_seconds": "Keep an explicitly opened P2P stream warm after the viewer disconnects (seconds, 0 disables)",
           "name_for_custom1": "Zastąp nazwę dla pierwszego niestandardowego trybu ochrony (Bypass)",
           "name_for_custom2": "Zastąp nazwę dla drugiego niestandardowego trybu ochrony (Night)",
           "name_for_custom3": "Zastąp nazwę dla trzeciego niestandardowego trybu ochrony (Vacation)"

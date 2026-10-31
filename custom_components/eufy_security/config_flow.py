@@ -42,6 +42,10 @@ class EufySecurityOptionFlowHandler(config_entries.OptionsFlow):
                     default=self.config.no_stream_in_hass,
                 ): bool,
                 vol.Optional(
+                    ConfigField.stream_linger_seconds.name,
+                    default=self.config.stream_linger_seconds,
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=30)),
+                vol.Optional(
                     ConfigField.name_for_custom1.name,
                     default=self.config.name_for_custom1,
                 ): str,

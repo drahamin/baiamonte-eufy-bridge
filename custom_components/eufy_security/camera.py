@@ -138,6 +138,9 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         self._last_image = product_snapshot_bytes(self.product)
         self.product.stream_stopped_listener = self._stop_hass_streaming
         self._scheduled_snapshot_lock = asyncio.Lock()
+        self._stream_stop_task: asyncio.Task | None = None
+        self._stream_stop_generation = 0
+        self._active_proxy_viewers = 0
         # ffmpeg entities
         self.ffmpeg = self.coordinator.hass.data[DATA_FFMPEG]
 
@@ -149,7 +152,63 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             return self.product.stream_url
         if self.is_streaming is False:
             return None
+        # A dashboard or phone can reconnect while the previous viewer is in
+        # the short linger window. Reuse that explicitly opened source instead
+        # of paying for another Eufy/HomeBase P2P handshake.
+        self._cancel_pending_stream_stop()
         return self.product.stream_url
+
+    @callback
+    def _cancel_pending_stream_stop(self) -> None:
+        """Cancel a delayed stop before a new viewer reuses the source."""
+        self._stream_stop_generation += 1
+        if self._stream_stop_task is not None:
+            self._stream_stop_task.cancel()
+            self._stream_stop_task = None
+
+    @callback
+    def _schedule_p2p_stream_stop(self) -> None:
+        """Release an explicitly opened P2P source after a bounded linger."""
+        self._cancel_pending_stream_stop()
+        generation = self._stream_stop_generation
+        delay = max(0, min(30, int(self.coordinator.config.stream_linger_seconds)))
+        self._stream_stop_task = self.hass.async_create_background_task(
+            self._async_stop_p2p_after_linger(generation, delay),
+            f"baiamonte_eufy_stream_linger_{self.entity_id or self.product.model}",
+        )
+
+    async def _async_stop_p2p_after_linger(
+        self, generation: int, delay: int
+    ) -> None:
+        """Stop one P2P source unless another viewer claimed it."""
+        try:
+            if delay:
+                await asyncio.sleep(delay)
+            if generation != self._stream_stop_generation:
+                return
+            if (
+                self.product.stream_provider != StreamProvider.P2P
+                or not self.is_streaming
+            ):
+                return
+            try:
+                async with asyncio.timeout(8):
+                    await self.product.stop_livestream()
+            except (
+                asyncio.TimeoutError,
+                FailedCommandException,
+                WebSocketConnectionException,
+            ):
+                self.product.stream_status = StreamStatus.IDLE
+                await self._stop_hass_streaming()
+                _LOGGER.warning(
+                    "Camera proxy cleanup was not acknowledged; source released locally"
+                )
+        except asyncio.CancelledError:
+            return
+        finally:
+            if generation == self._stream_stop_generation:
+                self._stream_stop_task = None
 
     async def handle_async_mjpeg_stream(self, request):
         """Proxy one bounded live session and always release its Eufy source."""
@@ -157,6 +216,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         if stream_source is None:
             return await super().handle_async_mjpeg_stream(request)
         stream = CameraMjpeg(self.ffmpeg.binary)
+        self._active_proxy_viewers += 1
         try:
             async with asyncio.timeout(STREAM_TIMEOUT_SECONDS):
                 await stream.open_camera(stream_source)
@@ -172,23 +232,13 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             ) from exc
         finally:
             await stream.close()
+            self._active_proxy_viewers = max(0, self._active_proxy_viewers - 1)
             if (
                 self.product.stream_provider == StreamProvider.P2P
                 and self.is_streaming
+                and self._active_proxy_viewers == 0
             ):
-                try:
-                    async with asyncio.timeout(8):
-                        await self.product.stop_livestream()
-                except (
-                    asyncio.TimeoutError,
-                    FailedCommandException,
-                    WebSocketConnectionException,
-                ):
-                    self.product.stream_status = StreamStatus.IDLE
-                    await self._stop_hass_streaming()
-                    _LOGGER.warning(
-                        "Camera proxy cleanup was not acknowledged; source released locally"
-                    )
+                self._schedule_p2p_stream_stop()
 
     async def async_create_stream(self):
         """Create HA playback only for a source the user already started."""
@@ -398,6 +448,10 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
 
     async def _start_livestream(self) -> None:
         """Start a P2P source for the bounded camera proxy request."""
+        self._cancel_pending_stream_stop()
+        if self.is_streaming:
+            self.async_write_ha_state()
+            return
         if await self.product.start_livestream() is False:
             raise ServiceValidationError(
                 f"{self.product.model} opened P2P but delivered no media"
@@ -406,9 +460,26 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
 
     async def _stop_livestream(self) -> None:
         """stop byte based livestream on camera"""
+        self._cancel_pending_stream_stop()
         await self._stop_hass_streaming()
         await self.product.stop_livestream()
         self.async_write_ha_state()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Release any warm P2P source when the entity unloads."""
+        self._cancel_pending_stream_stop()
+        if (
+            self.product.stream_provider == StreamProvider.P2P
+            and self.is_streaming
+        ):
+            with contextlib.suppress(
+                asyncio.TimeoutError,
+                FailedCommandException,
+                WebSocketConnectionException,
+            ):
+                async with asyncio.timeout(8):
+                    await self.product.stop_livestream()
+        await super().async_will_remove_from_hass()
 
     async def _start_rtsp_livestream(self) -> None:
         """Start the device RTSP source without creating an orphan HA worker."""

@@ -26,6 +26,7 @@ class ConfigField(Enum):
     dashboard_port = 8097
     show_sidebar_panel = True
     no_stream_in_hass = False
+    stream_linger_seconds = 8
     name_for_custom1 = "Custom 1"
     name_for_custom2 = "Custom 2"
     name_for_custom3 = "Custom 3"
@@ -48,6 +49,7 @@ class Config:
     dashboard_port: int = ConfigField.dashboard_port.value
     show_sidebar_panel: bool = ConfigField.show_sidebar_panel.value
     no_stream_in_hass: bool = ConfigField.no_stream_in_hass.value
+    stream_linger_seconds: int = ConfigField.stream_linger_seconds.value
     name_for_custom1: str = ConfigField.name_for_custom1.value
     name_for_custom2: str = ConfigField.name_for_custom2.value
     name_for_custom3: str = ConfigField.name_for_custom3.value

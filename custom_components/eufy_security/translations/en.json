@@ -35,6 +35,7 @@
           "dashboard_port": "Baiamonte bridge diagnostics port (default 8097)",
           "show_sidebar_panel": "Show Baiamonte Eufy Security in the sidebar",
           "no_stream_in_hass": "Do not use STREAM module inside Home Assistant (if you do not watch the video inside Home Assistant native streaming or you are using WebRTC, enable this to decrease CPU usage",
+          "stream_linger_seconds": "Keep an explicitly opened P2P stream warm after the viewer disconnects (seconds, 0 disables)",
           "name_for_custom1": "Override Name for Custom1 Guard Mode",
           "name_for_custom2": "Override Name for Custom2 Guard Mode",
           "name_for_custom3": "Override Name for Custom3 Guard Mode"

@@ -35,6 +35,7 @@
           "dashboard_port": "Baiamonte bridge diagnostics port",
           "show_sidebar_panel": "Baiamonte Eufy Security in de zijbalk tonen",
           "no_stream_in_hass": "Gebruik geen STREAM module binnen Home Assistant (als je de video niet met Home Assistant native streaming bekijkt of je gebruikt WebRTC, zet dit aan om CPU gebruik te verminderen",
+          "stream_linger_seconds": "Keep an explicitly opened P2P stream warm after the viewer disconnects (seconds, 0 disables)",
           "name_for_custom1": "Naam negeren voor Custom1 Beveiligings-modus",
           "name_for_custom2": "Naam negeren voor Custom2 Beveiligings-modus",
           "name_for_custom3": "Naam negeren voor Custom4 Beveiligings-modus"

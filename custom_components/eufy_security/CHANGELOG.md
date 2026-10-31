@@ -1,5 +1,13 @@
 # Changelog
 
+## 9.6.36 — 2026-10-31
+
+- Reuse an explicitly opened P2P camera source for a short, configurable grace period when a phone,
+  dashboard, or TV reconnects, reducing repeated HomeBase handshakes without ever starting live
+  video automatically.
+- Bound the grace period to 0–30 seconds (8 seconds by default), cancel it immediately for an
+  explicit stop, and release any warm source when the integration unloads.
+
 ## 9.6.35 — 2026-10-26
 
 - Keep camera state rendering and product-event callbacks limited to bounded byte validation.
