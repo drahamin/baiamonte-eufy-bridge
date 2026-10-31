@@ -57,6 +57,8 @@ COLLECTOR_NAMESPACE = {
     "MAX_IMAGE_BYTES": 10 * 1024 * 1024,
     "MAX_RESULT_RECORDS": 300,
     "MAX_PERSON_RECORDS": 500,
+    "MAX_THUMBNAIL_IN_FLIGHT": 4,
+    "THUMBNAIL_RESPONSE_SECONDS": 3,
 }
 exec(
     compile(
@@ -141,6 +143,42 @@ def test_late_roster_response_cannot_advance_event_query_state() -> None:
     collector.add_response({"data": [{"table_name": "history_record_info", "payload": []}]})
     assert collector.phase == "thumbnails"
     assert collector.done.is_set()
+
+
+def test_thumbnail_reads_are_bounded_and_one_timeout_does_not_block_the_batch() -> None:
+    class FakeOracle:
+        def __init__(self) -> None:
+            self.frames: list[bytes] = []
+
+        def send(self, frame: bytes) -> None:
+            self.frames.append(frame)
+
+    async def exercise() -> None:
+        oracle = FakeOracle()
+        collector = COLLECTOR_NAMESPACE["EventCollector"](
+            {
+                "accountId": "account",
+                "expectedDeviceSerials": [],
+                "startSeconds": 1,
+                "endSeconds": 2,
+            },
+            oracle,
+        )
+        collector.thumbnail_queue = [(f"camera-{index}", f"path-{index}") for index in range(6)]
+        collector.send_next_thumbnail()
+        assert len(oracle.frames) == 4
+        assert len(collector.thumbnail_by_path) == 4
+        assert len(collector.thumbnail_queue) == 2
+
+        collector.thumbnail_timed_out("path-0")
+        assert len(oracle.frames) == 5
+        assert len(collector.thumbnail_by_path) == 4
+        assert len(collector.thumbnail_queue) == 1
+
+        for handle in collector.thumbnail_timeouts.values():
+            handle.cancel()
+
+    asyncio.run(exercise())
 
 
 def test_person_roster_uses_the_bounded_homebase_table_wire_shape() -> None:

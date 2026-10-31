@@ -87,6 +87,8 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_RESULT_RECORDS = 300
 MAX_PERSON_RECORDS = 500
 ROSTER_RESPONSE_SECONDS = 3
+MAX_THUMBNAIL_IN_FLIGHT = 4
+THUMBNAIL_RESPONSE_SECONDS = 3
 
 
 def bounded_backfill_serials(
@@ -382,6 +384,7 @@ class EventCollector:
         self.people: list[dict[str, Any]] = []
         self.thumbnail_queue: list[tuple[str, str]] = []
         self.thumbnail_by_path: dict[str, str] = {}
+        self.thumbnail_timeouts: dict[str, asyncio.TimerHandle] = {}
         self.thumbnail_responses = 0
         self.thumbnail_images = 0
         self.thumbnail_matches = 0
@@ -529,12 +532,25 @@ class EventCollector:
         self.send_next_thumbnail()
 
     def send_next_thumbnail(self) -> None:
-        if not self.thumbnail_queue:
+        while self.thumbnail_queue and len(self.thumbnail_by_path) < MAX_THUMBNAIL_IN_FLIGHT:
+            serial, path = self.thumbnail_queue.pop(0)
+            self.thumbnail_by_path[path] = serial
+            self.oracle.send(build_command(self.account_id, 1308, [{"file": path}], self.next_segment()))
+            self.thumbnail_timeouts[path] = asyncio.get_running_loop().call_later(
+                THUMBNAIL_RESPONSE_SECONDS,
+                self.thumbnail_timed_out,
+                path,
+            )
+        if not self.thumbnail_queue and not self.thumbnail_by_path:
             self.done.set()
-            return
-        serial, path = self.thumbnail_queue.pop(0)
-        self.thumbnail_by_path[path] = serial
-        self.oracle.send(build_command(self.account_id, 1308, [{"file": path}], self.next_segment()))
+
+    def thumbnail_timed_out(self, path: str) -> None:
+        """Release one unresponsive file request without blocking other evidence."""
+        self.thumbnail_by_path.pop(path, None)
+        handle = self.thumbnail_timeouts.pop(path, None)
+        if handle is not None:
+            handle.cancel()
+        self.send_next_thumbnail()
 
     def add_thumbnail(self, payload: bytes) -> None:
         self.thumbnail_responses += 1
@@ -543,6 +559,9 @@ class EventCollector:
             path = value.get("file")
             content = value.get("content")
             serial = self.thumbnail_by_path.pop(path, None)
+            handle = self.thumbnail_timeouts.pop(path, None)
+            if handle is not None:
+                handle.cancel()
             if serial:
                 self.thumbnail_matches += 1
             if serial and isinstance(content, str) and 1000 < len(content) <= (MAX_IMAGE_BYTES * 4 // 3) + 16:

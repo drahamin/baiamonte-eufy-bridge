@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.56 — 2026-10-31
+
+- Fetch HomeBase Pro evidence thumbnails in a bounded four-request window instead of serially.
+- Skip an individual unresponsive thumbnail after three seconds so it cannot block roster,
+  recognition, or the remaining camera evidence.
+
 ## 1.6.55 — 2026-10-31
 
 - Keep HomeBase Pro evidence responsive when firmware silently ignores the optional
