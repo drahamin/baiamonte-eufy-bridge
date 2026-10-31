@@ -40,7 +40,8 @@ _LOCAL_STORAGE_NAMES = {
 }
 _PRIVATE_FIELD = re.compile(
     r"(^|_)(account|cipher|credential|did|device_sn|email|imei|imsi|license|"
-    r"owner_id|password|path|private|serial|station_sn|token|udid|url|user_id|key)($|_)",
+    r"owner_id|password|path|private|serial|station_sn|token|udid|url|user_id|key|"
+    r"person_id|personid|face_id|faceid|group_id|groupid)($|_)",
     re.IGNORECASE,
 )
 
@@ -66,6 +67,57 @@ def _aic_channel(record: dict[str, Any]) -> int | None:
     except (TypeError, ValueError):
         return None
     return parsed if 0 <= parsed <= 255 else None
+
+
+def _aic_person_id(record: dict[str, Any]) -> int | None:
+    value = _field(record, "person_id", "personId", "personID")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _recognized_people(record: dict[str, Any]) -> list[str]:
+    """Resolve event person ids through the bounded HomeBase roster."""
+    roster = record.get("people") if isinstance(record.get("people"), list) else []
+    names: dict[int, str] = {}
+    for person in roster[:500]:
+        if not isinstance(person, dict):
+            continue
+        person_id = _aic_person_id(person)
+        name = person.get("name")
+        if person_id is None or not isinstance(name, str):
+            continue
+        name = name.strip()[:128]
+        if not name or re.fullmatch(r"stranger\d+", name, re.IGNORECASE):
+            continue
+        names[person_id] = name
+
+    seen: set[int] = set()
+    sources: list[Any] = [
+        record.get("history"),
+        record.get("picture"),
+        record.get("events"),
+        record.get("evidence"),
+        record.get("latest_update"),
+    ]
+
+    def visit(value: Any, depth: int = 0) -> None:
+        if depth > 5:
+            return
+        if isinstance(value, dict):
+            if (person_id := _aic_person_id(value)) is not None:
+                seen.add(person_id)
+            for child in list(value.values())[:128]:
+                if isinstance(child, (dict, list)):
+                    visit(child, depth + 1)
+        elif isinstance(value, list):
+            for child in value[:200]:
+                visit(child, depth + 1)
+
+    visit(sources)
+    return sorted({names[person_id] for person_id in seen if person_id in names})
 
 
 def _iso(value: Any) -> str | None:
@@ -152,6 +204,20 @@ def _safe_ai_value(value: Any, *, depth: int = 0) -> Any:
 def cloud_ai_details(record: dict[str, Any]) -> dict[str, Any]:
     """Return the complete useful cloud AI result, never its retrieval secrets."""
     faces = record.get("ai_faces") if isinstance(record.get("ai_faces"), list) else []
+    analysis = _safe_ai_value(record.get("extra")) or {}
+    recognized_people: set[str] = set()
+    if isinstance(analysis, dict):
+        for key in ("person_name", "personName", "face_name", "faceName"):
+            value = analysis.get(key)
+            if isinstance(value, str) and value.strip():
+                recognized_people.add(value.strip()[:128])
+    for face in faces[:64]:
+        if not isinstance(face, dict) or face.get("is_stranger"):
+            continue
+        for key in ("person_name", "personName", "name", "face_name", "faceName"):
+            value = face.get(key)
+            if isinstance(value, str) and value.strip():
+                recognized_people.add(value.strip()[:128])
     return {
         "categories": sorted(
             _truthy_ai_keys(record.get("extra"))
@@ -168,7 +234,8 @@ def cloud_ai_details(record: dict[str, Any]) -> dict[str, Any]:
             for index, face in enumerate(faces[:64])
             if isinstance(face, dict)
         ],
-        "analysis": _safe_ai_value(record.get("extra")) or {},
+        "analysis": analysis,
+        "recognized_people": sorted(recognized_people),
     }
 
 
@@ -215,6 +282,8 @@ def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:
     events = events_value if isinstance(events_value, list) else []
     pictures = pictures_value if isinstance(pictures_value, list) else []
     evidence = evidence_value if isinstance(evidence_value, list) else []
+    people_value = data.get("personBasicInfoList", data.get("person_basic_info_list"))
+    people = people_value if isinstance(people_value, list) else []
     latest = data.get("latest_updates") if isinstance(data.get("latest_updates"), list) else []
 
     if not histories:
@@ -284,6 +353,7 @@ def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:
                 "device_channel": device_channel,
                 "station_sn": _field(history, "station_sn", "stationSn", "aic_sn", "aicSn"),
                 "latest_update": latest_update,
+                "people": [item for item in people[:500] if isinstance(item, dict)],
             }
         )
     return result
@@ -298,6 +368,9 @@ def aic_ai_details(record: dict[str, Any]) -> dict[str, Any]:
     latest_update = record.get("latest_update") if isinstance(record.get("latest_update"), dict) else {}
     combined = {"history": history, "pictures": pictures, "events": event_rows, "evidence": evidence_rows}
     categories = _truthy_ai_keys(combined)
+    recognized_people = _recognized_people(record)
+    if recognized_people:
+        categories.update(("face", "person"))
     for picture in pictures:
         if not isinstance(picture, dict):
             continue
@@ -320,6 +393,7 @@ def aic_ai_details(record: dict[str, Any]) -> dict[str, Any]:
         "evidence_items": len(evidence_rows),
         "event_items": len(event_rows),
         "latest_event_count": int(_field(latest_update, "event_count", "eventCount") or 0),
+        "recognized_people": recognized_people,
     }
 
 
@@ -376,6 +450,7 @@ def normalize_aic_event(record: dict[str, Any]) -> dict[str, Any]:
         "has_video": bool(_field(history, "storage_path", "storagePath", "cloud_path", "cloudPath", "mp4_cloud", "mp4Cloud")),
         "ai_categories": ai["categories"],
         "recognized_faces": sum(1 for item in pictures if isinstance(item, dict) and item.get("person_recog_flag")),
+        "recognized_people": ai["recognized_people"],
         "ai_crops": len(pictures),
         "latest_event_count": int(_field(latest_update, "event_count", "eventCount") or 0),
     }

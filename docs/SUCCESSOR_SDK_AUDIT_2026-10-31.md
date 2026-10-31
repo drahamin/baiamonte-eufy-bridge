@@ -30,6 +30,12 @@ Safety properties:
 - several simultaneous viewers share the same lifecycle and one viewer cannot stop another's feed;
 - unloading the integration releases a warm P2P source.
 
+Baiamonte Eufy Security 9.6.37 also backports the successor SDK's HomeBase face-roster read. The
+Professional bridge requests the bounded `person_basic_info` table through its already-authenticated
+WebRTC command session before the event page, resolves event person ids to enrolled names, and keeps
+the numeric identifiers and retrieval internals outside ordinary Home Assistant state. Firmware that
+does not expose the optional table falls through to events without failing the evidence query.
+
 ## Why the production bridge is not replaced yet
 
 The successor projects are a new protocol and entity contract, not an in-place package update. The

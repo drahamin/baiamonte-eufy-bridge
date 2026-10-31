@@ -173,13 +173,23 @@ describe("EufySecurity snapshot cache", () => {
       eventRecordList: JSON.stringify([{ record_id: 2, event_name: "person" }]),
       recordPictureList: [{ record_id: 2, detection_type: 2, crop_path: "/crop.jpg" }],
       evidenceRecordList: [{ record_id: 2, evidenceSummarize: "person seen" }],
+      personBasicInfoList: [{ person_id: 42, name: "Alice", relation: "1" }],
     });
 
     expect(result.record_list).toHaveLength(2);
     expect(result.eventRecordList).toHaveLength(1);
     expect(result.recordPictureList).toHaveLength(1);
     expect(result.evidenceRecordList).toHaveLength(1);
+    expect(result.personBasicInfoList).toEqual([{ person_id: 42, name: "Alice", relation: "1" }]);
     expect(result.latest_updates).toEqual([{ device_sn: "camera-a", event_count: 2, event: result.record_list[1] }]);
+  });
+
+  it("normalizes a HomeBase person roster table", () => {
+    const result = normalizeAicEventData({
+      data: [{ table_name: "person_basic_info", payload: [{ person_id: 9, name: "José", relation: "1" }] }],
+    });
+
+    expect(result.personBasicInfoList).toEqual([{ person_id: 9, name: "José", relation: "1" }]);
   });
 
   it("derives Pro latest updates from station channels when camera serials are omitted", () => {

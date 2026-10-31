@@ -85,6 +85,7 @@ USER_AGENT = (
 )
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_RESULT_RECORDS = 300
+MAX_PERSON_RECORDS = 500
 
 
 def bounded_backfill_serials(
@@ -167,6 +168,33 @@ def build_event_query(
             "table": "history_record_info",
             "transaction": str(int(time.time())),
             "payload": query,
+        },
+        segment,
+    )
+
+
+def build_table_query(account_id: str, table: str, segment: int) -> bytes:
+    """Read one bounded HomeBase table through the Pro command channel."""
+    return build_command(
+        account_id,
+        1306,
+        {
+            "cmd": 10000,
+            "table": table,
+            "transaction": str(int(time.time())),
+            "payload": {
+                "count": MAX_PERSON_RECORDS,
+                "start_date": "",
+                "end_date": "",
+                "start_id": 0,
+                "end_id": 1,
+                "flag": 0,
+                "need_ai": 1,
+                "res_unzip": 1,
+                "update_time": "0",
+                "start_time": "0",
+                "alarm_id": "",
+            },
         },
         segment,
     )
@@ -350,6 +378,7 @@ class EventCollector:
         self.records: list[dict[str, Any]] = []
         self.pictures: list[dict[str, Any]] = []
         self.evidence: list[dict[str, Any]] = []
+        self.people: list[dict[str, Any]] = []
         self.thumbnail_queue: list[tuple[str, str]] = []
         self.thumbnail_by_path: dict[str, str] = {}
         self.thumbnail_responses = 0
@@ -359,7 +388,7 @@ class EventCollector:
         self.done = asyncio.Event()
         self.error: Exception | None = None
         self.segment = 0
-        self.phase = "initial"
+        self.phase = "roster"
         self.start_seconds = int(config["startSeconds"])
         self.end_seconds = int(config["endSeconds"])
         self.archive_start = self.end_seconds - 15 * 365 * 24 * 60 * 60
@@ -369,6 +398,9 @@ class EventCollector:
         return self.segment
 
     def send_initial(self) -> None:
+        self.oracle.send(build_table_query(self.account_id, "person_basic_info", self.next_segment()))
+
+    def send_event_initial(self) -> None:
         self.oracle.send(
             build_event_query(
                 self.account_id,
@@ -408,6 +440,11 @@ class EventCollector:
 
     def add_response(self, response: dict[str, Any]) -> None:
         tables = self.parse_tables(response.get("data"))
+        if self.phase == "roster":
+            self.people.extend(self.rows(tables, "person_basic_info")[:MAX_PERSON_RECORDS])
+            self.phase = "initial"
+            self.send_event_initial()
+            return
         history = self.rows(tables, "history_record_info")
         pictures = self.rows(tables, "record_crop_picture_info")
         smart = self.rows(tables, "smart_search_info")
@@ -438,6 +475,12 @@ class EventCollector:
                 self.pictures.extend(item for item in pictures if item.get("record_id") in record_ids)
                 self.evidence.extend(item for item in smart if item.get("record_id") in record_ids)
         self.send_next_filter_or_thumbnails()
+
+    def skip_optional_roster(self) -> None:
+        """Continue event collection when a firmware does not expose its face roster."""
+        if self.phase == "roster":
+            self.phase = "initial"
+            self.send_event_initial()
 
     def send_next_filter_or_thumbnails(self) -> None:
         while self.pending_filters:
@@ -521,6 +564,7 @@ class EventCollector:
             "eventRecordList": [],
             "recordPictureList": selected_pictures,
             "evidenceRecordList": selected_evidence,
+            "personBasicInfoList": self.people[:MAX_PERSON_RECORDS],
         }
 
 
@@ -638,6 +682,9 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
                 try:
                     response = json.loads(payload.split(b"\0", 1)[0])
                     if response.get("mIntRet", 0) != 0:
+                        if collector.phase == "roster":
+                            collector.skip_optional_roster()
+                            continue
                         raise RuntimeError("HomeBase Pro event query failed")
                     collector.add_response(response)
                 except (ValueError, TypeError, json.JSONDecodeError) as error:

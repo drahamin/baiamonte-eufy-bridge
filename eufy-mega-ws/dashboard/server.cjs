@@ -180,6 +180,7 @@ async function refreshAicSummary() {
       const data = event.data && typeof event.data === "object" ? event.data : {};
       const records = Array.isArray(data.record_list) ? data.record_list : [];
       const updates = Array.isArray(data.latest_updates) ? data.latest_updates : [];
+      const people = Array.isArray(data.personBasicInfoList) ? data.personBasicInfoList : [];
       const hasAny = (record, keys) => keys.some((key) => record && record[key] !== undefined && record[key] !== null && record[key] !== "");
       summaries.push({
         model: station.model,
@@ -189,6 +190,8 @@ async function refreshAicSummary() {
         events: Array.isArray(data.eventRecordList) ? data.eventRecordList.length : 0,
         pictures: Array.isArray(data.recordPictureList) ? data.recordPictureList.length : 0,
         evidence: Array.isArray(data.evidenceRecordList) ? data.evidenceRecordList.length : 0,
+        recognizedPeople: people.filter((item) => item && typeof item.name === "string" && !/^stranger\d+$/i.test(item.name)).length,
+        rosterEntries: people.length,
         latestUpdates: updates.length,
         serialIdentified: records.filter((item) => hasAny(item, ["device_sn", "deviceSn", "device_serial", "deviceSerial"])).length,
         channelIdentified: records.filter((item) => hasAny(item, ["device_channel", "deviceChannel", "channel", "mChannel"])).length,
@@ -198,6 +201,7 @@ async function refreshAicSummary() {
         eventShape: safeValueShape(Array.isArray(data.eventRecordList) ? data.eventRecordList : []),
         pictureShape: safeValueShape(Array.isArray(data.recordPictureList) ? data.recordPictureList : []),
         evidenceShape: safeValueShape(Array.isArray(data.evidenceRecordList) ? data.evidenceRecordList : []),
+        personShape: safeValueShape(people),
       });
     }
     return { queriedAt: new Date().toISOString(), liveStreamsStarted: 0, stations: summaries };

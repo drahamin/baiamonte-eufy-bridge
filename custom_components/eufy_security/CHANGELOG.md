@@ -1,5 +1,17 @@
 # Changelog
 
+## 9.6.37 — 2026-10-31
+
+- Read the HomeBase Professional edge-AI person roster through the existing bounded WebRTC command
+  session before loading events; this does not start any camera stream.
+- Resolve event `person_id` values to enrolled HomeBase names and show recognized people directly in
+  the Security evidence timeline.
+- Match recognized names to existing Home Assistant `person.*` entities; the Security name opens the
+  matched Person and reports whether that Person is linked to an HA user without exposing the user id.
+- Keep face/person/group identifiers, storage paths and transport credentials behind the privacy
+  boundary; ordinary Home Assistant state receives names and recognition results only.
+- Continue loading events when firmware does not advertise the optional person roster.
+
 ## 9.6.36 — 2026-10-31
 
 - Reuse an explicitly opened P2P camera source for a short, configurable grace period when a phone,

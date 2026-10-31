@@ -266,6 +266,7 @@ export const normalizeAicEventData = (value: unknown): AicEventData => {
     eventRecordList: [],
     recordPictureList: [],
     evidenceRecordList: [],
+    personBasicInfoList: [],
     latest_updates: [],
   };
 
@@ -303,6 +304,11 @@ export const normalizeAicEventData = (value: unknown): AicEventData => {
       handled.add("evidenceRecordList");
       handled.add("evidence_list");
     }
+    if (record.personBasicInfoList !== undefined || record.person_basic_info_list !== undefined) {
+      append(result.personBasicInfoList, aicObjects(record.personBasicInfoList ?? record.person_basic_info_list));
+      handled.add("personBasicInfoList");
+      handled.add("person_basic_info_list");
+    }
 
     const table = aicString(record, ["table_name", "table"]);
     const payload = aicObjects(record.payload ?? record.data ?? record.records);
@@ -310,6 +316,7 @@ export const normalizeAicEventData = (value: unknown): AicEventData => {
     else if (table === "event_record_info") append(result.eventRecordList, payload);
     else if (table === "record_crop_picture_info") append(result.recordPictureList, payload);
     else if (table === "evidence_record_info") append(result.evidenceRecordList, payload);
+    else if (table === "person_basic_info") append(result.personBasicInfoList, payload);
     if (table !== undefined && payload.length > 0) {
       handled.add("payload");
       handled.add("data");

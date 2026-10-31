@@ -33,6 +33,7 @@ def test_cloud_ai_details() -> None:
     assert result["analysis"]["person_name"] == "Alice"
     assert result["analysis"]["confidence"] == 0.96
     assert result["analysis"]["box"] == {"x": 1, "y": 2}
+    assert result["recognized_people"] == ["Alice"]
     assert "face_url" not in result["analysis"]
     assert result["faces"] == [
         {"position": 1, "recognition": "stranger", "has_image": True}
@@ -100,6 +101,10 @@ def test_homebase_pro_aic_join_and_privacy() -> None:
             "latest_updates": [
                 {"device_sn": "camera-private", "event_count": 4}
             ],
+            "personBasicInfoList": [
+                {"person_id": 42, "name": "Alice", "relation": "1"},
+                {"person_id": 99, "name": "stranger1", "relation": "0"},
+            ],
         }
     )
     assert len(rows) == 1
@@ -119,6 +124,26 @@ def test_homebase_pro_aic_join_and_privacy() -> None:
     assert "/private/" not in serialized
     assert "camera-private" not in serialized
     assert "station-private" not in serialized
+
+
+def test_homebase_person_roster_resolves_names_without_ids() -> None:
+    """Known HomeBase people become names while numeric ids remain private."""
+    rows = evidence.join_aic_event_data(
+        {
+            "record_list": [{"record_id": 17, "device_sn": "private", "person_id": 42}],
+            "recordPictureList": [{"record_id": 17, "person_id": 42, "person_recog_flag": True}],
+            "personBasicInfoList": [
+                {"person_id": 42, "name": "Alice", "relation": "1"},
+                {"person_id": 99, "name": "stranger1", "relation": "0"},
+            ],
+        }
+    )
+    details = evidence.aic_ai_details(rows[0])
+    normalized = evidence.normalize_aic_event(rows[0])
+    assert details["recognized_people"] == ["Alice"]
+    assert normalized["recognized_people"] == ["Alice"]
+    assert "person_id" not in repr(details["analysis"])
+    assert "42" not in repr(details["analysis"])
 
 
 def test_homebase_pro_channel_only_and_camel_case_records() -> None:

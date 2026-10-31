@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.54 — 2026-10-31
+
+- Publish Baiamonte Eufy Security 9.6.37 and vendored client 4.1.1-mega.40.
+- Backport the successor SDK's HomeBase face-roster technique to the Professional WebRTC evidence
+  session, preserving current Schema-21 entities and the no-automatic-live-video policy.
+- Normalize `person_basic_info` as a bounded AIC collection, resolve recognized people in Security,
+  link exact-name matches to Home Assistant Person/user records, and report privacy-safe roster
+  coverage in bridge diagnostics.
+
 ## 1.6.53 — 2026-10-31
 
 - Publish Baiamonte Eufy Security 9.6.36 with bounded reuse of explicitly opened P2P streams across

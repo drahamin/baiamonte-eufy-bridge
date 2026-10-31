@@ -359,6 +359,8 @@ export interface AicEventData {
   eventRecordList: Array<Record<string, unknown>>;
   recordPictureList: Array<Record<string, unknown>>;
   evidenceRecordList: Array<Record<string, unknown>>;
+  /** HomeBase edge-AI roster used to resolve numeric recognition ids to names. */
+  personBasicInfoList: Array<Record<string, unknown>>;
   latest_updates: Array<AicLatestUpdate>;
 }
 

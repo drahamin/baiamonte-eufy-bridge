@@ -145,6 +145,49 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         """get stations from API"""
         return self._api.stations
 
+    @staticmethod
+    def _person_key(value: object) -> str:
+        """Return a conservative exact-match key for a HomeBase/HA person name."""
+        return " ".join(str(value or "").strip().casefold().split())
+
+    def _link_ha_people(self, event: dict) -> None:
+        """Link recognized Eufy names to HA person entities without exposing user ids."""
+        ai = event.get("ai") if isinstance(event.get("ai"), dict) else {}
+        names = (
+            ai.get("recognized_people")
+            if isinstance(ai.get("recognized_people"), list)
+            else []
+        )
+        if not names:
+            return
+        people = {}
+        for state in self.hass.states.async_all("person"):
+            candidates = {
+                self._person_key(state.name),
+                self._person_key(state.attributes.get("friendly_name")),
+                self._person_key(state.entity_id.split(".", 1)[-1].replace("_", " ")),
+            }
+            for candidate in candidates - {""}:
+                if candidate in people and people[candidate] is not state:
+                    people[candidate] = None
+                else:
+                    people[candidate] = state
+        linked = []
+        for name in names[:64]:
+            state = people.get(self._person_key(name))
+            if state is None:
+                continue
+            linked.append(
+                {
+                    "name": str(name)[:128],
+                    "entity_id": state.entity_id,
+                    "user_linked": bool(state.attributes.get("user_id")),
+                }
+            )
+        if linked:
+            ai["ha_persons"] = linked
+            event["ha_persons"] = linked
+
     async def set_mfa_and_connect(self, mfa_input: str):
         """set mfa and connect"""
         await self._api.set_mfa_and_connect(mfa_input)
@@ -192,6 +235,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 for record in raw:
                     event = normalize_cloud_event(record)
                     event["ai"] = cloud_ai_details(record)
+                    self._link_ha_people(event)
                     self._add_ai_image_urls(event)
                     self._remember_evidence(event["event_id"], "cloud", record)
                     events.append(event)
@@ -211,9 +255,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 aic_warning = None
                 if {"database_query_aic_events", "stationDatabaseQueryAicEvents"} & commands:
                     try:
-                        # Leave enough of the overall 45-second evidence budget for the Pro's
-                        # direct station database index when the optional WebRTC AIC view is slow.
-                        async with semaphore, asyncio.timeout(20):
+                        # The Pro read now includes its bounded person roster before the event page.
+                        # Leave enough of the overall 45-second budget for the direct station index.
+                        async with semaphore, asyncio.timeout(25):
                             raw_aic = await station.database_query_aic_events(
                                 start.isoformat(), end.isoformat(), min(max_results, 200)
                             )
@@ -241,6 +285,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                                 event["device_name"] = device.name
                             event["station_name"] = station.name
                             event["ai"] = aic_ai_details(record)
+                            self._link_ha_people(event)
                             self._add_ai_image_urls(event)
                             self._remember_evidence(event["event_id"], "aic", record)
                             station_events.append(event)
@@ -287,6 +332,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         event["device_name"] = device.name if device else "Camera"
                         event["station_name"] = station.name
                         event["ai"] = local_ai_details(record)
+                        self._link_ha_people(event)
                         self._add_ai_image_urls(event)
                         self._remember_evidence(event["event_id"], "local", record)
                         station_events.append(event)

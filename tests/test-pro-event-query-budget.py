@@ -2,7 +2,11 @@
 """Dependency-free tests for bounded HomeBase Pro history backfill."""
 
 import ast
+import json
 from pathlib import Path
+import struct
+import time
+from typing import Any
 
 
 HELPER_PATH = (
@@ -20,6 +24,18 @@ FUNCTION = next(
 NAMESPACE: dict = {}
 exec(compile(ast.Module(body=[FUNCTION], type_ignores=[]), str(HELPER_PATH), "exec"), NAMESPACE)
 bounded_backfill_serials = NAMESPACE["bounded_backfill_serials"]
+
+WIRE_FUNCTIONS = [
+    node
+    for node in TREE.body
+    if isinstance(node, ast.FunctionDef)
+    and node.name in {"build_command", "build_table_query"}
+]
+WIRE_NAMESPACE = {"json": json, "struct": struct, "time": time, "Any": Any, "MAX_PERSON_RECORDS": 500}
+exec(
+    compile(ast.Module(body=WIRE_FUNCTIONS, type_ignores=[]), str(HELPER_PATH), "exec"),
+    WIRE_NAMESPACE,
+)
 
 
 def test_backfill_is_bounded_and_excludes_current_cameras() -> None:
@@ -44,6 +60,24 @@ def test_backfill_rotates_without_duplicates() -> None:
 def test_empty_or_zero_limit_backfill_is_safe() -> None:
     assert bounded_backfill_serials({"camera-a"}, {"camera-a"}, 0) == []
     assert bounded_backfill_serials({"camera-a"}, set(), 0, limit=0) == []
+
+
+def test_pro_helper_reads_face_roster_before_events_without_live_video() -> None:
+    source = HELPER_PATH.read_text(encoding="utf-8")
+    assert 'build_table_query(self.account_id, "person_basic_info"' in source
+    assert '"personBasicInfoList": self.people[:MAX_PERSON_RECORDS]' in source
+    assert '"liveStreamsStarted": 0' in source
+
+
+def test_person_roster_uses_the_bounded_homebase_table_wire_shape() -> None:
+    frame = WIRE_NAMESPACE["build_table_query"]("account", "person_basic_info", 7)
+    assert frame[:4] == b"XZYH"
+    assert struct.unpack_from("<H", frame, 4)[0] == 1350
+    body = json.loads(frame[16:])
+    assert body["cmd"] == 1306
+    assert body["payload"]["cmd"] == 10000
+    assert body["payload"]["table"] == "person_basic_info"
+    assert body["payload"]["payload"]["count"] == 500
 
 
 if __name__ == "__main__":

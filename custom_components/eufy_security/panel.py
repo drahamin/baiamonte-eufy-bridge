@@ -29,7 +29,7 @@ async def register_panel(
         hass,
         frontend_url_path=PANEL_PATH,
         webcomponent_name="baiamonte-eufy-security-panel",
-        module_url="/baiamonte_eufy_assets/evidence-panel.js?v=9.6.0",
+        module_url="/baiamonte_eufy_assets/evidence-panel.js?v=9.6.37",
         sidebar_title="Baiamonte Eufy Security" if show_in_sidebar else None,
         sidebar_icon="mdi:cctv",
         require_admin=False,
