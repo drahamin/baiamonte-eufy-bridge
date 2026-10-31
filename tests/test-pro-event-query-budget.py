@@ -2,6 +2,7 @@
 """Dependency-free tests for bounded HomeBase Pro history backfill."""
 
 import ast
+import asyncio
 import json
 from pathlib import Path
 import struct
@@ -37,6 +38,35 @@ exec(
     WIRE_NAMESPACE,
 )
 
+COLLECTOR_FUNCTIONS = [
+    node
+    for node in TREE.body
+    if isinstance(node, ast.FunctionDef)
+    and node.name in {"bounded_backfill_serials", "build_command", "build_event_query", "build_table_query"}
+]
+COLLECTOR_CLASS = next(
+    node for node in TREE.body if isinstance(node, ast.ClassDef) and node.name == "EventCollector"
+)
+COLLECTOR_NAMESPACE = {
+    "asyncio": asyncio,
+    "json": json,
+    "struct": struct,
+    "time": time,
+    "Any": Any,
+    "Oracle": object,
+    "MAX_IMAGE_BYTES": 10 * 1024 * 1024,
+    "MAX_RESULT_RECORDS": 300,
+    "MAX_PERSON_RECORDS": 500,
+}
+exec(
+    compile(
+        ast.Module(body=[*COLLECTOR_FUNCTIONS, COLLECTOR_CLASS], type_ignores=[]),
+        str(HELPER_PATH),
+        "exec",
+    ),
+    COLLECTOR_NAMESPACE,
+)
+
 
 def test_backfill_is_bounded_and_excludes_current_cameras() -> None:
     selected = bounded_backfill_serials(
@@ -67,6 +97,50 @@ def test_pro_helper_reads_face_roster_before_events_without_live_video() -> None
     assert 'build_table_query(self.account_id, "person_basic_info"' in source
     assert '"personBasicInfoList": self.people[:MAX_PERSON_RECORDS]' in source
     assert '"liveStreamsStarted": 0' in source
+    assert "ROSTER_RESPONSE_SECONDS = 3" in source
+    assert "collector.skip_optional_roster()" in source
+
+
+def test_late_roster_response_cannot_advance_event_query_state() -> None:
+    class FakeOracle:
+        def __init__(self) -> None:
+            self.frames: list[bytes] = []
+
+        def send(self, frame: bytes) -> None:
+            self.frames.append(frame)
+
+    oracle = FakeOracle()
+    collector = COLLECTOR_NAMESPACE["EventCollector"](
+        {
+            "accountId": "account",
+            "expectedDeviceSerials": [],
+            "startSeconds": 1,
+            "endSeconds": 2,
+        },
+        oracle,
+    )
+    collector.send_initial()
+    collector.skip_optional_roster()
+    assert collector.phase == "initial"
+    assert len(oracle.frames) == 2
+
+    collector.add_response(
+        {
+            "data": [
+                {
+                    "table_name": "person_basic_info",
+                    "payload": [{"person_id": "1", "name": "Person"}],
+                }
+            ]
+        }
+    )
+    assert collector.phase == "initial"
+    assert len(oracle.frames) == 2
+    assert len(collector.people) == 1
+
+    collector.add_response({"data": [{"table_name": "history_record_info", "payload": []}]})
+    assert collector.phase == "thumbnails"
+    assert collector.done.is_set()
 
 
 def test_person_roster_uses_the_bounded_homebase_table_wire_shape() -> None:

@@ -86,6 +86,7 @@ USER_AGENT = (
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_RESULT_RECORDS = 300
 MAX_PERSON_RECORDS = 500
+ROSTER_RESPONSE_SECONDS = 3
 
 
 def bounded_backfill_serials(
@@ -440,11 +441,31 @@ class EventCollector:
 
     def add_response(self, response: dict[str, Any]) -> None:
         tables = self.parse_tables(response.get("data"))
-        if self.phase == "roster":
+        table_names = {
+            item.get("table_name")
+            for item in tables
+            if isinstance(item.get("table_name"), str)
+        }
+        is_roster_response = "person_basic_info" in table_names
+        is_event_response = bool(
+            {"history_record_info", "record_crop_picture_info", "smart_search_info"}
+            & table_names
+        )
+        if is_roster_response:
             self.people.extend(self.rows(tables, "person_basic_info")[:MAX_PERSON_RECORDS])
-            self.phase = "initial"
-            self.send_event_initial()
-            return
+            if self.phase == "roster":
+                self.phase = "initial"
+                self.send_event_initial()
+            # A roster reply may arrive after the bounded fallback has already
+            # started the event query. Do not mistake that late reply for an
+            # empty event result and advance the event-query state machine.
+            if not is_event_response:
+                return
+        elif self.phase == "roster":
+            # Some firmware returns a successful but table-less response.
+            self.skip_optional_roster()
+            if not is_event_response:
+                return
         history = self.rows(tables, "history_record_info")
         pictures = self.rows(tables, "record_crop_picture_info")
         smart = self.rows(tables, "smart_search_info")
@@ -628,6 +649,13 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
             async def delayed_query() -> None:
                 await asyncio.sleep(1)
                 collector.send_initial()
+
+                # HomeBase Pro firmware variants may silently ignore the
+                # optional face-roster table instead of returning an error.
+                # Keep evidence responsive and let a late roster reply merge
+                # safely through add_response().
+                await asyncio.sleep(ROSTER_RESPONSE_SECONDS)
+                collector.skip_optional_roster()
 
             asyncio.create_task(delayed_query())
 

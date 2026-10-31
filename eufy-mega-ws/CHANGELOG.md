@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.55 — 2026-10-31
+
+- Keep HomeBase Pro evidence responsive when firmware silently ignores the optional
+  `person_basic_info` roster table.
+- Accept a late roster response without advancing or corrupting the event-query state machine.
+
 ## 1.6.54 — 2026-10-31
 
 - Publish Baiamonte Eufy Security 9.6.37 and vendored client 4.1.1-mega.40.
