@@ -9,8 +9,11 @@ const { summarizeHomeBaseTransition } = require("./homebase-transition.cjs");
 const dashboardPort = Number(process.env.BAIAMONTE_DASHBOARD_PORT || 8099);
 const bridgePort = Number(process.env.BAIAMONTE_BRIDGE_PORT || 3000);
 const bridgeHost = process.env.BAIAMONTE_BRIDGE_HOST || "127.0.0.1";
-const bridgeSessionTimeoutMs = 50000;
-const bridgeEventTimeoutMs = 40000;
+// The bounded Pro helper closes itself after 55 seconds and its parent process
+// after 60 seconds. Keep the dashboard listening long enough to receive that
+// terminal event/failure instead of reporting a false timeout at 40 seconds.
+const bridgeSessionTimeoutMs = 68000;
+const bridgeEventTimeoutMs = 63000;
 const html = fs.readFileSync(path.join(__dirname, "index.html"));
 const aiPattern = /(^ai[A-Z_]|person|human|face|familiar|vehicle|pet|animal|dog|cat|package|cry|sound|motion|detection|recognition|loiter|leaving|radar)/i;
 const ptzPropertyPattern = /(pan|tilt|zoom|track|privacy|preset|calibrat|patrol|cruise|rotation|angle)/i;

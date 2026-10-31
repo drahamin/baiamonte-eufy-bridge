@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.57 — 2026-10-31
+
+- Align the bridge dashboard's HomeBase Pro event wait with the helper's bounded 55/60-second
+  lifecycle, eliminating false 40-second timeouts while retaining a hard upper limit.
+
 ## 1.6.56 — 2026-10-31
 
 - Fetch HomeBase Pro evidence thumbnails in a bounded four-request window instead of serially.
