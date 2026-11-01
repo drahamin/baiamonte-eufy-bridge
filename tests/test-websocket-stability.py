@@ -33,6 +33,22 @@ def test_bridge_events_are_bounded_and_processed_off_the_result_path():
     assert "await self._process_events" not in source
 
 
+def test_pre_inventory_product_events_are_replayed_without_killing_websocket():
+    source = (
+        ROOT
+        / "custom_components"
+        / "eufy_security"
+        / "eufy_security_api"
+        / "api_client.py"
+    ).read_text(encoding="utf-8")
+
+    assert "self._pending_product_events: list[Event] = []" in source
+    assert "len(self._pending_product_events) >= 512" in source
+    assert "for event in pending_events:" in source
+    assert "await self._handle_event(event)" in source
+    assert "raise DeviceNotInitializedYetException(event)" not in source
+
+
 def test_bridge_error_frames_reconnect_without_unhandled_task_exception():
     source = (
         ROOT
@@ -74,8 +90,8 @@ def test_pro_dashboard_uses_bounded_wait_and_awaits_before_headers():
         ROOT / "eufy-mega-ws" / "dashboard" / "server.cjs"
     ).read_text(encoding="utf-8")
 
-    assert "const bridgeSessionTimeoutMs = 50000" in source
-    assert "const bridgeEventTimeoutMs = 40000" in source
+    assert "const bridgeSessionTimeoutMs = 68000" in source
+    assert "const bridgeEventTimeoutMs = 63000" in source
     assert "}, bridgeSessionTimeoutMs);" in source
     assert "}, bridgeEventTimeoutMs);" in source
     assert "const result = await refreshAicSummary();" in source

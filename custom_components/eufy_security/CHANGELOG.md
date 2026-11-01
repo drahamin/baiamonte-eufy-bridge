@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.38 — 2026-11-01
+
+- Defer and replay the bridge's bounded pre-inventory event burst instead of letting an early
+  connected event terminate the companion WebSocket worker during bridge restarts.
+- Prefer a dated durable snapshot over an undated startup `push_cache` picture, retaining the fresh
+  explicit/event image and its capture time across independent bridge and integration restarts.
+
 ## 9.6.37 — 2026-10-31
 
 - Read the HomeBase Professional edge-AI person roster through the existing bounded WebRTC command

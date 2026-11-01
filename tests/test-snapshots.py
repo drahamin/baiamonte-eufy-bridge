@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from datetime import datetime, timezone
 from pathlib import Path
 
 MODULE = (
@@ -75,6 +76,30 @@ def test_dated_evidence_source_can_be_compared_by_time() -> None:
     assert snapshot.snapshot_source_has_capture_time("homebase_pro_aic") is True
     assert snapshot.snapshot_source_has_capture_time("hybrid_index") is True
     assert snapshot.snapshot_source_has_capture_time("disk_cache:hybrid_index") is True
+
+
+def test_dated_explicit_capture_outranks_undated_startup_picture() -> None:
+    captured = datetime(2026, 11, 1, 23, 43, tzinfo=timezone.utc)
+    assert snapshot.cached_snapshot_outranks_current(
+        "push_cache", None, "explicit_live_capture", captured
+    ) is True
+
+
+def test_undated_cache_never_replaces_another_valid_picture() -> None:
+    assert snapshot.cached_snapshot_outranks_current(
+        "explicit_live_capture",
+        datetime(2026, 11, 1, tzinfo=timezone.utc),
+        "push_cache",
+        None,
+    ) is False
+
+
+def test_newer_dated_cache_replaces_older_dated_picture() -> None:
+    older = datetime(2026, 10, 31, tzinfo=timezone.utc)
+    newer = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    assert snapshot.cached_snapshot_outranks_current(
+        "hybrid_index", older, "explicit_live_capture", newer
+    ) is True
 
 
 def test_snapshot_dimensions_reads_verified_image_geometry() -> None:

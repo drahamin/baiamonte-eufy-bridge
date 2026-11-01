@@ -22,7 +22,6 @@ from .const import (
 from .event import Event
 from .exceptions import (
     CaptchaRequiredException,
-    DeviceNotInitializedYetException,
     DriverNotConnectedException,
     FailedCommandException,
     IncompatibleVersionException,
@@ -58,6 +57,7 @@ class ApiClient:
         self._result_futures: dict[str, asyncio.Future] = {}
         self._devices: dict = None
         self._stations: dict = None
+        self._pending_product_events: list[Event] = []
         self._captcha_future: asyncio.Future[dict] = (
             asyncio.get_running_loop().create_future()
         )
@@ -133,6 +133,12 @@ class ApiClient:
         self._stations = await self._get_products(
             ProductType.station, result[MessageField.STATE.value]["stations"]
         )
+        pending_events, self._pending_product_events = (
+            self._pending_product_events,
+            [],
+        )
+        for event in pending_events:
+            await self._handle_event(event)
 
     async def _get_products(self, product_type: ProductType, products: list) -> dict:
         """Build product inventory with bounded bridge request concurrency."""
@@ -693,15 +699,29 @@ class ApiClient:
             EventSourceType.station.name,
             EventSourceType.device.name,
         ]:
-            # handle device or statino specific events through specific instances
+            # The bridge can publish connected/property events immediately after
+            # start_listening, before the bounded product inventory has finished.
+            # Defer that short burst instead of killing the WebSocket event worker.
             plural_product = "_" + event.data[MessageField.SOURCE.value] + "s"
-            try:
-                product = self.__dict__[plural_product][
-                    event.data[MessageField.SERIAL_NO.value]
-                ]
-                await product.process_event(event)
-            except (KeyError, TypeError) as exc:
-                raise DeviceNotInitializedYetException(event) from exc
+            products = self.__dict__[plural_product]
+            serial_no = event.data[MessageField.SERIAL_NO.value]
+            if products is None:
+                if len(self._pending_product_events) >= 512:
+                    self._pending_product_events.pop(0)
+                self._pending_product_events.append(event)
+                _LOGGER.debug(
+                    "Deferred pre-inventory Eufy %s event for replay",
+                    event.type,
+                )
+                return
+            product = products.get(serial_no)
+            if product is None:
+                _LOGGER.debug(
+                    "Ignored Eufy %s event for a product omitted from inventory",
+                    event.type,
+                )
+                return
+            await product.process_event(event)
         elif event.data[MessageField.SOURCE.value] in [
             EventSourceType.driver.name,
             EventSourceType.server.name,

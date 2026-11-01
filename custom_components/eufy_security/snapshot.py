@@ -79,6 +79,32 @@ def snapshot_source_has_capture_time(source: object) -> bool:
     return value not in {"", "push_cache", "push_event"}
 
 
+def cached_snapshot_outranks_current(
+    current_source: object,
+    current_updated_at: object,
+    cached_source: object,
+    cached_updated_at: object,
+) -> bool:
+    """Prefer a dated durable capture over an undated startup picture.
+
+    The bridge replays valid but potentially old ``push_cache`` bytes during
+    inventory.  Those bytes must not replace a newer explicit/event capture
+    merely because they arrived later during a restart.
+    """
+    if not snapshot_source_has_capture_time(cached_source):
+        return False
+    if not snapshot_source_has_capture_time(current_source):
+        return cached_updated_at is not None
+    if cached_updated_at is None:
+        return False
+    if current_updated_at is None:
+        return True
+    try:
+        return cached_updated_at > current_updated_at
+    except TypeError:
+        return False
+
+
 def is_valid_snapshot(content: object) -> bool:
     """Return whether content is a bounded JPEG, PNG, or WebP image."""
     if not isinstance(content, (bytes, bytearray, memoryview)):

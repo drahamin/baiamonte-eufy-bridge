@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.61 — 2026-11-01
+
+- Publish Baiamonte Eufy Security 9.6.38 with restart-safe pre-inventory event replay.
+- Retain fresh dated snapshot bytes, source and capture time when the bridge replays a different
+  undated startup picture after either component restarts.
+
 ## 1.6.60 — 2026-11-01
 
 - Backport the released SDK's cipher-0 own-session live-view protocol for current standalone cameras,

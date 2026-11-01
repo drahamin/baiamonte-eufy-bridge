@@ -42,6 +42,7 @@ from .evidence import (
     normalize_local_event,
 )
 from .snapshot import (
+    cached_snapshot_outranks_current,
     disk_cache_source,
     evidence_identity,
     is_valid_snapshot,
@@ -867,21 +868,33 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 current = device.picture_bytes
             except (KeyError, TypeError, ValueError):
                 pass
+            try:
+                cached_updated_at = datetime.fromisoformat(
+                    metadata["updated_at"].replace("Z", "+00:00")
+                )
+            except (AttributeError, KeyError, TypeError, ValueError):
+                cached_updated_at = None
             if self._valid_snapshot(current):
                 if hashlib.sha256(current).digest() != hashlib.sha256(content).digest():
-                    continue
+                    if not cached_snapshot_outranks_current(
+                        device.snapshot_source,
+                        device.image_last_updated,
+                        metadata.get("source"),
+                        cached_updated_at,
+                    ):
+                        continue
+                    device.properties["picture"] = {
+                        "data": content,
+                        "type": {"mime": metadata.get("mime") or "image/jpeg"},
+                    }
+                    restored += 1
             else:
                 device.properties["picture"] = {
                     "data": content,
                     "type": {"mime": metadata.get("mime") or "image/jpeg"},
                 }
                 restored += 1
-            try:
-                device.image_last_updated = datetime.fromisoformat(
-                    metadata["updated_at"].replace("Z", "+00:00")
-                )
-            except (AttributeError, KeyError, TypeError, ValueError):
-                device.image_last_updated = None
+            device.image_last_updated = cached_updated_at
             device.snapshot_source = disk_cache_source(metadata.get("source"))
         if restored:
             _LOGGER.info("Restored %s durable Eufy camera snapshots", restored)
