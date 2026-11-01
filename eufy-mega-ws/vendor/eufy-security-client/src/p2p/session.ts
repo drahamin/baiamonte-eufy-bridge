@@ -1,4 +1,5 @@
 import { createSocket, Socket, RemoteInfo } from "dgram";
+import { createECDH } from "crypto";
 import { TypedEmitter } from "tiny-typed-emitter";
 import * as NodeRSA from "node-rsa";
 import { Readable } from "stream";
@@ -67,6 +68,7 @@ import {
   generateSmartLockAESKey,
   readNullTerminatedBuffer,
   decryptP2PKeyECDH,
+  EufyMediaFrameDecoder,
 } from "./utils";
 import {
   RequestMessageType,
@@ -493,6 +495,10 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   private encryption: EncryptionType = EncryptionType.NONE;
   private p2pKey?: Buffer;
   private enableEmbeddedPKCS1Support = false;
+  private mediaEccPrivateKey?: Buffer;
+  private mediaEccPublicKey?: string;
+  private mediaFrameDecoder?: EufyMediaFrameDecoder;
+  private mediaStartKeys: Map<number, { kind: "ecc" | "rsa"; answered: boolean }> = new Map();
 
   constructor(
     rawStation: StationListResponse,
@@ -576,6 +582,10 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     this.messageStates.clear();
     this.messageVideoStates.clear();
     this.p2pSeqMapping.clear();
+    this.mediaEccPrivateKey = undefined;
+    this.mediaEccPublicKey = undefined;
+    this.mediaFrameDecoder = undefined;
+    this.mediaStartKeys.clear();
 
     for (let datatype = 0; datatype < 4; datatype++) {
       this.expectedSeqNo[datatype] = 0;
@@ -2497,12 +2507,21 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           videoMetaData.videoTimestamp = message.data.subarray(14, 20).readUIntLE(0, 6);
 
           let payloadStart = 22;
-          if (message.signCode > 0 && data_length >= 128) {
+          let video_data = this.mediaFrameDecoder?.decode(message.data);
+          if (video_data !== undefined) {
+            this.mediaStartKeys.set(message.channel, { kind: "ecc", answered: true });
+            rootP2PLogger.debug("Decoded authenticated P-256 HomeBase media frame", {
+              stationSN: this.rawStation.station_sn,
+              channel: message.channel,
+              isKeyFrame,
+            });
+          } else if (message.signCode > 0 && data_length >= 128) {
             const key = message.data.subarray(22, 150);
             const rsaKey = this.currentMessageState[message.dataType].rsaKey;
             if (rsaKey) {
               try {
                 videoMetaData.aesKey = rsaKey.decrypt(key).toString("hex");
+                this.mediaStartKeys.set(message.channel, { kind: "rsa", answered: true });
                 rootP2PLogger.trace(`Handle DATA ${P2PDataType[message.dataType]} - Decrypted AES key`, {
                   stationSN: this.rawStation.station_sn,
                   key: videoMetaData.aesKey,
@@ -2542,8 +2561,9 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             payloadStart = 151;
           }
 
-          let video_data: Buffer;
-          if (videoMetaData.aesKey !== "") {
+          if (video_data !== undefined) {
+            // The P-256 decoder already returned the complete Annex-B payload.
+          } else if (videoMetaData.aesKey !== "") {
             const encrypted_data = message.data.subarray(payloadStart, payloadStart + 128);
             const unencrypted_data = message.data.subarray(
               payloadStart + 128,
@@ -4578,6 +4598,37 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
 
   public getRSAPrivateKey(): NodeRSA | null {
     return this.currentMessageState[P2PDataType.VIDEO].rsaKey;
+  }
+
+  /**
+   * Return the uncompressed P-256 point (x || y) offered by the current app for
+   * HomeBase 3 attached-camera media. The matching decoder remains private to
+   * this P2P session and is reset whenever the connection is reinitialised.
+   */
+  private getMediaEccPublicKey(): string {
+    if (this.mediaEccPrivateKey === undefined || this.mediaEccPublicKey === undefined) {
+      const ecdh = createECDH("prime256v1");
+      ecdh.generateKeys();
+      this.mediaEccPrivateKey = Buffer.from(ecdh.getPrivateKey("hex").padStart(64, "0"), "hex");
+      this.mediaEccPublicKey = ecdh.getPublicKey().subarray(1).toString("hex");
+      this.mediaFrameDecoder = new EufyMediaFrameDecoder(this.mediaEccPrivateKey);
+    }
+    return this.mediaEccPublicKey;
+  }
+
+  /**
+   * Choose the media key for an attached-camera start. The first start on a
+   * channel offers the current app's P-256 point. If no authenticated frame
+   * answers before the caller retries, later starts fall back to the mature RSA
+   * exchange. Once either format answers, that format remains selected.
+   */
+  public getAttachedMediaStartKey(channel: number): { kind: "ecc" | "rsa"; key: string } {
+    const previous = this.mediaStartKeys.get(channel);
+    const kind = previous?.answered ? previous.kind : previous === undefined ? "ecc" : "rsa";
+    this.mediaStartKeys.set(channel, { kind, answered: previous?.answered ?? false });
+    if (kind === "ecc") return { kind, key: this.getMediaEccPublicKey() };
+    const rsaKey = this.getRSAPrivateKey();
+    return { kind, key: rsaKey?.exportKey("components-public").n.subarray(1).toString("hex") ?? "" };
   }
 
   private initializeStream(datatype: P2PDataType): void {

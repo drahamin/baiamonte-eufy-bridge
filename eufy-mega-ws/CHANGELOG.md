@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.59 — 2026-11-01
+
+- Backport the current eufy SDK's authenticated P-256 media-key exchange for cameras attached to a
+  HomeBase 3, while retaining the mature RSA and plaintext decoders for every other stream.
+- Decode HomeBase keyframes with verified ECIES/HMAC and AES-256-GCM before accepting their video,
+  fixing current app streams that cannot be opened by the legacy RSA-only path.
+- Keep live video strictly explicit: this change improves user-requested snapshot/live captures but
+  does not start cameras automatically.
+
 ## 1.6.58 — 2026-10-31
 
 - Remove optional fifteen-year, per-camera archive backfills from the synchronous HomeBase Pro

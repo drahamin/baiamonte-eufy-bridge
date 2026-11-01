@@ -7766,7 +7766,38 @@ export class Station extends TypedEmitter<StationEvents> {
     });
     const rsa_key = this.p2pSession.getRSAPrivateKey();
 
-    if (device.isSmartDrop()) {
+    if (this.isStationHomeBase3()) {
+      const mediaKey = this.p2pSession.getAttachedMediaStartKey(device.getChannel());
+      rootHTTPLogger.debug(`Station start livestream - using HomeBase 3 attached media key`, {
+        stationSN: this.getSerial(),
+        deviceSN: device.getSerial(),
+        videoCodec: videoCodec,
+        keyType: mediaKey.kind,
+      });
+      this.p2pSession.sendCommandWithStringPayload(
+        {
+          commandType: CommandType.CMD_SET_PAYLOAD,
+          value: JSON.stringify({
+            account_id: this.rawStation.member.admin_user_id,
+            cmd: CommandType.CMD_START_REALTIME_MEDIA,
+            mChannel: device.getChannel(),
+            mValue3: CommandType.CMD_START_REALTIME_MEDIA,
+            payload: {
+              ClientOS: mediaKey.kind === "ecc" ? "IOS" : "Android",
+              accountId: this.rawStation.member.admin_user_id,
+              camera_type: 0,
+              entrytype: 0,
+              key: mediaKey.key,
+              streamtype: videoCodec === VideoCodec.H264 ? 1 : 2,
+            },
+          }),
+          channel: device.getChannel(),
+        },
+        {
+          command: commandData,
+        }
+      );
+    } else if (device.isSmartDrop()) {
       rootHTTPLogger.debug(`Station start livestream - sending command (smart drop)`, {
         stationSN: this.getSerial(),
         deviceSN: device.getSerial(),

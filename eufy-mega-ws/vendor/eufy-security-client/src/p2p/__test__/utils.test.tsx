@@ -37,9 +37,10 @@ import {
     eufyKDF,
     decryptP2PKeyECDH,
     getLockV12Key,
+    EufyMediaFrameDecoder,
 } from "../utils";
 import { VideoCodec } from "../types";
-import { createECDH } from "crypto";
+import { createCipheriv, createECDH, createHmac } from "crypto";
 
 jest.mock("../../logging", () => ({
     rootP2PLogger: { error: jest.fn(), debug: jest.fn(), info: jest.fn() },
@@ -691,6 +692,38 @@ describe("p2p/utils", () => {
             const pub = Buffer.from(peer.getPublicKey("hex", "compressed"), "hex");
 
             expect(decryptP2PKeyECDH(pub, eccPrivateKey)).toEqual(decryptP2PKeyECDH(pub, eccPrivateKey));
+        });
+    });
+
+    describe("EufyMediaFrameDecoder", () => {
+        it("authenticates the ECIES media key and decrypts the GCM frame body", () => {
+            const receiver = createECDH("prime256v1");
+            receiver.generateKeys();
+            const sender = createECDH("prime256v1");
+            sender.generateKeys();
+            const mediaKey = Buffer.alloc(32, 0x2a);
+            const wrapIv = Buffer.alloc(16, 0x18);
+            const derivedKey = eufyKDF(sender.computeSecret(receiver.getPublicKey()));
+            const wrapper = createCipheriv("aes-128-cbc", derivedKey.subarray(0, 16), wrapIv);
+            const wrappedKey = Buffer.concat([wrapper.update(mediaKey), wrapper.final()]);
+            const envelopeBody = Buffer.concat([wrapIv, wrappedKey]);
+            const envelopeTag = createHmac("sha256", derivedKey.subarray(16, 48)).update(envelopeBody).digest();
+            const envelope = Buffer.concat([sender.getPublicKey(undefined, "compressed"), envelopeBody, envelopeTag]);
+
+            const plaintext = Buffer.from("000000016742001f", "hex");
+            const nonce = Buffer.alloc(12, 0x07);
+            const cipher = createCipheriv("aes-256-gcm", mediaKey, nonce);
+            cipher.setAAD(Buffer.from("eufy security"));
+            const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+            const frame = Buffer.alloc(22);
+            frame.writeUInt32LE(ciphertext.length, 0);
+            frame.writeUInt8(1, 4);
+            const payload = Buffer.concat([frame, envelope, cipher.getAuthTag(), nonce, ciphertext]);
+
+            const decoder = new EufyMediaFrameDecoder(receiver.getPrivateKey());
+            expect(decoder.decode(payload)).toEqual(plaintext);
+            payload[payload.length - 1] ^= 0xff;
+            expect(decoder.decode(payload)).toBeUndefined();
         });
     });
 });

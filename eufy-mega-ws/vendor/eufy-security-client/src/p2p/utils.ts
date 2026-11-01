@@ -1,7 +1,15 @@
 import { Socket } from "dgram";
 import NodeRSA, { Options as NodeRSAOptions } from "node-rsa";
 import * as CryptoJS from "crypto-js";
-import { randomBytes, createCipheriv, createECDH, ECDH, createHmac, createDecipheriv } from "crypto";
+import {
+  randomBytes,
+  createCipheriv,
+  createECDH,
+  ECDH,
+  createHmac,
+  createDecipheriv,
+  timingSafeEqual,
+} from "crypto";
 import * as os from "os";
 
 import { P2PMessageParts, P2PMessageState, P2PQueueMessage, RGBColor } from "./interfaces";
@@ -746,6 +754,68 @@ export const decryptP2PKeyECDH = (encryptedKey: Buffer, eccPrivateKey: string): 
   // Fallback: if remainder is too small for ECIES, try using raw shared secret
   return sharedSecret.subarray(0, 16);
 };
+
+/**
+ * Decoder for the authenticated P-256 media format used by current HomeBase 3
+ * attached-camera live streams. Keyframes carry a 129-byte ECIES envelope for
+ * a 32-byte AES-GCM media key; following frames reuse that key.
+ */
+export class EufyMediaFrameDecoder {
+  private mediaKey?: Buffer;
+
+  public constructor(private readonly privateKey: Buffer) {
+    if (privateKey.length !== 32) throw new Error("Media ECC private key must be 32 bytes");
+  }
+
+  public decode(payload: Buffer): Buffer | undefined {
+    if (payload.length < 22) return undefined;
+    const isKeyFrame = (payload.readUInt8(4) & 0x01) === 1;
+    if (isKeyFrame) {
+      if (payload.length < 151) return undefined;
+      const envelope = payload.subarray(22, 151);
+      const ephemeralPublicKey = envelope.subarray(0, 33);
+      const iv = envelope.subarray(33, 49);
+      const ciphertext = envelope.subarray(49, 97);
+      const tag = envelope.subarray(97, 129);
+      try {
+        const ecdh = createECDH("prime256v1");
+        ecdh.setPrivateKey(this.privateKey);
+        const derivedKey = eufyKDF(ecdh.computeSecret(ephemeralPublicKey));
+        const expectedTag = createHmac("sha256", derivedKey.subarray(16, 48))
+          .update(envelope.subarray(33, 97))
+          .digest();
+        if (!timingSafeEqual(expectedTag, tag)) return undefined;
+        const unwrap = createDecipheriv("aes-128-cbc", derivedKey.subarray(0, 16), iv);
+        unwrap.setAutoPadding(false);
+        let unwrapped = Buffer.concat([unwrap.update(ciphertext), unwrap.final()]);
+        const padding = unwrapped[unwrapped.length - 1];
+        if (
+          padding >= 1 &&
+          padding <= 16 &&
+          unwrapped.subarray(unwrapped.length - padding).every((value) => value === padding)
+        ) {
+          unwrapped = unwrapped.subarray(0, unwrapped.length - padding);
+        }
+        if (unwrapped.length !== 32) return undefined;
+        this.mediaKey = Buffer.from(unwrapped);
+      } catch {
+        return undefined;
+      }
+    }
+
+    if (!this.mediaKey || payload.length < 179) return undefined;
+    try {
+      const decipher = createDecipheriv("aes-256-gcm", this.mediaKey, payload.subarray(167, 179));
+      decipher.setAAD(Buffer.from("eufy security"));
+      decipher.setAuthTag(payload.subarray(151, 167));
+      const head = decipher.update(payload.subarray(179));
+      const tail = decipher.final();
+      return tail.length > 0 ? Buffer.concat([head, tail]) : head;
+    } catch {
+      return undefined;
+    }
+  }
+}
 
 let _talkbackSeq = 0;
 let _talkbackTimestamp = 0;
