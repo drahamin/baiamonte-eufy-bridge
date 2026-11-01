@@ -494,6 +494,10 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   private channel = Station.CHANNEL;
   private encryption: EncryptionType = EncryptionType.NONE;
   private p2pKey?: Buffer;
+  /** Cipher announced by this connection's gateway-info response. Cipher 0 uses plaintext own-session commands. */
+  private gatewayCipherId?: number;
+  /** Per-connection counter used in header bytes [0x01, n] for commands sent in the clear. */
+  private clearCommandCount = 0;
   private enableEmbeddedPKCS1Support = false;
   private mediaEccPrivateKey?: Buffer;
   private mediaEccPublicKey?: string;
@@ -533,6 +537,15 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   private _incrementSequence(sequence: number): number {
     if (sequence < this.MAX_SEQUENCE_NUMBER) return sequence + 1;
     return 0;
+  }
+
+  private nextClearCommandNumber(): number {
+    this.clearCommandCount = (this.clearCommandCount % 0xff) + 1;
+    return this.clearCommandCount;
+  }
+
+  private isOwnSessionChannel(channel: number): boolean {
+    return this.deviceSNs[channel]?.sn === this.rawStation.station_sn;
   }
 
   private _isBetween(n: number, lowBoundary: number, highBoundary: number): boolean {
@@ -575,6 +588,8 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     this.customDataStaging = {};
     this.encryption = EncryptionType.NONE;
     this.p2pKey = undefined;
+    this.gatewayCipherId = undefined;
+    this.clearCommandCount = 0;
     this.lockAESKeys.clear();
 
     this._clearMessageStateTimeouts();
@@ -1178,6 +1193,48 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
         const commandHeader = buildCommandHeader(this.seqNumber, message.p2pCommand.commandType);
         let payload: Buffer;
         const channel = message.p2pCommand.channel !== undefined ? message.p2pCommand.channel : 0;
+        let clearCommandNumber: number | undefined;
+        let stringPayload = message.p2pCommand.value as string;
+        const clearOwnSessionStart =
+          this.gatewayCipherId === 0 &&
+          this.isOwnSessionChannel(channel) &&
+          message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
+          message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM;
+        const clearOwnSessionStop =
+          this.gatewayCipherId === 0 &&
+          this.isOwnSessionChannel(channel) &&
+          message.p2pCommand.commandType === CommandType.CMD_STOP_REALTIME_MEDIA;
+
+        if (clearOwnSessionStart) {
+          clearCommandNumber = this.nextClearCommandNumber();
+          const original = JSON.parse(stringPayload) as {
+            data?: { accountId?: string; account_id?: string; encryptkey?: string };
+          };
+          stringPayload = JSON.stringify({
+            commandType: ParamType.COMMAND_START_LIVESTREAM,
+            data: {
+              accountId:
+                original.data?.accountId ??
+                original.data?.account_id ??
+                this.rawStation.member.admin_user_id,
+              encryptkey: original.data?.encryptkey ?? "",
+              msg_id: clearCommandNumber,
+              streamtype: 1,
+            },
+          });
+          rootP2PLogger.debug(`Sending cipher-0 own-session livestream start in the clear`, {
+            stationSN: this.rawStation.station_sn,
+            channel: channel,
+            clearCommandNumber: clearCommandNumber,
+          });
+        } else if (clearOwnSessionStop) {
+          clearCommandNumber = this.nextClearCommandNumber();
+          rootP2PLogger.debug(`Sending cipher-0 own-session livestream stop in the clear`, {
+            stationSN: this.rawStation.station_sn,
+            channel: channel,
+            clearCommandNumber: clearCommandNumber,
+          });
+        }
         switch (message.p2pCommandType) {
           case InternalP2PCommandType.WithInt:
             payload = buildIntCommandPayload(
@@ -1188,7 +1245,8 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
               message.p2pCommand.commandType,
               message.p2pCommand.value as number,
               message.p2pCommand.strValue === undefined ? "" : message.p2pCommand.strValue,
-              channel
+              channel,
+              clearOwnSessionStop ? clearCommandNumber : undefined
             );
             break;
           case InternalP2PCommandType.WithIntString:
@@ -1229,8 +1287,9 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
               this.rawStation.station_sn,
               this.rawStation.p2p_did,
               message.p2pCommand.commandType,
-              message.p2pCommand.value as string,
-              channel
+              stringPayload,
+              channel,
+              clearOwnSessionStart ? clearCommandNumber : undefined
             );
             break;
           default:
@@ -4327,6 +4386,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           break;
         case CommandType.CMD_GATEWAYINFO:
           const cipherID = data.subarray(0, 2).readUInt16LE();
+          this.gatewayCipherId = cipherID;
           //const unknownNumber = data.subarray(2, 2).readUInt16LE();
           rootP2PLogger.debug(`Handle DATA ${P2PDataType[message.dataType]} - CMD_GATEWAYINFO - cipherID`, {
             stationSN: this.rawStation.station_sn,

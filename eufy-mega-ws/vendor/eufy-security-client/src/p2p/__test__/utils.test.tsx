@@ -38,8 +38,10 @@ import {
     decryptP2PKeyECDH,
     getLockV12Key,
     EufyMediaFrameDecoder,
+    buildCommandWithStringTypePayload,
+    buildIntCommandPayload,
 } from "../utils";
-import { VideoCodec } from "../types";
+import { CommandType, EncryptionType, VideoCodec } from "../types";
 import { createCipheriv, createECDH, createHmac } from "crypto";
 
 jest.mock("../../logging", () => ({
@@ -48,6 +50,42 @@ jest.mock("../../logging", () => ({
 }));
 
 describe("p2p/utils", () => {
+    describe("cipher-0 command payloads", () => {
+        it("builds an own-session start in the clear with the supplied command counter", () => {
+            const body = JSON.stringify({ commandType: 1000, data: { msg_id: 7, streamtype: 1 } });
+            const payload = buildCommandWithStringTypePayload(
+                EncryptionType.LEVEL_1,
+                Buffer.alloc(16, 0xaa),
+                "T8171TEST",
+                "p2p",
+                CommandType.CMD_DOORBELL_SET_PAYLOAD,
+                body,
+                0,
+                7
+            );
+
+            expect(payload.subarray(4, 8)).toEqual(Buffer.from([0x01, 0x07, 0x00, 0x00]));
+            expect(payload.subarray(10).toString()).toBe(body);
+        });
+
+        it("builds an own-session stop in the clear with the channel body", () => {
+            const payload = buildIntCommandPayload(
+                EncryptionType.LEVEL_1,
+                Buffer.alloc(16, 0xaa),
+                "T8171TEST",
+                "p2p",
+                CommandType.CMD_STOP_REALTIME_MEDIA,
+                3,
+                "",
+                3,
+                8
+            );
+
+            expect(payload.subarray(4, 8)).toEqual(Buffer.from([0x01, 0x08, 0x03, 0x00]));
+            expect(payload.subarray(10).readUInt32LE()).toBe(3);
+        });
+    });
+
     describe("MAGIC_WORD", () => {
         it("should be XZYH", () => {
             expect(MAGIC_WORD).toBe("XZYH");

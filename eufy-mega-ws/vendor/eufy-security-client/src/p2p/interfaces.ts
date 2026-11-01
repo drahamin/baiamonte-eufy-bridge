@@ -78,7 +78,7 @@ export interface P2PClientProtocolEvents {
 export interface P2PQueueMessage {
   p2pCommandType: InternalP2PCommandType;
   p2pCommand: P2PCommand;
-  nestedCommandType?: CommandType;
+  nestedCommandType?: CommandType | IndoorSoloSmartdropCommandType | ParamType;
   nestedCommandType2?: number;
   timestamp: number;
   customData?: CustomData;

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.60 — 2026-11-01
+
+- Backport the released SDK's cipher-0 own-session live-view protocol for current standalone cameras,
+  including the T8171 used by Top Vineyard 360.
+- Send only camera-negotiated cipher-0 starts and stops in the clear, with the app-compatible command
+  counter and payload; all other cameras retain their existing encrypted path.
+- Preserve explicit-only live video: the new path is used only for a requested live view or bounded
+  snapshot capture and never starts a stream automatically.
+
 ## 1.6.59 — 2026-11-01
 
 - Backport the current eufy SDK's authenticated P-256 media-key exchange for cameras attached to a

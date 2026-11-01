@@ -200,12 +200,16 @@ export const buildIntCommandPayload = (
   commandType: CommandType,
   value: number,
   strValue = "",
-  channel = 255
+  channel = 255,
+  clearCommandNumber?: number
 ): Buffer => {
   const emptyBuffer = Buffer.from([0x00, 0x00]);
-  const magicBuffer = Buffer.from([0x01, 0x00]);
+  const magicBuffer = Buffer.from([0x01, clearCommandNumber ?? 0x00]);
   const encrypted =
-    isP2PCommandEncrypted(commandType) && encryptionType !== EncryptionType.NONE && encryptionKey?.length === 16;
+    clearCommandNumber === undefined &&
+    isP2PCommandEncrypted(commandType) &&
+    encryptionType !== EncryptionType.NONE &&
+    encryptionKey?.length === 16;
   const channelBuffer = Buffer.from([channel, encrypted ? encryptionType : 0]);
   const valueBuffer = Buffer.allocUnsafe(4);
   valueBuffer.writeUInt32LE(value, 0);
@@ -350,13 +354,17 @@ export const buildCommandWithStringTypePayload = (
   p2pDid: string,
   commandType: CommandType,
   value: string,
-  channel = 0
+  channel = 0,
+  clearCommandNumber?: number
 ): Buffer => {
   const headerBuffer = Buffer.allocUnsafe(2);
   const emptyBuffer = Buffer.from([0x00, 0x00]);
-  const magicBuffer = Buffer.from([0x01, 0x00]);
+  const magicBuffer = Buffer.from([0x01, clearCommandNumber ?? 0x00]);
   const encrypted =
-    isP2PCommandEncrypted(commandType) && encryptionType !== EncryptionType.NONE && encryptionKey?.length === 16;
+    clearCommandNumber === undefined &&
+    isP2PCommandEncrypted(commandType) &&
+    encryptionType !== EncryptionType.NONE &&
+    encryptionKey?.length === 16;
   const channelBuffer = Buffer.from([channel, encrypted ? encryptionType : 0]);
   const dataBuffer = encrypted ? paddingP2PData(Buffer.from(value)) : Buffer.from(value);
   headerBuffer.writeUInt16LE(dataBuffer.length, 0);
