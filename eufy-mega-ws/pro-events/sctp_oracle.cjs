@@ -5,6 +5,7 @@
 // time. Only command frames are accepted; this helper has no live-video path.
 const fs = require("fs");
 const path = require("path");
+const { decodePortalFrame } = require("./portal_frame.cjs");
 
 const workerDirectory = path.join(__dirname, "worker");
 const gluePath = path.join(workerDirectory, "libsctp_0_0_4.js");
@@ -88,7 +89,10 @@ async function serve() {
   const receiver = createManager(moduleObject, 0, 1, {
     // Receiver-generated repair packets are intentionally not transmitted; this
     // matches the current official web client and keeps the path read-only.
-    onFrame: (_id, link, bytes) => emit({ event: "frame", link, data: bytes.toString("base64") }),
+    onFrame: (_id, link, bytes) => {
+      const frame = decodePortalFrame(bytes);
+      if (frame) emit({ event: "frame", link, data: frame.toString("base64") });
+    },
   });
   setInterval(() => {
     try { moduleObject._sctp_frame_manager_on_100ms_timer(receiver, Date.now()); } catch {}

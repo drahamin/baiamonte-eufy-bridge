@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.62 — 2026-11-04
+
+- Isolate S380/HB3 camera media from station control and sibling cameras; coalesce duplicate starts,
+  retain original entity identities, route talkback through the correct camera session, and release
+  sockets and timers on stop, failure, or shutdown.
+- Retry stored-cover queries and stable cover URLs after temporary silence or download failure.
+  Work stays staggered and never starts background camera video.
+- Assemble current doorbell split video units within a bounded timestamp/size window, recognize
+  RSA keyframe flags, and discard empty audio and truncated UDP/media headers.
+- Decode compressed HomeBase Pro table/image replies with a decompression bound, match database
+  replies by unique millisecond transactions, reject stale replies, and close evidence sessions
+  promptly if their signalling connection ends.
+- Publish vendored client 4.1.1-mega.43; retain companion 9.6.38 and Schema-21 compatibility.
+
 ## 1.6.61 — 2026-11-01
 
 - Publish Baiamonte Eufy Security 9.6.38 with restart-safe pre-inventory event replay.

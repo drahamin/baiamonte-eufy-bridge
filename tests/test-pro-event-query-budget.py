@@ -129,12 +129,14 @@ def test_late_roster_response_cannot_advance_event_query_state() -> None:
         oracle,
     )
     collector.send_initial()
+    roster_transaction = collector.roster_transaction
     collector.skip_optional_roster()
     assert collector.phase == "initial"
     assert len(oracle.frames) == 2
 
     collector.add_response(
         {
+            "transaction": roster_transaction,
             "data": [
                 {
                     "table_name": "person_basic_info",
@@ -147,7 +149,7 @@ def test_late_roster_response_cannot_advance_event_query_state() -> None:
     assert len(oracle.frames) == 2
     assert len(collector.people) == 1
 
-    collector.add_response({"data": [{"table_name": "history_record_info", "payload": []}]})
+    collector.add_response({"transaction": collector.pending_transaction, "data": [{"table_name": "history_record_info", "payload": []}]})
     assert collector.phase == "thumbnails"
     assert collector.done.is_set()
 
@@ -197,6 +199,61 @@ def test_person_roster_uses_the_bounded_homebase_table_wire_shape() -> None:
     assert body["payload"]["cmd"] == 10000
     assert body["payload"]["table"] == "person_basic_info"
     assert body["payload"]["payload"]["count"] == 500
+
+
+def test_stale_duplicate_and_unattributed_pro_replies_do_not_complete_a_new_read() -> None:
+    class FakeOracle:
+        def __init__(self): self.frames = []
+        def send(self, frame): self.frames.append(frame)
+
+    oracle = FakeOracle()
+    collector = COLLECTOR_NAMESPACE["EventCollector"](
+        {"accountId": "account", "startSeconds": 1, "endSeconds": 2}, oracle)
+    collector.send_initial()
+    old = collector.pending_transaction
+    collector.skip_optional_roster()
+    active = collector.pending_transaction
+    assert int(active) > int(old)
+    event = {"data": [{"table_name": "history_record_info", "payload": []}]}
+    for transaction in [None, "unknown", old]:
+        collector.add_response({**event, "transaction": transaction})
+        assert not collector.done.is_set()
+    # Even a late error belongs to its original request, not the active one.
+    collector.add_response({"transaction": old, "mIntRet": -6001})
+    assert not collector.done.is_set()
+    assert collector.error is None
+    collector.add_response({**event, "transaction": active})
+    assert collector.done.is_set()
+    frames = len(oracle.frames)
+    collector.add_response({**event, "transaction": active})
+    assert len(oracle.frames) == frames
+
+
+def test_pro_history_table_fallback_accepts_flat_rows_but_rejects_late_aic() -> None:
+    class FakeOracle:
+        def __init__(self): self.frames = []
+        def send(self, frame): self.frames.append(frame)
+
+    async def exercise():
+        oracle = FakeOracle()
+        collector = COLLECTOR_NAMESPACE["EventCollector"](
+            {"accountId": "account", "startSeconds": 1, "endSeconds": 2}, oracle)
+        collector.send_initial()
+        collector.add_response({"transaction": collector.roster_transaction, "cmd": 10000,
+            "data": [{"person_id": "7", "name": "Person"}]})
+        assert collector.people == [{"person_id": "7", "name": "Person"}]
+        old = collector.pending_transaction
+        collector.send_event_fallback()
+        assert collector.event_read_mode == "history_table"
+        collector.add_response({"transaction": old, "cmd": 10066, "data": []})
+        assert not collector.done.is_set()
+        collector.add_response({"transaction": collector.pending_transaction, "cmd": 10000,
+            "data": [{"device_sn": "camera-a", "record_id": 3, "start_time": 100}]})
+        assert collector.latest["camera-a"]["record_id"] == 3
+        assert collector.done.is_set()
+        assert collector.event_reply_timer is None
+
+    asyncio.run(exercise())
 
 
 if __name__ == "__main__":

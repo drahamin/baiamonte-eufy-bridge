@@ -150,6 +150,8 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
   private dashboardSnapshotRequestedAt: Map<string, number> = new Map<string, number>();
   private dashboardSnapshotTimer?: NodeJS.Timeout;
   private missingSnapshotCursor = 0;
+  private latestSnapshotQueryAt = new Map<string, number>();
+  private latestSnapshotStationCursor = 0;
   private readonly DASHBOARD_SNAPSHOT_REFRESH_MS = 25 * 60 * 1000;
 
   private pushService!: PushNotificationService;
@@ -1156,6 +1158,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     });
     if (this.devicesLoaded !== undefined) await this.devicesLoaded;
     await this.augmentNativeMegaDevices();
+    this.refreshStoredSnapshots();
     await this.hydrateMissingSnapshotsFromHistory();
     if (this.refreshEufySecurityCloudTimeout !== undefined) clearTimeout(this.refreshEufySecurityCloudTimeout);
     if (this.config.pollingIntervalMinutes > 0)
@@ -1204,14 +1207,47 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
     if (this.devicesLoaded !== undefined) await this.devicesLoaded;
   }
 
+  /** Retry saved covers at a bounded cadence, including stations that previously stayed silent. */
+  private refreshStoredSnapshots(): void {
+    for (const device of Object.values(this.devices)) {
+      if (device.isCamera() && device.hasProperty(PropertyName.DevicePictureUrl))
+        this.queueDashboardSnapshot(device, device.getPropertyValue(PropertyName.DevicePictureUrl));
+    }
+    const stations = Object.values(this.stations).filter(
+      (station) =>
+        !station.isStationHomeBasePro() &&
+        station.isConnected() &&
+        station.hasCommand(CommandName.StationDatabaseQueryLatestInfo)
+    );
+    if (!stations.length) return;
+    const start = this.latestSnapshotStationCursor % stations.length;
+    const now = Date.now();
+    for (let offset = 0; offset < Math.min(2, stations.length); offset++) {
+      const station = stations[(start + offset) % stations.length];
+      const serial = station.getSerial();
+      if (now - (this.latestSnapshotQueryAt.get(serial) ?? 0) < 10 * 60_000) continue;
+      this.latestSnapshotQueryAt.set(serial, now);
+      try {
+        station.databaseQueryLatestInfo();
+      } catch (error) {
+        rootMainLogger.debug("Stored-cover query deferred", {
+          model: station.getModel(),
+          error: getError(ensureError(error)),
+        });
+      }
+    }
+    this.latestSnapshotStationCursor = (start + 2) % stations.length;
+  }
+
   /** Seed missing camera stills from authenticated saved events without opening live video. */
   private async hydrateMissingSnapshotsFromHistory(): Promise<void> {
     const missing = Object.values(this.devices)
-      .filter((device) =>
-        device.isCamera()
-        && device.hasProperty(PropertyName.DevicePicture)
-        && (device.getPropertyValue(PropertyName.DevicePicture) === undefined
-          || device.getPropertyValue(PropertyName.DevicePicture) === null)
+      .filter(
+        (device) =>
+          device.isCamera() &&
+          device.hasProperty(PropertyName.DevicePicture) &&
+          (device.getPropertyValue(PropertyName.DevicePicture) === undefined ||
+            device.getPropertyValue(PropertyName.DevicePicture) === null)
       )
       .sort((left, right) => {
         // Repair operationally important indoor/water views first, then retain
@@ -1250,18 +1286,16 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
           this.api.getAllVideoEvents(filter, 25),
           this.api.getAllAlarmEvents(filter, 25),
         ]);
-        const candidates = recordFamilies.flat()
+        const candidates = recordFamilies
+          .flat()
           .slice()
-          .sort((left, right) => (right.start_time || right.create_time || 0) - (left.start_time || left.create_time || 0));
+          .sort(
+            (left, right) => (right.start_time || right.create_time || 0) - (left.start_time || left.create_time || 0)
+          );
         let image: string | undefined;
         for (const record of candidates) {
-          image = [
-            HTTPApi.selectDashboardCoverDeep(record)?.path,
-            record?.thumb_path,
-            record?.cloud_path,
-          ].find(
-            (value): value is string =>
-              typeof value === "string" && value.length > 0 && value.length <= 4096
+          image = [HTTPApi.selectDashboardCoverDeep(record)?.path, record?.thumb_path, record?.cloud_path].find(
+            (value): value is string => typeof value === "string" && value.length > 0 && value.length <= 4096
           );
           if (image) break;
         }
@@ -1490,7 +1524,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
         context: { device: deviceSN, commandName: CommandName.DeviceStopLivestream },
       });
 
-    if (station.isConnected() && station.isLiveStreaming(device)) {
+    if (station.isLiveStreaming(device)) {
       station.stopLivestream(device);
     } else {
       rootMainLogger.warn(
@@ -1565,6 +1599,10 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
                 deviceSN: item.device.getSerial(),
                 stationSN: station.getSerial(),
               });
+            } else {
+              // A temporarily sleeping station must not poison URL deduplication.
+              this.dashboardSnapshotUrls.delete(item.device.getSerial());
+              this.dashboardSnapshotRequestedAt.delete(item.device.getSerial());
             }
           })
           .catch((err) => {
@@ -1592,6 +1630,9 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
               deviceSN: item.device.getSerial(),
               bytes: picture.data.length,
             });
+          } else {
+            this.dashboardSnapshotUrls.delete(item.device.getSerial());
+            this.dashboardSnapshotRequestedAt.delete(item.device.getSerial());
           }
         })
         .catch((err) => {
@@ -4034,15 +4075,14 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
           event.snapshotCloud,
           event.cloud_path,
           event.cloudPath,
-        ].find(
-          (value): value is string => typeof value === "string" && value.length > 0
-        );
+        ].find((value): value is string => typeof value === "string" && value.length > 0);
         if (image === undefined) continue;
-        const target = update.device_sn !== undefined
-          ? this.getDevice(update.device_sn)
-          : update.channel !== undefined
-            ? this.getStationDevice(station.getSerial(), update.channel)
-            : undefined;
+        const target =
+          update.device_sn !== undefined
+            ? this.getDevice(update.device_sn)
+            : update.channel !== undefined
+              ? this.getStationDevice(station.getSerial(), update.channel)
+              : undefined;
         if (target === undefined) continue;
         target
           .then((device) => {
@@ -4050,7 +4090,7 @@ export class EufySecurity extends TypedEmitter<EufySecurityEvents> {
               device.updateProperty(PropertyName.DevicePictureUrl, image, true);
             }
             let usedInline = false;
-            if (inlineData && inlineData.length <= Math.ceil(this.SNAPSHOT_CACHE_MAX_BYTES * 4 / 3) + 16) {
+            if (inlineData && inlineData.length <= Math.ceil((this.SNAPSHOT_CACHE_MAX_BYTES * 4) / 3) + 16) {
               try {
                 const bytes = Buffer.from(inlineData, "base64");
                 const type = this.getCachedSnapshotType(bytes);

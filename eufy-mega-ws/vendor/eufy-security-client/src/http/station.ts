@@ -231,6 +231,11 @@ export class Station extends TypedEmitter<StationEvents> {
   private reconnectTimeout?: NodeJS.Timeout;
   private terminating = false;
   private proEventQueryRunning = false;
+  private mediaOnly = false;
+  private mediaStations = new Map<number, Station>();
+  private mediaStartupTimers = new Map<number, NodeJS.Timeout>();
+  private mediaOptions: { ipAddress?: string; enableEmbeddedPKCS1Support: boolean };
+  private mediaStreamTimeouts: StreamTimeoutOptions = {};
 
   private p2pConnectionType = P2PConnectionType.QUICKEST;
 
@@ -251,6 +256,7 @@ export class Station extends TypedEmitter<StationEvents> {
     this.api = api;
     this.rawStation = station;
     this.lockPublicKey = publicKey;
+    this.mediaOptions = { ipAddress, enableEmbeddedPKCS1Support };
     this.p2pSession = new P2PClientProtocol(
       this.rawStation,
       this.api,
@@ -1103,11 +1109,14 @@ export class Station extends TypedEmitter<StationEvents> {
 
   public close(): void {
     this.terminating = true;
+    for (const channel of this.mediaStations.keys()) this.releaseMediaStation(channel);
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = undefined;
     }
-    if (this.p2pSession.isConnected()) {
+    if (this.mediaOnly) {
+      void this.p2pSession.dispose();
+    } else if (this.p2pSession.isConnected() || this.p2pSession.isConnecting()) {
       rootHTTPLogger.info(`Disconnect from station ${this.getSerial()}`);
       this.p2pSession.close();
     }
@@ -1619,7 +1628,7 @@ export class Station extends TypedEmitter<StationEvents> {
     this.terminating = false;
     this.resetCurrentDelay();
     rootHTTPLogger.info(`Connected to station ${this.getSerial()} on host ${address.host} and port ${address.port}`);
-    if (this.hasCommand(CommandName.StationDatabaseQueryLatestInfo)) {
+    if (!this.mediaOnly && this.hasCommand(CommandName.StationDatabaseQueryLatestInfo)) {
       this.databaseQueryLatestInfo();
     }
     this.emit("connect", this);
@@ -1629,7 +1638,7 @@ export class Station extends TypedEmitter<StationEvents> {
     rootHTTPLogger.info(`Disconnected from station ${this.getSerial()}`);
     this.emit("close", this);
     this.pinVerified = false;
-    if (!this.isEnergySavingDevice() && !this.terminating) this.scheduleReconnect();
+    if (!this.mediaOnly && !this.isEnergySavingDevice() && !this.terminating) this.scheduleReconnect();
   }
 
   private onTimeout(): void {
@@ -1639,7 +1648,7 @@ export class Station extends TypedEmitter<StationEvents> {
       this,
       new StationConnectTimeoutError("Timeout connecting to station", { context: { station: this.getSerial() } })
     );
-    this.scheduleReconnect();
+    if (!this.mediaOnly && !this.terminating) this.scheduleReconnect();
   }
 
   private getCurrentDelay(): number {
@@ -7749,6 +7758,10 @@ export class Station extends TypedEmitter<StationEvents> {
         },
       });
     }
+    if (!this.mediaOnly && this.isStationHomeBase3()) {
+      this.startDedicatedLivestream(device, videoCodec);
+      return;
+    }
     if (this.isLiveStreaming(device)) {
       throw new LivestreamAlreadyRunningError("Livestream for device is already running", {
         context: {
@@ -8084,6 +8097,14 @@ export class Station extends TypedEmitter<StationEvents> {
         },
       });
     }
+    const media = this.mediaStations.get(device.getChannel());
+    if (media) {
+      // Closing this camera's connection also cancels an unacknowledged start.
+      // It cannot stop a sibling or the station's control connection.
+      this.releaseMediaStation(device.getChannel());
+      this.onStopLivestream(device.getChannel());
+      return;
+    }
     if (!this.isLiveStreaming(device)) {
       throw new LivestreamNotRunningError("Livestream for device is not running", {
         context: {
@@ -8112,11 +8133,74 @@ export class Station extends TypedEmitter<StationEvents> {
 
   public isLiveStreaming(device: Device): boolean {
     if (device.getStationSerial() !== this.getSerial()) return false;
-    return this.p2pSession.isLiveStreaming(device.getChannel());
+    return this.mediaStations.has(device.getChannel()) || this.p2pSession.isLiveStreaming(device.getChannel());
+  }
+
+  /** S380 media must not reuse a control session that can remain bound to a sibling camera. */
+  private startDedicatedLivestream(device: Device, videoCodec: VideoCodec): void {
+    const channel = device.getChannel();
+    if (this.mediaStations.has(channel)) return;
+    const media = new Station(
+      this.api,
+      this.rawStation,
+      this.mediaOptions.ipAddress,
+      0,
+      this.lockPublicKey,
+      this.mediaOptions.enableEmbeddedPKCS1Support
+    );
+    media.mediaOnly = true;
+    media.setConnectionType(this.p2pConnectionType);
+    media.setStreamTimeouts(this.mediaStreamTimeouts);
+    this.mediaStations.set(channel, media);
+    const fail = (error: Error): void => {
+      if (this.mediaStations.get(channel) !== media) return;
+      this.releaseMediaStation(channel);
+      this.onErrorLivestream(channel, error);
+    };
+    media.on("livestream start", (_station, receivedChannel, metadata, video, audio) => {
+      if (receivedChannel !== channel || this.mediaStations.get(channel) !== media) return;
+      clearTimeout(this.mediaStartupTimers.get(channel));
+      this.mediaStartupTimers.delete(channel);
+      this.onStartLivestream(channel, metadata, video, audio);
+    });
+    media.on("livestream stop", () => {
+      if (this.mediaStations.get(channel) !== media) return;
+      this.releaseMediaStation(channel);
+      this.onStopLivestream(channel);
+    });
+    media.on("livestream error", (_station, _channel, error) => fail(error));
+    media.on("connection error", (_station, error) => fail(error));
+    media.on("close", () => fail(new Error("Camera media connection closed")));
+    media.on("command result", (_station, result) => this.onCommandResponse(result));
+    media.on("talkback started", (_station, receivedChannel, stream) =>
+      this.onTalkbackStarted(receivedChannel, stream)
+    );
+    media.on("talkback stopped", (_station, receivedChannel) => this.onTalkbackStopped(receivedChannel));
+    media.on("talkback error", (_station, receivedChannel, error) => this.onTalkbackError(receivedChannel, error));
+    this.mediaStartupTimers.set(
+      channel,
+      setTimeout(() => fail(new Error("Camera media start timed out")), 30_000)
+    );
+    try {
+      media.startLivestream(device, videoCodec);
+    } catch (error) {
+      this.releaseMediaStation(channel);
+      throw error;
+    }
+  }
+
+  private releaseMediaStation(channel: number): void {
+    const media = this.mediaStations.get(channel);
+    this.mediaStations.delete(channel);
+    clearTimeout(this.mediaStartupTimers.get(channel));
+    this.mediaStartupTimers.delete(channel);
+    media?.close();
   }
 
   public setStreamTimeouts(options: StreamTimeoutOptions): void {
+    this.mediaStreamTimeouts = { ...this.mediaStreamTimeouts, ...options };
     this.p2pSession.setStreamTimeouts(options);
+    for (const media of this.mediaStations.values()) media.setStreamTimeouts(options);
   }
 
   public isDownloading(device: Device): boolean {
@@ -12734,6 +12818,11 @@ export class Station extends TypedEmitter<StationEvents> {
   }
 
   public startTalkback(device: Device): void {
+    const media = this.mediaStations.get(device.getChannel());
+    if (device.getStationSerial() === this.getSerial() && media) {
+      media.startTalkback(device);
+      return;
+    }
     const commandData: CommandData = {
       name: CommandName.DeviceStartTalkback,
     };
@@ -12812,6 +12901,11 @@ export class Station extends TypedEmitter<StationEvents> {
   }
 
   public stopTalkback(device: Device): void {
+    const media = this.mediaStations.get(device.getChannel());
+    if (device.getStationSerial() === this.getSerial() && media) {
+      media.stopTalkback(device);
+      return;
+    }
     const commandData: CommandData = {
       name: CommandName.DeviceStopTalkback,
     };
@@ -12903,6 +12997,8 @@ export class Station extends TypedEmitter<StationEvents> {
 
   public isTalkbackOngoing(device: Device): boolean {
     if (device.getStationSerial() !== this.getSerial()) return false;
+    const media = this.mediaStations.get(device.getChannel());
+    if (media) return media.isTalkbackOngoing(device);
     return this.p2pSession.isTalkbackOngoing(device.getChannel());
   }
 
