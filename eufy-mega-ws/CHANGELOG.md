@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.63 — 2026-11-04
+
+- Accept Pro portal framing padding after the declared body, matching the successor SDK parser.
+  Truncated bodies and oversized compressed replies are still rejected.
+- Publish companion 9.6.40 with post-cleanup snapshot publication, verified durable commits,
+  and explicit camera token rotation before a capture reports success.
+
 ## 1.6.62 — 2026-11-04
 
 - Isolate S380/HB3 camera media from station control and sibling cameras; coalesce duplicate starts,

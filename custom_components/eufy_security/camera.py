@@ -361,6 +361,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
 
         async with self._scheduled_snapshot_lock:
             started = False
+            captured_at = None
             try:
                 # A user-opened stream can supply the explicit still without a
                 # second P2P command. If the bridge instead retained a stale
@@ -413,20 +414,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                         await asyncio.sleep(0.5)
                 if not is_valid_snapshot(frame):
                     return False
-                self._last_image = frame
-                self.product.properties["picture"] = {
-                    "data": frame,
-                    "type": {"mime": "image/jpeg"},
-                }
-                self.product.image_last_updated = datetime.now(timezone.utc)
-                self.product.snapshot_source = (
-                    "explicit_live_capture" if force else "scheduled_live_capture"
-                )
-                # Notify every camera/cache listener, rotate the camera token and
-                # persist the verified frame. A direct entity state write does not
-                # exercise the coordinator's durable snapshot cache.
-                self.product.notify_state_update()
-                return True
+                captured_at = datetime.now(timezone.utc)
             except (
                 asyncio.TimeoutError,
                 FailedCommandException,
@@ -445,6 +433,24 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                     ):
                         self.product.stream_status = StreamStatus.IDLE
                         await self._stop_hass_streaming()
+
+            # Cleanup may replay an older bridge picture. Publish the verified
+            # frame afterwards and confirm the durable copy before success.
+            self._last_image = frame
+            self.product.properties["picture"] = {
+                "data": frame,
+                "type": {"mime": "image/jpeg"},
+            }
+            self.product.image_last_updated = captured_at
+            self.product.snapshot_source = (
+                "explicit_live_capture" if force else "scheduled_live_capture"
+            )
+            self.product.notify_state_update()
+            if not await self.coordinator.async_persist_snapshot_capture(self.product):
+                return False
+            self.async_update_token()
+            self.async_write_ha_state()
+            return True
 
     async def _start_livestream(self) -> None:
         """Start a P2P source for the bounded camera proxy request."""

@@ -11,8 +11,9 @@ function decodePortalFrame(bytes) {
       ? zstdDecompressSync(bytes, { maxOutputLength: MAX_FRAME_BYTES }) : bytes;
     if (frame.length < 16 || frame.toString("ascii", 0, 4) !== "XZYH") return undefined;
     const size = frame.readUInt32LE(6);
-    if (size > MAX_FRAME_BYTES - 16 || frame.length !== size + 16) return undefined;
-    return frame;
+    if (size > MAX_FRAME_BYTES - 16 || frame.length < size + 16) return undefined;
+    // The portal parser consumes the declared body and ignores framing padding.
+    return frame.subarray(0, size + 16);
   } catch {
     return undefined;
   }
