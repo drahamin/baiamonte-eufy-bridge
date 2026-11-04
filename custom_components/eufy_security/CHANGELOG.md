@@ -1,5 +1,13 @@
 # Changelog
 
+## 9.6.40 — 2026-11-04
+
+- Publish explicitly captured images after stream cleanup so an older stop/reconnect picture
+  cannot replace the just-captured frame before publication.
+- Wait for and verify the durable image bytes and capture time before reporting success, and
+  rotate the camera image token after a successful commit.
+- Reject a capture that finishes against a retired product during an integration reconnect.
+
 ## 9.6.39 — 2026-11-04
 
 - Align Pro evidence waits with the bridge's bounded 60-second helper; the Security page no longer

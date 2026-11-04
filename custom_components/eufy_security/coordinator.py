@@ -853,6 +853,31 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         except (OSError, ValueError) as exc:
             _LOGGER.warning("Snapshot disk cache write deferred: %s", type(exc).__name__)
 
+    async def async_persist_snapshot_capture(self, device) -> bool:
+        """Confirm the captured bytes/time are durable before reporting success."""
+        if self.devices.get(device.serial_no) is not device:
+            return False
+        content = product_snapshot_bytes(device)
+        captured_at = device.image_last_updated
+        if not self._valid_snapshot(content) or captured_at is None:
+            return False
+        self._schedule_snapshot_cache_write()
+        try:
+            async with asyncio.timeout(10):
+                await asyncio.shield(self._snapshot_cache_task)
+                record = await asyncio.to_thread(
+                    self._read_snapshot_record,
+                    self._snapshot_cache_dir,
+                    self._snapshot_cache_key(device.serial_no),
+                )
+        except (OSError, asyncio.TimeoutError):
+            return False
+        return bool(
+            record
+            and record[0] == content
+            and record[1].get("updated_at") == captured_at.isoformat()
+        )
+
     async def _restore_snapshot_cache(self) -> None:
         """Restore the last valid image for cameras missing one after restart."""
         restored = 0
