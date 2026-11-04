@@ -12,7 +12,8 @@
 - Decode compressed HomeBase Pro table/image replies with a decompression bound, match database
   replies by unique millisecond transactions, reject stale replies, and close evidence sessions
   promptly if their signalling connection ends.
-- Publish vendored client 4.1.1-mega.43; retain companion 9.6.38 and Schema-21 compatibility.
+- Publish vendored client 4.1.1-mega.43 and companion 9.6.39 with aligned Pro evidence waits;
+  retain Schema-21 compatibility.
 
 ## 1.6.61 — 2026-11-01
 

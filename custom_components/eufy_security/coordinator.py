@@ -248,6 +248,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
         if source in {"hybrid", "local", "latest"}:
             semaphore = asyncio.Semaphore(1)
+            pro_semaphore = asyncio.Semaphore(1)
 
             async def query_station(station):
                 if station_serial and station.serial_no != station_serial:
@@ -256,9 +257,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 aic_warning = None
                 if {"database_query_aic_events", "stationDatabaseQueryAicEvents"} & commands:
                     try:
-                        # The Pro read now includes its bounded person roster before the event page.
-                        # Leave enough of the overall 45-second budget for the direct station index.
-                        async with semaphore, asyncio.timeout(25):
+                        # The Pro helper has a 60-second outer budget. Do not
+                        # cancel its roster/image session after only 25 seconds.
+                        is_pro = str(station.model).upper().startswith("T9000")
+                        async with (pro_semaphore if is_pro else semaphore), asyncio.timeout(64 if is_pro else 25):
                             raw_aic = await station.database_query_aic_events(
                                 start.isoformat(), end.isoformat(), min(max_results, 200)
                             )
@@ -306,6 +308,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         )
                         aic_warning = f"{station.model} AIC: {type(exc).__name__}"
                 if source == "latest":
+                    return [], station.model if aic_warning else None, aic_warning
+                if str(station.model).upper().startswith("T9000"):
+                    # The Pro helper already tried its supported table fallback;
+                    # its direct P2P/local index is not advertised by firmware.
                     return [], station.model if aic_warning else None, aic_warning
                 if "database_query_local" not in (station.commands or []):
                     # Station command capabilities are legacy CommandName values; unlike device
@@ -361,7 +367,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 asyncio.create_task(query_station(station))
                 for station in self.stations.values()
             ]
-            done, pending = await asyncio.wait(tasks, timeout=45)
+            done, pending = await asyncio.wait(tasks, timeout=70)
             for task in pending:
                 task.cancel()
             if pending:

@@ -256,6 +256,24 @@ def test_pro_history_table_fallback_accepts_flat_rows_but_rejects_late_aic() -> 
     asyncio.run(exercise())
 
 
+def test_pro_wait_budgets_enclose_the_helper_instead_of_cancelling_it_early() -> None:
+    root = HELPER_PATH.parents[2]
+    product_tree = ast.parse((root / "custom_components/eufy_security/eufy_security_api/product.py").read_text())
+    aic = next(node for node in ast.walk(product_tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "database_query_aic_events")
+    product_budget = next(kw.value.value for node in ast.walk(aic) if isinstance(node, ast.Call)
+        for kw in node.keywords if kw.arg == "timeout")
+    coordinator_tree = ast.parse((root / "custom_components/eufy_security/coordinator.py").read_text())
+    search = next(node for node in ast.walk(coordinator_tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "search_evidence")
+    pro_budget = next(node.args[0].body.value for node in ast.walk(search)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "timeout" and node.args and isinstance(node.args[0], ast.IfExp))
+    overall_budget = next(kw.value.value for node in ast.walk(search) if isinstance(node, ast.Call)
+        for kw in node.keywords if kw.arg == "timeout")
+    assert 55 < 60 < product_budget < pro_budget < overall_budget
+
+
 if __name__ == "__main__":
     test_backfill_is_bounded_and_excludes_current_cameras()
     test_backfill_rotates_without_duplicates()

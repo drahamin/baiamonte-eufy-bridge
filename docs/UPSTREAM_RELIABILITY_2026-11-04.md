@@ -1,6 +1,6 @@
 # Upstream reliability changes — 2026-11-04
 
-Release: bridge 1.6.62, vendored client 4.1.1-mega.43. Existing companion 9.6.38 and
+Release: bridge 1.6.62, vendored client 4.1.1-mega.43, companion 9.6.39. Existing
 Schema-21 entities are retained. These are adaptations to our transport, not installation of
 the successor SDK alongside the existing Eufy account session.
 
@@ -36,6 +36,10 @@ the successor SDK alongside the existing Eufy account session.
   its signalling socket closes, including failed receiver tasks, and release the peer/resources.
 
 ## Scope and remaining transport work
+
+The companion waits 63 seconds for AIC replies, inside the coordinator's 64-second Pro
+operation and 70-second overall local-query budget. One Pro query and one ordinary station
+query can progress independently. The Pro is not retried through an unsupported direct index.
 
 No automatic live video is introduced. Background image maintenance uses saved covers only.
 An explicit user capture still opens a bounded stream through the existing capture service.
