@@ -16,6 +16,9 @@ test("plain and compressed Pro replies retain their full header and transaction"
   const frame = packet();
   assert.deepEqual(decodePortalFrame(frame), frame);
   assert.deepEqual(decodePortalFrame(zstdCompressSync(frame)), frame);
+  const padded = Buffer.concat([frame, Buffer.alloc(4)]);
+  assert.deepEqual(decodePortalFrame(padded), frame);
+  assert.deepEqual(decodePortalFrame(zstdCompressSync(padded)), frame);
 });
 test("bad, truncated and oversized compressed replies never enter the collector", () => {
   assert.equal(decodePortalFrame(Buffer.from([0x28, 0xb5, 0x2f, 0xfd])), undefined);

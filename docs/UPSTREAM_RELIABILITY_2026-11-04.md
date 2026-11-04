@@ -1,6 +1,6 @@
 # Upstream reliability changes — 2026-11-04
 
-Release: bridge 1.6.62, vendored client 4.1.1-mega.43, companion 9.6.40. Existing
+Release: bridge 1.6.63, vendored client 4.1.1-mega.43, companion 9.6.40. Existing
 Schema-21 entities are retained. These are adaptations to our transport, not installation of
 the successor SDK alongside the existing Eufy account session.
 
