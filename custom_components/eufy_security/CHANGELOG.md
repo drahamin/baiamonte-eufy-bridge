@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.39 — 2026-11-04
+
+- Align Pro evidence waits with the bridge's bounded 60-second helper; the Security page no longer
+  abandons a valid Pro roster/thumbnail query after 25 seconds.
+- Bound Pro and other HomeBase queries independently, and avoid retrying the Pro through an
+  unsupported direct P2P recording index after its supported helper fallback has completed.
+
 ## 9.6.38 — 2026-11-01
 
 - Defer and replay the bridge's bounded pre-inventory event burst instead of letting an early

@@ -145,6 +145,7 @@ def build_event_query(
     end_seconds: int,
     segment: int,
     device_serial: str | None = None,
+    transaction: str | None = None,
 ) -> bytes:
     where: list[dict[str, Any]] = []
     if device_serial:
@@ -172,14 +173,14 @@ def build_event_query(
         {
             "cmd": 10066,
             "table": "history_record_info",
-            "transaction": str(int(time.time())),
+            "transaction": transaction or str(time.time_ns() // 1_000_000),
             "payload": query,
         },
         segment,
     )
 
 
-def build_table_query(account_id: str, table: str, segment: int) -> bytes:
+def build_table_query(account_id: str, table: str, segment: int, transaction: str | None = None) -> bytes:
     """Read one bounded HomeBase table through the Pro command channel."""
     return build_command(
         account_id,
@@ -187,7 +188,7 @@ def build_table_query(account_id: str, table: str, segment: int) -> bytes:
         {
             "cmd": 10000,
             "table": table,
-            "transaction": str(int(time.time())),
+            "transaction": transaction or str(time.time_ns() // 1_000_000),
             "payload": {
                 "count": MAX_PERSON_RECORDS,
                 "start_date": "",
@@ -396,6 +397,12 @@ class EventCollector:
         self.error: Exception | None = None
         self.segment = 0
         self.phase = "roster"
+        self.transaction_clock = 0
+        self.pending_transaction: str | None = None
+        self.roster_transaction: str | None = None
+        self.roster_received = False
+        self.event_reply_timer: asyncio.TimerHandle | None = None
+        self.event_read_mode = "aic"
         self.start_seconds = int(config["startSeconds"])
         self.end_seconds = int(config["endSeconds"])
         self.archive_start = self.end_seconds - 15 * 365 * 24 * 60 * 60
@@ -404,8 +411,14 @@ class EventCollector:
         self.segment = (self.segment % 250) + 1
         return self.segment
 
+    def next_transaction(self) -> str:
+        self.transaction_clock = max(self.transaction_clock + 1, time.time_ns() // 1_000_000)
+        self.pending_transaction = str(self.transaction_clock)
+        return self.pending_transaction
+
     def send_initial(self) -> None:
-        self.oracle.send(build_table_query(self.account_id, "person_basic_info", self.next_segment()))
+        self.roster_transaction = self.next_transaction()
+        self.oracle.send(build_table_query(self.account_id, "person_basic_info", self.next_segment(), self.roster_transaction))
 
     def send_event_initial(self) -> None:
         self.oracle.send(
@@ -414,8 +427,24 @@ class EventCollector:
                 self.start_seconds,
                 self.end_seconds,
                 self.next_segment(),
+                transaction=self.next_transaction(),
             )
         )
+        try:
+            self.event_reply_timer = asyncio.get_running_loop().call_later(8, self.send_event_fallback)
+        except RuntimeError:
+            # Packet-builder regression tests run without a live event loop.
+            pass
+
+    def send_event_fallback(self) -> None:
+        """A firmware that ignores the AIC query may still expose its stored event covers."""
+        if self.done.is_set() or self.phase != "initial":
+            return
+        if self.event_reply_timer is not None:
+            self.event_reply_timer.cancel()
+            self.event_reply_timer = None
+        self.event_read_mode = "history_table"
+        self.oracle.send(build_table_query(self.account_id, "history_record_info", self.next_segment(), self.next_transaction()))
 
     @staticmethod
     def parse_tables(value: Any) -> list[dict[str, Any]]:
@@ -446,7 +475,26 @@ class EventCollector:
             return 0
 
     def add_response(self, response: dict[str, Any]) -> None:
+        transaction = str(response.get("transaction", ""))
+        is_roster = transaction == self.roster_transaction and not self.roster_received
+        if not transaction or (transaction != self.pending_transaction and not is_roster):
+            return
+        if self.done.is_set():
+            return
+        if response.get("mIntRet", 0) != 0:
+            if is_roster:
+                self.skip_optional_roster()
+            elif self.phase == "initial" and self.event_read_mode == "aic":
+                self.send_event_fallback()
+            else:
+                self.error = RuntimeError("HomeBase Pro event query failed")
+                self.done.set()
+            return
         tables = self.parse_tables(response.get("data"))
+        # Whole-table reads return raw rows, while AIC reads return named table wrappers.
+        # The echoed transaction determines which requested table owns these rows.
+        if response.get("cmd") in {10000, 10066} and not any("table_name" in item for item in tables):
+            tables = [{"table_name": "person_basic_info" if is_roster else "history_record_info", "payload": tables}]
         table_names = {
             item.get("table_name")
             for item in tables
@@ -458,6 +506,9 @@ class EventCollector:
             & table_names
         )
         if is_roster_response:
+            if not is_roster:
+                return
+            self.roster_received = True
             self.people.extend(self.rows(tables, "person_basic_info")[:MAX_PERSON_RECORDS])
             if self.phase == "roster":
                 self.phase = "initial"
@@ -472,6 +523,14 @@ class EventCollector:
             self.skip_optional_roster()
             if not is_event_response:
                 return
+        elif transaction == self.roster_transaction:
+            return
+        if self.phase not in {"initial", "filters"} or not is_event_response:
+            return
+        self.pending_transaction = None
+        if self.event_reply_timer is not None:
+            self.event_reply_timer.cancel()
+            self.event_reply_timer = None
         history = self.rows(tables, "history_record_info")
         pictures = self.rows(tables, "record_crop_picture_info")
         smart = self.rows(tables, "smart_search_info")
@@ -523,6 +582,7 @@ class EventCollector:
                     self.end_seconds,
                     self.next_segment(),
                     serial,
+                    transaction=self.next_transaction(),
                 )
             )
             return
@@ -538,6 +598,8 @@ class EventCollector:
     def send_next_thumbnail(self) -> None:
         while self.thumbnail_queue and len(self.thumbnail_by_path) < MAX_THUMBNAIL_IN_FLIGHT:
             serial, path = self.thumbnail_queue.pop(0)
+            if path in self.thumbnail_by_path:
+                continue
             self.thumbnail_by_path[path] = serial
             self.oracle.send(build_command(self.account_id, 1308, [{"file": path}], self.next_segment()))
             self.thumbnail_timeouts[path] = asyncio.get_running_loop().call_later(
@@ -560,6 +622,8 @@ class EventCollector:
         self.thumbnail_responses += 1
         try:
             value = json.loads(payload.split(b"\0", 1)[0])
+            if not isinstance(value, dict) or not isinstance(value.get("file"), str):
+                return
             path = value.get("file")
             content = value.get("content")
             serial = self.thumbnail_by_path.pop(path, None)
@@ -583,7 +647,7 @@ class EventCollector:
                     or (decoded.startswith(b"RIFF") and decoded[8:12] == b"WEBP")
                 ):
                     record = self.latest.get(serial)
-                    if record is not None:
+                    if record is not None and record.get("thumb_path") == path:
                         record["thumb_data"] = content
                         self.thumbnail_images += 1
         except (ValueError, TypeError, json.JSONDecodeError):
@@ -732,11 +796,8 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
             elif command == 1306:
                 try:
                     response = json.loads(payload.split(b"\0", 1)[0])
-                    if response.get("mIntRet", 0) != 0:
-                        if collector.phase == "roster":
-                            collector.skip_optional_roster()
-                            continue
-                        raise RuntimeError("HomeBase Pro event query failed")
+                    if not isinstance(response, dict):
+                        continue
                     collector.add_response(response)
                 except (ValueError, TypeError, json.JSONDecodeError) as error:
                     collector.error = RuntimeError("HomeBase Pro returned invalid event data")
@@ -851,10 +912,24 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
                                     await add_candidate(candidate)
 
             receiver = asyncio.create_task(receive_signals())
+            def signalling_finished(task: asyncio.Task) -> None:
+                if not collector.done.is_set() and not task.cancelled():
+                    collector.error = RuntimeError("HomeBase Pro signalling connection closed")
+                    # Retrieve an exception so it cannot become an unhandled task warning.
+                    collector.error.__cause__ = task.exception()
+                    collector.done.set()
+            receiver.add_done_callback(signalling_finished)
             await asyncio.wait_for(collector.done.wait(), timeout=55)
             receiver.cancel()
             await asyncio.gather(receiver, return_exceptions=True)
     finally:
+        if collector.event_reply_timer is not None:
+            collector.event_reply_timer.cancel()
+        if "receiver" in locals():
+            receiver.cancel()
+            await asyncio.gather(receiver, return_exceptions=True)
+        for handle in collector.thumbnail_timeouts.values():
+            handle.cancel()
         if heartbeat:
             heartbeat.cancel()
         consumer.cancel()
@@ -870,6 +945,7 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
         "thumbnailMatches": collector.thumbnail_matches,
         "thumbnailDecoded": collector.thumbnail_decoded,
         "thumbnailImages": collector.thumbnail_images,
+        "databaseReadMode": collector.event_read_mode,
     }
 
 

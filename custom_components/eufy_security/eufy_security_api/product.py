@@ -264,7 +264,7 @@ class Station(Product):
                 self.serial_no, start_date, end_date, count
             )
             return await asyncio.wait_for(
-                self._database_query_aic_events_future, timeout=45
+                self._database_query_aic_events_future, timeout=63
             )
         finally:
             self._database_query_aic_events_future = None

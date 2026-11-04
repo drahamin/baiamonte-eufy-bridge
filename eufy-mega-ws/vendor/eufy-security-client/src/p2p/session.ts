@@ -41,7 +41,6 @@ import {
   getRSAPrivateKey,
   decryptAESData,
   getNewRSAPrivateKey,
-  findStartCode,
   isIFrame,
   generateLockSequence,
   decodeLockPayload,
@@ -339,7 +338,8 @@ export const normalizeAicEventData = (value: unknown): AicEventData => {
   for (const record of result.record_list) {
     const deviceSN = aicString(record, ["device_sn", "deviceSn", "device_serial", "deviceSerial"]);
     const channel = aicChannel(record);
-    const identity = deviceSN !== undefined ? `serial:${deviceSN}` : channel !== undefined ? `channel:${channel}` : undefined;
+    const identity =
+      deviceSN !== undefined ? `serial:${deviceSN}` : channel !== undefined ? `channel:${channel}` : undefined;
     if (identity === undefined) continue;
     const current = latestByDevice.get(identity);
     if (current === undefined) latestByDevice.set(identity, { event: record, count: 1, device_sn: deviceSN, channel });
@@ -371,6 +371,7 @@ import { CommandName, ParamType, Station } from "../http";
 import { getError, parseJSON } from "../utils";
 import { rootP2PLogger } from "../logging";
 import { normalizeAdtsFrames } from "./adts";
+import { VideoUnitAssembler } from "./video";
 
 export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   private readonly MAX_RETRIES = 10;
@@ -404,7 +405,6 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   private readonly UDP_RECVBUFFERSIZE_BYTES = 4 * 1024 * 1024;
   private readonly MAX_PAYLOAD_BYTES = 1028;
   private readonly MAX_PACKET_BYTES = 1024;
-  private readonly MAX_VIDEO_PACKET_BYTES = 655360;
 
   private readonly P2P_DATA_HEADER_BYTES = 16;
 
@@ -425,6 +425,8 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   private connected = false;
   private connecting = false;
   private terminating = false;
+  private disposed = false;
+  private readonly videoUnits = new VideoUnitAssembler();
   private p2pTurnHandshaking: {
     [host: string]: boolean;
   } = {};
@@ -571,6 +573,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   }
 
   private _initialize(): void {
+    this.videoUnits.reset();
     let rsaKey: NodeRSA | null;
 
     this.connected = false;
@@ -938,12 +941,18 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   }
 
   public async connect(host?: string): Promise<void> {
+    if (this.disposed) return;
     if (!this.connected && !this.connecting && this.rawStation.p2p_did !== undefined) {
       this.connecting = true;
       this.terminating = false;
       await this.renewDSKKey();
+      if (this.disposed) return;
       if (!this.binded)
         this.socket.bind(this.listeningPort, () => {
+          if (this.disposed) {
+            this.socket.close();
+            return;
+          }
           this.binded = true;
           try {
             this.socket.setRecvBufferSize(this.UDP_RECVBUFFERSIZE_BYTES);
@@ -1213,10 +1222,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           stringPayload = JSON.stringify({
             commandType: ParamType.COMMAND_START_LIVESTREAM,
             data: {
-              accountId:
-                original.data?.accountId ??
-                original.data?.account_id ??
-                this.rawStation.member.admin_user_id,
+              accountId: original.data?.accountId ?? original.data?.account_id ?? this.rawStation.member.admin_user_id,
               encryptkey: original.data?.encryptkey ?? "",
               msg_id: clearCommandNumber,
               streamtype: 1,
@@ -1470,6 +1476,14 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   }
 
   private handleMsg(msg: Buffer, rinfo: RemoteInfo): void {
+    if (this.disposed || msg.length < 4 || msg[0] !== 0xf1) return;
+    // Every handler below reads the declared payload. Reject truncated datagrams
+    // before their command-specific reads can throw from the UDP callback.
+    if (msg.length < 4 + msg.readUInt16BE(2)) return;
+    if (hasHeader(msg, ResponseMessageType.LOCAL_LOOKUP_RESP) && msg.length < 24) return;
+    if (hasHeader(msg, ResponseMessageType.LOOKUP_ADDR) && msg.length < 12) return;
+    if (hasHeader(msg, ResponseMessageType.DATA) && msg.length < 8) return;
+    if (hasHeader(msg, ResponseMessageType.ACK) && (msg.length < 8 || msg.length < 8 + msg.readUInt16BE(6) * 2)) return;
     if (hasHeader(msg, ResponseMessageType.LOCAL_LOOKUP_RESP)) {
       if (!this.connected) {
         this._clearLookupTimeout();
@@ -2542,6 +2556,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     if (!this.currentMessageState[message.dataType].invalidStream) {
       switch (message.commandId) {
         case CommandType.CMD_VIDEO_FRAME:
+          if (message.data.length < 22) return;
           this.waitForStreamData(message.dataType, true);
 
           const videoMetaData: P2PDataMessageVideo = {
@@ -2555,7 +2570,9 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             aesKey: "",
           };
           const data_length = message.data.readUInt32LE();
-          const isKeyFrame = message.data.subarray(4, 5).readUInt8() === 1 ? true : false;
+          // 0x40 identifies RSA-wrapped keyframes on current wired doorbells.
+          // Keep the bit-0 meaning inside the authenticated media decoder.
+          const isKeyFrame = (message.data[4] & 0x41) !== 0;
 
           videoMetaData.videoDataLength = message.data.subarray(0, 4).readUInt32LE();
           videoMetaData.streamType = message.data.subarray(5, 6).readUInt8();
@@ -2764,52 +2781,23 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           }
 
           if (message.dataType === P2PDataType.VIDEO) {
-            if (findStartCode(video_data)) {
-              rootP2PLogger.trace(`Handle DATA ${P2PDataType[message.dataType]} - CMD_VIDEO_FRAME: startcode found`, {
-                stationSN: this.rawStation.station_sn,
-                isKeyFrame: isKeyFrame,
-                preFrameVideoDataLength: this.currentMessageState[message.dataType].preFrameVideoData.length,
-              });
-              if (!this.currentMessageState[message.dataType].receivedFirstIFrame)
-                this.currentMessageState[message.dataType].receivedFirstIFrame = this.isIFrame(video_data, isKeyFrame);
-
-              if (this.currentMessageState[message.dataType].receivedFirstIFrame) {
-                if (this.currentMessageState[message.dataType].preFrameVideoData.length > this.MAX_VIDEO_PACKET_BYTES)
-                  this.currentMessageState[message.dataType].preFrameVideoData = Buffer.from([]);
-
-                if (this.currentMessageState[message.dataType].preFrameVideoData.length > 0) {
-                  this.currentMessageState[message.dataType].videoStream?.push(
-                    this.currentMessageState[message.dataType].preFrameVideoData
-                  );
-                }
-                this.currentMessageState[message.dataType].preFrameVideoData = Buffer.from(video_data);
-              } else {
-                rootP2PLogger.trace(
-                  `Handle DATA ${P2PDataType[message.dataType]} - CMD_VIDEO_FRAME: Skipping because first frame is not an I frame.`,
-                  { stationSN: this.rawStation.station_sn }
-                );
-              }
-            } else {
-              rootP2PLogger.trace(
-                `Handle DATA ${P2PDataType[message.dataType]} - CMD_VIDEO_FRAME: No startcode found`,
-                {
-                  stationSN: this.rawStation.station_sn,
-                  isKeyFrame: isKeyFrame,
-                  preFrameVideoDataLength: this.currentMessageState[message.dataType].preFrameVideoData.length,
-                }
-              );
-              if (this.currentMessageState[message.dataType].preFrameVideoData.length > 0) {
-                this.currentMessageState[message.dataType].preFrameVideoData = Buffer.concat([
-                  this.currentMessageState[message.dataType].preFrameVideoData,
-                  video_data,
-                ]);
-              }
+            const unit = this.videoUnits.push(
+              video_data,
+              videoMetaData.videoSeqNo,
+              videoMetaData.videoTimestamp,
+              isKeyFrame
+            );
+            if (unit) {
+              const state = this.currentMessageState[message.dataType];
+              if (!state.receivedFirstIFrame) state.receivedFirstIFrame = this.isIFrame(unit.data, unit.keyframe);
+              if (state.receivedFirstIFrame) state.videoStream?.push(unit.data);
             }
           } else if (message.dataType === P2PDataType.BINARY) {
             this.currentMessageState[message.dataType].videoStream?.push(video_data);
           }
           break;
         case CommandType.CMD_AUDIO_FRAME:
+          if (message.data.length <= 16) return;
           this.waitForStreamData(message.dataType, true);
 
           const audioMetaData: P2PDataMessageAudio = {
@@ -4599,12 +4587,29 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     }
   }
 
+  /** Permanently release a camera-only session, including a socket still binding. */
+  public async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    await this.close();
+    this._disconnected();
+    try {
+      this.socket.close();
+    } catch {
+      /* An unbound socket owns no port. */
+    }
+  }
+
   private getHeartbeatInterval(): number {
     return this.HEARTBEAT_INTERVAL;
   }
 
   private onClose(): void {
     this.socket.removeAllListeners();
+    if (this.disposed) {
+      this.binded = false;
+      return;
+    }
     this.socket = createSocket("udp4");
     this.socket.on("message", (msg, rinfo) => this.handleMsg(msg, rinfo));
     this.socket.on("error", (error) => this.onError(error));
@@ -4737,6 +4742,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   }
 
   private endStream(datatype: P2PDataType, sendStopCommand = false): void {
+    if (datatype === P2PDataType.VIDEO) this.videoUnits.reset();
     if (this.currentMessageState[datatype].p2pStreaming) {
       if (sendStopCommand) {
         switch (datatype) {

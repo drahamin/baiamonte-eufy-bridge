@@ -25,7 +25,26 @@ describe("EufySecurity snapshot cache", () => {
     Object.assign(security as unknown as Record<string, unknown>, {
       config: { snapshotCache: true, persistentDir: cacheRoot },
       SNAPSHOT_CACHE_MAX_BYTES: 10 * 1024 * 1024,
+      latestSnapshotQueryAt: new Map(),
+      latestSnapshotStationCursor: 0,
     });
+  });
+
+  it("retries silent connected stations fairly and revisits stable cover URLs without starting video", () => {
+    const stations = Array.from({ length: 3 }, (_, i) => ({ getSerial: () => `station-${i}`,
+      isConnected: () => true, isStationHomeBasePro: () => false, hasCommand: () => true,
+      databaseQueryLatestInfo: jest.fn() }));
+    const queue = jest.fn();
+    Object.assign(security as any, { stations: Object.fromEntries(stations.map((s, i) => [i, s])),
+      devices: { camera: { isCamera: () => true, hasProperty: () => true,
+        getPropertyValue: () => "https://example.invalid/stable.jpg" } }, queueDashboardSnapshot: queue });
+    (security as any).refreshStoredSnapshots();
+    (security as any).refreshStoredSnapshots();
+    expect(stations.map(s => s.databaseQueryLatestInfo.mock.calls.length)).toEqual([1, 1, 1]);
+    expect(queue).toHaveBeenCalledTimes(2);
+    (security as any).latestSnapshotQueryAt.clear();
+    (security as any).refreshStoredSnapshots();
+    expect(stations.reduce((n, s) => n + s.databaseQueryLatestInfo.mock.calls.length, 0)).toBe(5);
   });
 
   afterEach(() => {
