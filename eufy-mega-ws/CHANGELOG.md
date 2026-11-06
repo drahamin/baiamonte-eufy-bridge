@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.69 — 2026-11-06
+
+- Give optional Pro thumbnail file reads a six-second phase budget and retain
+  completed recording and roster data when file requests do not answer. Cancel
+  pending file timers and release the session when that budget expires.
+
 ## 1.6.68 — 2026-11-06
 
 - Request latest covers for cameras actually observed in the Pro's authenticated

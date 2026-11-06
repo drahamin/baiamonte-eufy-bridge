@@ -300,3 +300,25 @@ if __name__ == "__main__":
     test_backfill_is_bounded_and_excludes_current_cameras()
     test_backfill_rotates_without_duplicates()
     test_empty_or_zero_limit_backfill_is_safe()
+
+
+def test_optional_cover_budget_preserves_metadata_and_stops_pending_reads():
+    async def exercise():
+        sent = []
+        oracle = type("FakeOracle", (), {"send": lambda self, command: sent.append(command)})()
+        collector = COLLECTOR_NAMESPACE["EventCollector"]({"accountId": "account", "startSeconds": 0, "endSeconds": 1}, oracle)
+        collector.records = [{"record_id": 1, "device_sn": "camera"}]
+        collector.people = [{"person_id": 7, "person_name": "Example"}]
+        collector.latest = {str(i): {"record_id": i + 10, "thumb_path": f"/{i}.jpg"} for i in range(30)}
+        collector.send_next_filter_or_thumbnails()
+        assert len(sent) == 4 and not collector.done.is_set()
+        timers = list(collector.thumbnail_timeouts.values())
+        collector.finish_thumbnails()
+        assert collector.done.is_set()
+        assert not collector.thumbnail_queue and not collector.thumbnail_by_path
+        assert all(timer.cancelled() for timer in timers)
+        assert collector.thumbnail_budget_timer is None
+        assert collector.records[0]["record_id"] == 1 and collector.people[0]["person_id"] == 7
+        collector.send_next_thumbnail()
+        assert len(sent) == 4
+    asyncio.run(exercise())
