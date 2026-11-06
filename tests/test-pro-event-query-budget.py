@@ -190,6 +190,28 @@ def test_thumbnail_reads_are_bounded_and_one_timeout_does_not_block_the_batch() 
     asyncio.run(exercise())
 
 
+def test_observed_pro_camera_cover_is_not_excluded_by_stale_assignment_inventory():
+    class FakeOracle:
+        def __init__(self): self.frames = []
+        def send(self, frame): self.frames.append(frame)
+    async def exercise():
+        oracle = FakeOracle()
+        collector = COLLECTOR_NAMESPACE["EventCollector"]({
+            "accountId": "account", "expectedDeviceSerials": ["stale-inventory-camera"],
+            "startSeconds": 1, "endSeconds": 10,
+        }, oracle)
+        collector.phase = "filters"
+        collector.latest = {"observed-camera": {"record_id": 1, "thumb_path": "/observed.jpg"}}
+        collector.send_next_filter_or_thumbnails()
+        assert collector.thumbnail_by_path == {"/observed.jpg": "observed-camera"}
+        body = json.loads(oracle.frames[0][16:])
+        assert body["cmd"] == 1308 and body["payload"] == [{"file": "/observed.jpg"}]
+        for timer in collector.thumbnail_timeouts.values(): timer.cancel()
+        collector.thumbnail_timed_out("/observed.jpg")
+        assert collector.done.is_set()
+    asyncio.run(exercise())
+
+
 def test_person_roster_uses_the_bounded_homebase_table_wire_shape() -> None:
     frame = WIRE_NAMESPACE["build_table_query"]("account", "person_basic_info", 7)
     assert frame[:4] == b"XZYH"

@@ -632,8 +632,10 @@ class EventCollector:
             )
             return
         self.phase = "thumbnails"
-        targets = self.expected if self.expected else set(self.latest)
-        for serial in sorted(targets):
+        # The compatibility inventory can lag a camera's move to this Pro. The
+        # station's own authenticated table is authoritative for observed covers.
+        targets = sorted(self.latest)[:MAX_RESULT_RECORDS]
+        for serial in targets:
             record = self.latest.get(serial)
             path = record.get("thumb_path") if isinstance(record, dict) else None
             if isinstance(path, str) and path and len(path) <= 4096:
