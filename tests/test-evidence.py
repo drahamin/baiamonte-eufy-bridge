@@ -85,6 +85,11 @@ def test_latest_person_is_not_assigned_to_an_older_record():
     assert evidence.aic_ai_details(rows[0])["recognized_people"] == []
 
 
+def test_a_reused_path_without_a_capture_time_does_not_prove_same_event():
+    record = {"history": {"thumb_path": "/cover"}, "latest_update": {"event": {"thumb_path": "/cover"}}}
+    assert len(evidence.aic_thumbnail_sources(record)) == 1
+
+
 def test_current_app_cloud_snapshot_is_advertised() -> None:
     """Current app snapshot fields must produce a protected thumbnail route."""
     normalized = evidence.normalize_cloud_event(

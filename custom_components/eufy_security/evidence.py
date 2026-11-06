@@ -406,7 +406,10 @@ def aic_thumbnail_sources(record: dict[str, Any]) -> list[dict[str, Any]]:
             return str(expected) == str(actual)
         expected_path = _field(history, "thumb_path", "thumbPath")
         actual_path = _field(candidate, "thumb_path", "thumbPath")
-        return bool(expected_path and actual_path and expected_path == actual_path)
+        expected_time = _iso(_field(history, "start_timestamp", "startTimestamp", "start_time", "startTime"))
+        actual_time = _iso(_field(candidate, "start_timestamp", "startTimestamp", "start_time", "startTime"))
+        return bool(expected_path and actual_path and expected_path == actual_path
+                    and expected_time and expected_time == actual_time)
 
     if same_record(latest_event):
         sources.extend([latest_event, latest])
