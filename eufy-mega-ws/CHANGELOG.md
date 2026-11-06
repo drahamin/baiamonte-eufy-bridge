@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.65 — 2026-11-06
+
+- Bundle Security 9.6.42: consume the Pro's bounded embedded thumbnails before network fallback,
+  and prevent a newer same-camera event's image or identity from being assigned to an older recording.
+
 ## 1.6.64 — 2026-11-06
 
 - Discover the Pro RTC service region with the portal WEB identity, separately from account country.

@@ -60,6 +60,31 @@ def test_s380_recording_classification_is_opt_in_and_does_not_invent_identity():
     assert evidence.local_ai_details({"trigger_type": 2}, s380_person_from_record=True)["categories"] == []
 
 
+def test_old_record_does_not_borrow_new_same_camera_cover():
+    old = {"record_id": 10, "thumb_path": "/old"}
+    latest = {"record_id": 11, "thumb_path": "/new", "thumb_data": "new-pixels"}
+    record = {"history": old, "latest_update": {"event": latest, "snapshot_cloud": "new-url"}}
+    assert evidence.aic_thumbnail_sources(record) == [old]
+    record["latest_update"]["event"] = {**latest, "record_id": 10}
+    assert evidence.aic_thumbnail_sources(record)[1]["thumb_data"] == "new-pixels"
+
+
+def test_record_id_mismatch_wins_over_a_reused_path():
+    record = {"history": {"record_id": 1, "thumb_path": "/cover"},
+              "latest_update": {"event": {"record_id": 2, "thumb_path": "/cover"}}}
+    assert len(evidence.aic_thumbnail_sources(record)) == 1
+
+
+def test_latest_person_is_not_assigned_to_an_older_record():
+    rows = evidence.join_aic_event_data({
+        "record_list": [{"record_id": 1, "device_sn": "cam"}],
+        "latest_updates": [{"device_sn": "cam", "event": {"record_id": 2, "person_id": 7}}],
+        "personBasicInfoList": [{"person_id": 7, "name": "Alice"}],
+    })
+    assert rows[0]["latest_update"] == {}
+    assert evidence.aic_ai_details(rows[0])["recognized_people"] == []
+
+
 def test_current_app_cloud_snapshot_is_advertised() -> None:
     """Current app snapshot fields must produce a protected thumbnail route."""
     normalized = evidence.normalize_cloud_event(

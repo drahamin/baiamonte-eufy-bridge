@@ -326,6 +326,12 @@ def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:
             or (evidence_id is not None and _field(item, "evidence_id", "evidenceId") == evidence_id)
         )
 
+    def latest_conflicts(history: dict[str, Any], item: dict[str, Any]) -> bool:
+        candidate = item.get("event") if isinstance(item.get("event"), dict) else item
+        expected = _field(history, "record_id", "recordId")
+        actual = _field(candidate, "record_id", "recordId")
+        return expected is not None and actual is not None and str(expected) != str(actual)
+
     result = []
     for history in histories[:200]:
         if not isinstance(history, dict):
@@ -337,6 +343,7 @@ def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:
                 item
                 for item in latest[:200]
                 if isinstance(item, dict)
+                and not latest_conflicts(history, item)
                 and (
                     matches(history, item)
                     or (
@@ -382,6 +389,30 @@ def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+def aic_thumbnail_sources(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep a recording's image separate from a newer same-camera latest update."""
+    history = record.get("history") if isinstance(record.get("history"), dict) else record
+    pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
+    latest = record.get("latest_update") if isinstance(record.get("latest_update"), dict) else {}
+    latest_event = latest.get("event") if isinstance(latest.get("event"), dict) else {}
+    sources = [history, *(item for item in pictures[:128] if isinstance(item, dict))]
+
+    def same_record(candidate: dict[str, Any]) -> bool:
+        expected = _field(history, "record_id", "recordId")
+        actual = _field(candidate, "record_id", "recordId")
+        if expected is not None and actual is not None:
+            return str(expected) == str(actual)
+        expected_path = _field(history, "thumb_path", "thumbPath")
+        actual_path = _field(candidate, "thumb_path", "thumbPath")
+        return bool(expected_path and actual_path and expected_path == actual_path)
+
+    if same_record(latest_event):
+        sources.extend([latest_event, latest])
+    elif same_record(latest):
+        sources.append(latest)
+    return sources
 
 
 def aic_ai_details(record: dict[str, Any]) -> dict[str, Any]:

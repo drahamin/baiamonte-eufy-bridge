@@ -33,6 +33,7 @@ from .eufy_security_api.exceptions import (
 from .model import Config
 from .evidence import (
     aic_ai_details,
+    aic_thumbnail_sources,
     cloud_ai_details,
     event_merge_key,
     join_aic_event_data,
@@ -45,6 +46,7 @@ from .evidence import (
 from .snapshot import (
     cached_snapshot_outranks_current,
     disk_cache_source,
+    decode_inline_snapshot,
     evidence_identity,
     is_valid_snapshot,
     product_snapshot_bytes,
@@ -1151,24 +1153,17 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             ]
         elif source == "aic":
             history = record.get("history") if isinstance(record.get("history"), dict) else record
-            pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
-            latest_update = (
-                record.get("latest_update")
-                if isinstance(record.get("latest_update"), dict)
-                else {}
-            )
-            latest_event = (
-                latest_update.get("event")
-                if isinstance(latest_update.get("event"), dict)
-                else {}
-            )
             station_serial = record.get("station_sn") or self._record_field(
                 history, "station_sn", "stationSn", "aic_sn", "aicSn"
             )
-            # Prefer the Pro's signed cloud snapshot, then try its local thumbnail
-            # and crop paths. Current firmware can put these fields on history,
-            # latest_update, or latest_update.event.
-            sources = (history, latest_update, latest_event, *pictures)
+            # Prefer the exact recording's embedded Pro image, then signed cloud
+            # and local paths. A same-camera latest update can be a different event.
+            sources = aic_thumbnail_sources(record)
+            for item in sources:
+                inline = decode_inline_snapshot(item.get("thumb_data"))
+                if self._valid_snapshot(inline):
+                    mime = "image/png" if inline.startswith(b"\x89PNG") else "image/webp" if inline.startswith(b"RIFF") else "image/jpeg"
+                    return inline, mime
             files = []
             for names in (
                 ("snapshot_cloud", "snapshotCloud"),

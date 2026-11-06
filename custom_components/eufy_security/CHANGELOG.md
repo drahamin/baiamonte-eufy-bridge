@@ -1,5 +1,10 @@
 # Changelog
 
+## 9.6.42 — 2026-11-06
+
+- Use the exact Pro recording's embedded thumbnail, including firmware base64 whitespace/data URIs.
+- Exclude conflicting latest-record images and recognition identities from older recording rows.
+
 ## 9.6.41 — 2026-11-06
 
 - Add administrator HomeBase face-roster and recording-table views, protected media actions and HA person links.
