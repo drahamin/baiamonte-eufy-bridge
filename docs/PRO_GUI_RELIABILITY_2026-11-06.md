@@ -11,6 +11,10 @@ Bridge 1.6.64 / client 4.1.1-mega.44 / Security 9.6.41.
   released gateway's `nvr-service-region.ts`. Baiamonte's current country is US and
   its WEB estimate also returns US: this fix is not evidence that its remaining
   Pro query failure is caused by a regional mismatch.
+- Portal action messages now use the current SDK's HMAC-SHA256 account proof,
+  sharing one timestamp between proof and payload, and its auth/session message
+  IDs. This replaces the helper's random MD5 placeholder. The transport envelope
+  contains the account token as the SDK's wire requires; it is never logged.
 - The authenticated Security panel offers an administrator-only `homebase_tables`
   read, a bounded face roster with unique exact HA person links, and a searchable
   recording table with existing protected media actions. It exposes no database

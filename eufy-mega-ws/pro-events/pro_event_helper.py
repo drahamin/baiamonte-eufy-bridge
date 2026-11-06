@@ -6,9 +6,9 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import hmac
 import json
 import os
-import random
 import re
 import struct
 import sys
@@ -366,13 +366,16 @@ class Oracle:
 
 
 class Signal:
-    def __init__(self, websocket, station_serial: str, session_id: str) -> None:
+    def __init__(self, websocket, station_serial: str, session_id: str, account_id: str, token: str) -> None:
         self.websocket = websocket
         self.station_serial = station_serial
         self.session_id = session_id
+        self.account_id = account_id
+        self.token = token
 
     async def send(self, inner: dict[str, Any]) -> None:
-        await self.websocket.send(json.dumps({"msgid": str(uuid.uuid4()), "data": json.dumps(inner)}))
+        message_id = "0" if inner.get("action") == 1 else f"{self.token}_{uuid.uuid4().hex}"
+        await self.websocket.send(json.dumps({"msgid": message_id, "data": json.dumps(inner)}))
 
     async def join(self) -> None:
         await self.send(
@@ -387,6 +390,7 @@ class Signal:
         )
 
     async def action(self, data_type: str, data: dict[str, Any]) -> None:
+        timestamp = int(time.time())
         await self.send(
             {
                 "code": 200,
@@ -398,14 +402,14 @@ class Signal:
                 "isResponse": 0,
                 "dataType": data_type,
                 "source": "WEB",
-                "ts": int(time.time()),
-                "data": json.dumps(data),
+                "ts": timestamp,
+                "data": json.dumps({**data, "timestamp": timestamp, "account": self.account(timestamp)}),
             }
         )
 
-    @staticmethod
-    def account() -> str:
-        return hashlib.md5(str(random.random()).encode(), usedforsecurity=False).hexdigest()
+    def account(self, timestamp: int | None = None) -> str:
+        ts = int(time.time()) if timestamp is None else timestamp
+        return hmac.new(self.token.encode(), f"0{self.account_id}{ts}".encode(), hashlib.sha256).hexdigest()
 
 
 class EventCollector:
@@ -867,7 +871,7 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
             user_agent_header=USER_AGENT,
             max_size=4 * 1024 * 1024,
         ) as websocket:
-            signal = Signal(websocket, station_serial, session_id)
+            signal = Signal(websocket, station_serial, session_id, config["accountId"], token)
             await signal.join()
             answered = False
             pending_candidates: list[str] = []
