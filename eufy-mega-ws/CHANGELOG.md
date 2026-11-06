@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.64 — 2026-11-06
+
+- Discover the Pro RTC service region with the portal WEB identity, separately from account country.
+- Send S380 PTZ through the camera's active dedicated media session.
+- Bundle Security 9.6.41 with administrator roster/recording tables, optional S380 person recovery,
+  startup-safe evidence queries and honest snapshot/reachability metadata.
+
 ## 1.6.63 — 2026-11-04
 
 - Accept Pro portal framing padding after the declared body, matching the successor SDK parser.

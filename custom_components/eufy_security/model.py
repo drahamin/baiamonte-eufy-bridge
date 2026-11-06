@@ -48,6 +48,7 @@ class Config:
     rtsp_server_address: str = ConfigField.host.value
     dashboard_port: int = ConfigField.dashboard_port.value
     show_sidebar_panel: bool = ConfigField.show_sidebar_panel.value
+    s380_person_from_record: bool = False
     no_stream_in_hass: bool = ConfigField.no_stream_in_hass.value
     stream_linger_seconds: int = ConfigField.stream_linger_seconds.value
     name_for_custom1: str = ConfigField.name_for_custom1.value

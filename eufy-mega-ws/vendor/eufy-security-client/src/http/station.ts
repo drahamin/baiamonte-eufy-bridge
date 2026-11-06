@@ -2574,6 +2574,14 @@ export class Station extends TypedEmitter<StationEvents> {
       });
     }
 
+    // S380 video owns an independent per-camera connection. Use that already
+    // awake session for PTZ; do not cold-connect the control or a sibling camera.
+    const media = this.mediaStations.get(device.getChannel());
+    if (media?.p2pSession.isLiveStreaming(device.getChannel())) {
+      media.panAndTilt(device, direction, command);
+      return;
+    }
+
     rootHTTPLogger.debug(`Station pan and tilt - sending command`, {
       stationSN: this.getSerial(),
       deviceSN: device.getSerial(),

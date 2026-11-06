@@ -115,13 +115,48 @@ def log(message: str) -> None:
 
 
 def smart_urls(station_serial: str, region: str) -> tuple[str, str]:
-    normalized = (region or "US").strip().lower().split("-", 1)[0]
+    normalized = region.strip().lower()
+    if normalized not in {"us", "eu", "ie"}:
+        raise ValueError("Unsupported HomeBase Pro service region")
     suffix = "" if normalized == "us" else f"-{normalized}"
     base = f"https://security-smart{suffix}.eufylife.com"
     return (
         f"{base.replace('https://', 'wss://', 1)}/v1/rtc/ws/join?reqtype=nvr",
         f"{base}/v1/smart/nvr/ws/sign?station_sn={station_serial}",
     )
+
+
+def portal_region(envelope: Any) -> str:
+    """Trust only the portal's known service domains, never a token destination from arbitrary JSON."""
+    domains = {f"mega-{region}-pr.eufy.com": region for region in ("us", "eu", "ie")}
+    if not isinstance(envelope, dict) or envelope.get("code") != 0:
+        raise RuntimeError("HomeBase Pro service region discovery failed")
+    data = envelope.get("data")
+    domain = data.get("domain") if isinstance(data, dict) else None
+    if not isinstance(domain, str) or domain not in domains:
+        raise RuntimeError("HomeBase Pro service region discovery failed")
+    return domains[domain]
+
+
+async def discover_portal_region(country: str) -> str:
+    """Ask as WEB without credentials; PHONE country and RTC cluster are distinct."""
+    bootstrap = "us" if country.lower() == "us" else "eu"
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"https://mega-{bootstrap}-pr.eufy.com/passport/estimate_domain",
+            headers={"App-Name": "eufy_mega", "Model-Type": "WEB"},
+            json={"ab": country.lower(), "mode": 1},
+            timeout=aiohttp.ClientTimeout(total=5),
+            allow_redirects=False,
+        ) as response:
+            if response.status != 200:
+                raise RuntimeError("HomeBase Pro service region discovery failed")
+            raw = bytearray()
+            async for chunk in response.content.iter_chunked(8192):
+                raw.extend(chunk)
+                if len(raw) > 65_536:
+                    raise RuntimeError("HomeBase Pro service region response exceeded limit")
+            return portal_region(json.loads(raw))
 
 
 def build_command(account_id: str, command: int, payload: Any, segment: int) -> bytes:
@@ -678,7 +713,7 @@ class EventCollector:
 
 async def sign_token(url: str, headers: dict[str, str]) -> str:
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as response:
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=20), allow_redirects=False) as response:
             raw = (await response.text()).strip()
             try:
                 body = json.loads(raw)
@@ -705,19 +740,22 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
     if not all(isinstance(item, str) and item for item in (token, user_id, station_serial, config.get("accountId"))):
         raise RuntimeError("HomeBase Pro event authentication is incomplete")
 
-    region = str(config.get("region") or "US")
+    country = str(config.get("region") or "US").upper()
+    region = (await discover_portal_region(country)).upper()
+    log(f"RTC service region: {region}")
     websocket_url, sign_url = smart_urls(station_serial, region)
     headers = {
         "X-Auth-Token": token,
         "GToken": hashlib.md5(user_id.encode(), usedforsecurity=False).hexdigest(),
         "App-Name": "eufy_mega",
         "Model-Type": "WEB",
-        "Web-Country": region,
+        "Web-Country": country,
         "User-Agent": USER_AGENT,
         "Origin": "https://security.eufy.com",
         "Referer": "https://security.eufy.com/",
     }
     signed = await sign_token(sign_url, headers)
+    log("RTC sign accepted")
     oracle = Oracle()
     await oracle.start()
     collector = EventCollector(config, oracle)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 9.6.41 — 2026-11-06
+
+- Add administrator HomeBase face-roster and recording-table views, protected media actions and HA person links.
+- Add opt-in, bounded S380 recording-based person recovery without guessing identity.
+- Return a retry warning for evidence queries during initialization and preserve unknown snapshot capture times.
+- Distinguish bridge availability, inventory presence and active camera reachability.
+
 ## 9.6.40 — 2026-11-04
 
 - Publish explicitly captured images after stream cleanup so an older stop/reconnect picture

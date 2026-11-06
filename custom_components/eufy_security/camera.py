@@ -289,6 +289,14 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             **super().extra_state_attributes,
             "model": self.product.model,
             "connected": bool(self.product.properties.get("connected", True)),
+            "bridge_available": self.coordinator.available,
+            "inventory_present": self.product.properties.get("connected"),
+            "camera_reachability": "active_stream" if self.is_streaming else "unknown",
+            "snapshot_time_basis": (
+                "unknown" if not snapshot_updated_at else
+                "received" if "push_event" in str(getattr(self.product, "snapshot_source", "")) else
+                "capture" if "explicit_live_capture" in str(getattr(self.product, "snapshot_source", "")) else "event_record"
+            ),
             "snapshot_available": snapshot is not None,
             "snapshot_updated_at": (
                 snapshot_updated_at.isoformat() if snapshot_updated_at else None
