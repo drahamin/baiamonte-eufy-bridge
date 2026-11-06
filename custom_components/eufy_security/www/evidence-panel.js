@@ -234,6 +234,7 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
     try {
       const response = await this._hass.fetchWithAuth(button.dataset.image);
       if (!response.ok) throw new Error(`Image request returned ${response.status}`);
+      if (!button.isConnected) return;
       const url = URL.createObjectURL(await response.blob());
       this._objectUrls.push(url);
       const image = document.createElement("img");
@@ -301,7 +302,7 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       const image = document.createElement("img");
       image.alt = this._hass.states[entityId]?.attributes?.friendly_name || entityId;
       image.src = `/api/camera_proxy_stream/${encodeURIComponent(entityId)}?token=${encodeURIComponent(token)}`;
-      preview.replaceChildren(image);
+      preview.replaceChildren(...[preview.querySelector(".snapshot-status"), image].filter(Boolean));
       button.textContent = "Stop";
       this._liveTimers.set(entityId, setTimeout(() => {
         const card = [...this.shadowRoot.querySelectorAll(".camera")]
@@ -342,12 +343,14 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       if (!response.ok) throw new Error(`Snapshot returned ${response.status}`);
       const blob = await response.blob();
       if (blob.size < 100) throw new Error("Snapshot was empty");
+      if (!card.isConnected) return;
       const url = URL.createObjectURL(blob);
       this._objectUrls.push(url);
       const image = document.createElement("img");
       image.alt = this._hass.states[entityId]?.attributes?.friendly_name || entityId;
       image.src = url;
-      card.querySelector(".camera-preview").replaceChildren(image);
+      const preview = card.querySelector(".camera-preview");
+      preview.replaceChildren(...[preview.querySelector(".snapshot-status"), image].filter(Boolean));
       const status = card.querySelector(".snapshot-status");
       if (status?.classList.contains("pending")) {
         status.className = "snapshot-status stale";
@@ -393,6 +396,8 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
 
   render() {
     if (!this._hass) return;
+    this._objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    this._objectUrls = [];
     this._rendered = true;
     const cameras = this.cameraEntities();
     const events = this._events.map((event) => {

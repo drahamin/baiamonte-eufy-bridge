@@ -311,7 +311,8 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         warnings: list[str] = []
         local_stations = []
         if not self.available or not self.stations:
-            return {"events": [], "count": 0, "warnings": ["Bridge inventory is initializing; retry shortly"], "local_homebase_models": []}
+            return {"source": source, "window_days": days, "events": [], "count": 0,
+                    "warnings": ["Bridge inventory is initializing; retry shortly"], "local_homebase_models": []}
 
         if source in {"hybrid", "cloud", "latest"}:
             try:
