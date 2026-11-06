@@ -1,5 +1,6 @@
 import { Station } from "../station";
 import { DeviceType } from "../types";
+import { PanTiltDirection } from "../../p2p/types";
 import { P2PClientProtocol } from "../../p2p/session";
 import { Readable } from "stream";
 
@@ -89,6 +90,22 @@ describe("S380 independent camera sessions", () => {
     jest.spyOn(station as any, "isLiveStreaming").mockReturnValue(true);
     expect(() => station.startLivestream(camera(0) as never)).toThrow();
     expect(sessions()).toHaveLength(1);
+    station.close();
+  });
+
+  it("routes PTZ through the active camera session and returns to control after stop", async () => {
+    const station = await Station.getInstance({} as never, raw as never);
+    const cam = { ...camera(0), getDeviceType: () => DeviceType.FLOODLIGHT_CAMERA_8423 };
+    station.startLivestream(cam as never);
+    const [control, media] = sessions();
+    media.isLiveStreaming = () => true;
+    media.sendCommandWithStringPayload.mockClear();
+    station.panAndTilt(cam as never, PanTiltDirection.LEFT);
+    expect(media.sendCommandWithStringPayload).toHaveBeenCalledTimes(1);
+    expect(control.sendCommandWithStringPayload).not.toHaveBeenCalled();
+    station.stopLivestream(cam as never);
+    station.panAndTilt(cam as never, PanTiltDirection.RIGHT);
+    expect(control.sendCommandWithStringPayload).toHaveBeenCalledTimes(1);
     station.close();
   });
 });

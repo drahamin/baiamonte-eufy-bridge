@@ -239,7 +239,7 @@ def cloud_ai_details(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def local_ai_details(record: dict[str, Any]) -> dict[str, Any]:
+def local_ai_details(record: dict[str, Any], *, s380_person_from_record: bool = False) -> dict[str, Any]:
     """Return HomeBase crop/detection output without paths or numeric identities."""
     pictures = record.get("picture") if isinstance(record.get("picture"), list) else []
     crops = []
@@ -263,13 +263,38 @@ def local_ai_details(record: dict[str, Any]) -> dict[str, Any]:
             }
         )
     history = record.get("history") if isinstance(record.get("history"), dict) else record
+    recording_person = s380_person_from_record and history.get("trigger_type") in (4, "4")
+    if recording_person:
+        categories.add("person")
     return {
         "categories": sorted(categories),
+        "person_from_record": bool(recording_person),
         "trigger_type": history.get("trigger_type"),
         "vision": history.get("vision"),
         "self_learning": history.get("self_learning"),
         "crops": crops,
     }
+
+
+def normalize_face_roster(rows: Any, station_key: str) -> list[dict[str, Any]]:
+    """Expose bounded roster names and opaque references, never face templates or paths."""
+    result = []
+    seen = set()
+    for row in rows[:500] if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        identity = _aic_person_id(row)
+        name = row.get("name")
+        if identity is None or identity in seen or not isinstance(name, str) or not name.strip():
+            continue
+        seen.add(identity)
+        name = name.strip()[:128]
+        result.append({
+            "reference": _token("roster", station_key, identity),
+            "name": name,
+            "recognized": re.fullmatch(r"stranger\d+", name, re.IGNORECASE) is None,
+        })
+    return result
 
 
 def join_aic_event_data(data: dict[str, Any]) -> list[dict[str, Any]]:

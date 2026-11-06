@@ -76,7 +76,7 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
   }
 
   async loadEvents() {
-    if (!this._hass || this._loading) return;
+    if (!this._hass || this._loading || this._tablesLoading) return;
     const days = Number(this.shadowRoot.querySelector("#days")?.value || this._days);
     const source = this.shadowRoot.querySelector("#source")?.value || this._source;
     this._days = days;
@@ -102,6 +102,41 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       this._loading = false;
       this.render();
     }
+  }
+
+  async loadHomebaseTables() {
+    if (!this._hass?.user?.is_admin || this._tablesLoading || this._loading) return;
+    this._days = Number(this.shadowRoot.querySelector("#days")?.value || this._days);
+    await this.stopAllLive();
+    this._tablesLoading = true;
+    this._tablesError = "";
+    this.render();
+    try {
+      const response = await this._hass.callWS({
+        type: "call_service", domain: "eufy_security", service: "homebase_tables",
+        service_data: { days: this._days }, return_response: true,
+      });
+      this._tables = response?.response ?? response;
+    } catch (error) {
+      this._tablesError = error?.message || "HomeBase tables unavailable; retry shortly";
+    } finally {
+      this._tablesLoading = false;
+      this.render();
+    }
+  }
+
+  homebaseTablesMarkup() {
+    if (!this._hass?.user?.is_admin) return "";
+    const data = this._tables;
+    const people = (data?.stations || []).map((station) => {
+      const rows = (station.people || []).map((person) => {
+        const link = person.ha_persons?.[0];
+        return `<tr><td data-label="Name">${esc(person.name)}</td><td data-label="Profile">${person.recognized ? "Named profile" : "Unknown profile"}</td><td data-label="HA person">${link ? `<button class="linked-person" data-person="${esc(link.entity_id)}">${esc(link.entity_id)}${link.user_linked ? " · user linked" : ""}</button>` : "No unique HA person match"}</td></tr>`;
+      }).join("");
+      return `<h3>${esc(station.name)} · ${esc(station.model)}</h3><p class="sub">${station.roster_status === "loaded" ? `Roster last read ${esc(new Date(station.roster_updated_at).toLocaleString())}` : "This HomeBase has not returned a face roster."}</p>${rows ? `<div class="table-scroll"><table><thead><tr><th>Name</th><th>Profile</th><th>Home Assistant person</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="sub">No roster entries returned.</p>'}`;
+    }).join("");
+    const recordings = (data?.recordings || []).map((record) => `<tr data-recording-row><td data-label="Recorded">${esc(record.start ? new Date(record.start).toLocaleString() : "Time unknown")}</td><td data-label="Camera">${esc(record.device_name)}</td><td data-label="HomeBase">${esc(record.station_name)}</td><td data-label="Detection">${esc((record.ai?.categories || record.ai_categories || []).join(", ") || "Not classified")}</td><td data-label="People">${esc((record.ai?.recognized_people || record.recognized_people || []).join(", ") || "—")}</td><td data-label="Media" class="media">${record.thumbnail_url ? `<button class="protected-image-load" data-image="${esc(record.thumbnail_url)}">Image</button>` : "No image"}${record.video_url ? `<button class="video-load" data-video="${esc(record.video_url)}">Saved video</button>` : " · video unavailable"}</td></tr>`).join("");
+    return `<section class="section homebase-tables"><h2>HomeBase records & face roster</h2><p class="sub">Read stored tables for the selected time window. Up to 200 recording results. No live video starts.</p><button id="load-tables" class="load" ${this._tablesLoading || this._loading ? "disabled" : ""}>${this._tablesLoading ? "Reading HomeBase…" : "Read HomeBase tables"}</button>${this._tablesError ? `<p class="error" role="alert">${esc(this._tablesError)}</p>` : ""}${data ? `<p class="sub">Last read ${esc(new Date(data.updated_at).toLocaleString())}. ${(data.warnings || []).map(esc).join(" · ")}</p><details open><summary>Face roster</summary>${people || '<p>No compatible HomeBase is ready.</p>'}</details><details open><summary>Recording table · ${(data.recordings || []).length} results</summary><label class="field">Filter camera, person or detection<input id="record-filter" type="search" placeholder="Search loaded recordings"></label><div class="table-scroll"><table><thead><tr><th>Recorded</th><th>Camera</th><th>HomeBase</th><th>Detection</th><th>People</th><th>Stored media</th></tr></thead><tbody>${recordings || '<tr><td colspan="6">No recordings returned for this window. Check warnings above; an empty response does not prove there were no events.</td></tr>'}</tbody></table></div></details>` : ""}</section>`;
   }
 
   async refreshSnapshots(button) {
@@ -171,18 +206,20 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
   }
 
   snapshotStatus(camera, evidenceSnapshot) {
-    const connected = camera.state !== "unavailable" && camera.attributes?.connected !== false;
+    const connected = camera.state !== "unavailable" && camera.attributes?.bridge_available !== false;
     const available = Boolean(evidenceSnapshot?.url || camera.attributes?.snapshot_available);
     const updatedAt = evidenceSnapshot?.updatedAt || camera.attributes?.snapshot_updated_at;
-    if (!connected) return { state: "down", label: "Camera offline" };
+    if (!connected) return { state: "down", label: "Bridge or camera entity unavailable" };
     if (!available) return { state: "pending", label: "Checking latest snapshot" };
-    if (!updatedAt) return { state: "stale", label: "Camera online · snapshot age unknown" };
+    if (!updatedAt) return { state: "stale", label: "Stored image · capture time unknown · reachability unverified" };
     const ageMs = Math.max(0, Date.now() - new Date(updatedAt).getTime());
     const minutes = Math.floor(ageMs / 60000);
     const age = minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago` : `${Math.floor(minutes / 60)}h ago`;
-    return ageMs <= 60 * 60 * 1000
-      ? { state: "current", label: `Camera online · snapshot ${age}` }
-      : { state: "stale", label: `Camera online · snapshot stale (${age})` };
+    if (!Number.isFinite(ageMs)) return { state: "stale", label: "Stored image · invalid timestamp" };
+    const basis = camera.attributes?.snapshot_time_basis === "received" ? "Image received" : "Snapshot";
+    return ageMs <= 24 * 60 * 60 * 1000
+      ? { state: "current", label: `${basis} ${age} · reachability unverified` }
+      : { state: "stale", label: `${basis} stale (${age}) · reachability unverified` };
   }
 
   moreInfo(entityId) {
@@ -197,6 +234,7 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
     try {
       const response = await this._hass.fetchWithAuth(button.dataset.image);
       if (!response.ok) throw new Error(`Image request returned ${response.status}`);
+      if (!button.isConnected) return;
       const url = URL.createObjectURL(await response.blob());
       this._objectUrls.push(url);
       const image = document.createElement("img");
@@ -264,7 +302,7 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       const image = document.createElement("img");
       image.alt = this._hass.states[entityId]?.attributes?.friendly_name || entityId;
       image.src = `/api/camera_proxy_stream/${encodeURIComponent(entityId)}?token=${encodeURIComponent(token)}`;
-      preview.replaceChildren(image);
+      preview.replaceChildren(...[preview.querySelector(".snapshot-status"), image].filter(Boolean));
       button.textContent = "Stop";
       this._liveTimers.set(entityId, setTimeout(() => {
         const card = [...this.shadowRoot.querySelectorAll(".camera")]
@@ -305,12 +343,14 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       if (!response.ok) throw new Error(`Snapshot returned ${response.status}`);
       const blob = await response.blob();
       if (blob.size < 100) throw new Error("Snapshot was empty");
+      if (!card.isConnected) return;
       const url = URL.createObjectURL(blob);
       this._objectUrls.push(url);
       const image = document.createElement("img");
       image.alt = this._hass.states[entityId]?.attributes?.friendly_name || entityId;
       image.src = url;
-      card.querySelector(".camera-preview").replaceChildren(image);
+      const preview = card.querySelector(".camera-preview");
+      preview.replaceChildren(...[preview.querySelector(".snapshot-status"), image].filter(Boolean));
       const status = card.querySelector(".snapshot-status");
       if (status?.classList.contains("pending")) {
         status.className = "snapshot-status stale";
@@ -356,6 +396,8 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
 
   render() {
     if (!this._hass) return;
+    this._objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    this._objectUrls = [];
     this._rendered = true;
     const cameras = this.cameraEntities();
     const events = this._events.map((event) => {
@@ -398,19 +440,32 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
       </article>`;
     }).join("");
     this.shadowRoot.innerHTML = `<style>
+      .homebase-tables table{color:var(--primary-text-color)}.homebase-tables td.media{display:table-cell;min-height:0;aspect-ratio:auto;background:transparent}.homebase-tables button{color:var(--primary-text-color);background:var(--card-background-color);border:1px solid var(--divider-color);border-radius:9px;padding:9px;font:inherit;cursor:pointer}.homebase-tables #load-tables{background:var(--primary-color);color:var(--text-primary-color)}
+      @media(max-width:720px){.homebase-tables table{min-width:0}.homebase-tables table,.homebase-tables tbody,.homebase-tables tr{display:block}.homebase-tables thead{display:none}.homebase-tables tr{margin:12px 0;border:1px solid var(--divider-color);border-radius:12px;padding:6px}.homebase-tables td,.homebase-tables td.media{display:grid;grid-template-columns:86px minmax(0,1fr);gap:8px;padding:9px;border:0;max-width:none;overflow-wrap:anywhere}.homebase-tables td::before{content:attr(data-label);font-weight:600;color:var(--secondary-text-color)}}
+      .homebase-tables .table-scroll{max-width:100%;overflow:auto}.homebase-tables table{border-collapse:collapse;width:100%;text-align:left;min-width:650px}.homebase-tables td,.homebase-tables th{padding:12px;border-bottom:1px solid var(--divider-color);vertical-align:top}.homebase-tables summary{cursor:pointer;font-size:18px;font-weight:600;padding:16px 0}.homebase-tables .media{max-width:300px}.homebase-tables img,.homebase-tables video{width:240px;max-height:180px;object-fit:contain}.homebase-tables input{font:inherit;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:8px}.homebase-tables .load{margin-top:12px}.homebase-tables tr[hidden]{display:none}
       :host{display:block;min-height:100%;background:var(--primary-background-color);color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,system-ui);padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
       *{box-sizing:border-box}main{max-width:1500px;margin:auto;padding:20px}.hero{display:flex;justify-content:space-between;gap:18px;align-items:end;margin-bottom:18px}h1{font-size:clamp(25px,4vw,42px);margin:0}.sub{color:var(--secondary-text-color);margin:6px 0 0}.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.field{display:grid;gap:5px;color:var(--secondary-text-color);font-size:13px}select,button{font:inherit}select,.load{height:42px;border-radius:11px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);padding:0 14px}.load{background:var(--primary-color);color:var(--text-primary-color);border:0;font-weight:700;cursor:pointer}.section{margin:24px 0 10px}.section h2{margin:0 0 4px}.live{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.camera{padding:0;border:1px solid var(--divider-color);border-radius:16px;overflow:hidden;background:var(--card-background-color);color:var(--primary-text-color)}.camera-preview{position:relative;width:100%;aspect-ratio:16/9;display:grid;place-items:center;background:#05070a}.camera-preview img{width:100%;height:100%;object-fit:cover;display:block}.snapshot-status{position:absolute;z-index:2;top:10px;right:10px;width:13px;height:13px;border:2px solid #fff;border-radius:50%;background:#6f7b8d;box-shadow:0 1px 7px #000}.snapshot-status.current{background:#39d98a}.snapshot-status.stale{background:#ffb020}.snapshot-status.pending{background:#6f7b8d}.snapshot-status.down{background:#ff3b4f}.camera-placeholder{color:#8e98a9;font-size:13px}.camera-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px}.camera-foot>div{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px}.camera-foot button,.video-load{border:0;border-radius:9px;padding:8px 10px;margin:0;background:color-mix(in srgb,var(--primary-color) 16%,var(--card-background-color));color:var(--primary-color);font-weight:700;cursor:pointer}.events{display:grid;gap:14px}.event-card{display:grid;grid-template-columns:minmax(260px,40%) 1fr;border:1px solid var(--divider-color);border-radius:17px;overflow:hidden;background:var(--card-background-color)}.media{position:relative;background:#05070a;min-height:180px;display:grid;place-items:center}.media img,.media video{width:100%;height:100%;max-height:430px;object-fit:contain}.media .video-load{position:absolute;bottom:12px;left:12px;background:rgba(12,18,28,.86);color:#fff}.nomedia{color:#99a2b3}.event-copy{padding:16px;min-width:0}.event-head{display:flex;justify-content:space-between;gap:10px}.event-head time,.event-copy p{color:var(--secondary-text-color);font-size:13px}.chips{display:flex;flex-wrap:wrap;gap:6px;margin:11px 0}.chips span{padding:4px 8px;border-radius:999px;background:color-mix(in srgb,var(--primary-color) 15%,transparent);color:var(--primary-color);font-size:12px;font-weight:700}.ai-images{display:flex;gap:8px;overflow:auto;margin:8px 0}.ai-images figure{margin:0;min-width:84px}.ai-images img{width:84px;height:84px;object-fit:cover;border-radius:10px;background:#05070a}.ai-images figcaption{font-size:11px;color:var(--secondary-text-color);max-width:84px}details{border-top:1px solid var(--divider-color);padding-top:10px}summary{cursor:pointer;font-weight:650}pre{white-space:pre-wrap;word-break:break-word;color:var(--secondary-text-color);font-size:12px}.status{padding:24px;border:1px dashed var(--divider-color);border-radius:15px;color:var(--secondary-text-color)}.error{color:var(--error-color)}
       .protected-image-load{border:0;border-radius:9px;padding:9px 12px;background:rgba(12,18,28,.86);color:#fff;font-weight:700;cursor:pointer}.recognized-people{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:8px 0;color:var(--secondary-text-color);font-size:13px}.recognized-person{border:0;padding:4px 9px;border-radius:999px;background:color-mix(in srgb,#39d98a 18%,transparent);color:#39d98a;font:inherit;font-weight:700}.linked-person{cursor:pointer;text-decoration:underline;text-underline-offset:2px}
       @media(max-width:720px){main{padding:14px}.hero{align-items:start;display:grid}.event-card{grid-template-columns:1fr}.live{grid-template-columns:1fr}.event-head{display:grid}.camera-foot{align-items:start;display:grid}.camera-foot>div{justify-content:flex-start}.camera-foot strong{padding:3px 0}}
+      @media(max-width:720px){.homebase-tables .table-scroll table{min-width:0;width:100%}.homebase-tables .table-scroll td{padding:9px;border:0}.homebase-tables .table-scroll td.media{display:block;width:auto;max-width:none;min-height:0}.homebase-tables td.media::before{display:block;margin-bottom:6px}.homebase-tables button{white-space:normal;overflow-wrap:anywhere}}
     </style><main>
       <div class="hero"><div><h1>Baiamonte Eufy Security</h1><p class="sub">HomeBase DVR, live cameras, prior events, snapshots, and complete useful AI evidence.</p></div>
-      <div class="toolbar"><label class="field">History<select id="days"><option value="1" ${this._days === 1 ? "selected" : ""}>24 hours</option><option value="3" ${this._days === 3 ? "selected" : ""}>3 days</option><option value="7" ${this._days === 7 ? "selected" : ""}>7 days</option><option value="14" ${this._days === 14 ? "selected" : ""}>14 days</option><option value="31" ${this._days === 31 ? "selected" : ""}>31 days</option></select></label><label class="field">Index<select id="source"><option value="hybrid" ${this._source === "hybrid" ? "selected" : ""}>Cloud + HomeBase</option><option value="cloud" ${this._source === "cloud" ? "selected" : ""}>Account cloud</option><option value="local" ${this._source === "local" ? "selected" : ""}>HomeBase local</option></select></label><button class="load" id="refresh-snapshots">Refresh snapshots</button><button class="load" id="load">${this._loading ? "Loading…" : "Load events"}</button></div></div>
+      <div class="toolbar"><label class="field">History<select id="days"><option value="1" ${this._days === 1 ? "selected" : ""}>24 hours</option><option value="3" ${this._days === 3 ? "selected" : ""}>3 days</option><option value="7" ${this._days === 7 ? "selected" : ""}>7 days</option><option value="14" ${this._days === 14 ? "selected" : ""}>14 days</option><option value="31" ${this._days === 31 ? "selected" : ""}>31 days</option></select></label><label class="field">Index<select id="source"><option value="hybrid" ${this._source === "hybrid" ? "selected" : ""}>Cloud + HomeBase</option><option value="cloud" ${this._source === "cloud" ? "selected" : ""}>Account cloud</option><option value="local" ${this._source === "local" ? "selected" : ""}>HomeBase local</option></select></label><button class="load" id="refresh-snapshots">Refresh snapshots</button><button class="load" id="load">${this._loading ? "Loading…" : "Load events"}</button>${this._hass.user?.is_admin ? '<button class="load" id="jump-tables">HomeBase records</button>' : ""}</div></div>
       <section class="section"><h2>Live DVR view</h2><p class="sub">${cameras.length} Eufy cameras. Phone view runs one live camera; wide displays support up to four. Feeds stop after five minutes or when this tab is hidden. Controls opens native streaming, PTZ, presets and device actions.</p></section>
       <div class="live">${live || '<div class="status">Waiting for Eufy camera entities.</div>'}</div>
-      <section class="section"><h2>Evidence timeline</h2><p class="sub">${this._summary ? `${this._summary.count || 0} indexed events · ${(this._summary.local_homebase_models || []).join(", ") || "account index"}${(this._summary.warnings || []).length ? ` · fallback: ${(this._summary.warnings || []).join(", ")}` : ""}` : "Choose a window and load prior events."}</p></section>
+      ${this.homebaseTablesMarkup()}
+      <section class="section"><h2>Evidence timeline</h2><p class="sub">${this._summary ? `${this._summary.count || 0} indexed events · ${esc((this._summary.local_homebase_models || []).join(", ") || "account index")}${(this._summary.warnings || []).length ? ` · fallback: ${(this._summary.warnings || []).map(esc).join(", ")}` : ""}` : "Choose a window and load prior events."}</p></section>
       <div class="events">${this._error ? `<div class="status error">${esc(this._error)}</div>` : this._loading ? '<div class="status">Querying the authenticated account and HomeBase indexes…</div>' : events || '<div class="status">No events loaded.</div>'}</div>
     </main>`;
     this.shadowRoot.querySelector("#load")?.addEventListener("click", () => this.loadEvents());
+    this.shadowRoot.querySelector("#jump-tables")?.addEventListener("click", () => this.shadowRoot.querySelector(".homebase-tables")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    this.shadowRoot.querySelector("#load-tables")?.addEventListener("click", () => this.loadHomebaseTables());
+    this.shadowRoot.querySelector("#record-filter")?.addEventListener("input", (event) => {
+      const query = event.target.value.trim().toLocaleLowerCase();
+      this.shadowRoot.querySelectorAll("[data-recording-row]").forEach((row) => {
+        row.hidden = !row.textContent.toLocaleLowerCase().includes(query);
+      });
+    });
     this.shadowRoot.querySelector("#refresh-snapshots")?.addEventListener("click", (event) => this.refreshSnapshots(event.currentTarget));
     this.shadowRoot.querySelectorAll(".video-load").forEach((button) => button.addEventListener("click", () => this.loadVideo(button)));
     this.shadowRoot.querySelectorAll(".protected-image-load").forEach((button) => button.addEventListener("click", () => this.loadProtectedImage(button)));

@@ -10,7 +10,7 @@ import voluptuous as vol
 from homeassistant.components.persistent_notification import async_create
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.typing import ConfigType
@@ -64,6 +64,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def handle_search_events(call: ServiceCall) -> dict:
         return await _coordinator(hass).search_evidence(**call.data)
 
+    async def handle_homebase_tables(call: ServiceCall) -> dict:
+        user = await hass.auth.async_get_user(call.context.user_id) if call.context.user_id else None
+        if user is None or not user.is_admin:
+            raise Unauthorized()
+        return await _coordinator(hass).homebase_tables(**call.data)
+
     async def handle_refresh_storage(call: ServiceCall) -> dict:
         return await _coordinator(hass).refresh_homebase_storage(
             call.data.get("station_serial", "")
@@ -77,6 +83,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         )
 
     hass.services.async_register(DOMAIN, "force_sync", handle_force_sync)
+    hass.services.async_register(
+        DOMAIN, "homebase_tables", handle_homebase_tables,
+        schema=vol.Schema({
+            vol.Optional("days", default=1): vol.All(vol.Coerce(int), vol.Range(min=1, max=31)),
+            vol.Optional("station_serial", default=""): cv.string,
+        }),
+        supports_response=SupportsResponse.ONLY,
+    )
     hass.services.async_register(
         DOMAIN,
         "send_message",

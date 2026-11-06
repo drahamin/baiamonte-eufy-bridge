@@ -41,6 +41,7 @@ class EufySecurityOptionFlowHandler(config_entries.OptionsFlow):
                     ConfigField.no_stream_in_hass.name,
                     default=self.config.no_stream_in_hass,
                 ): bool,
+                vol.Optional("s380_person_from_record", default=self.config.s380_person_from_record): bool,
                 vol.Optional(
                     ConfigField.stream_linger_seconds.name,
                     default=self.config.stream_linger_seconds,

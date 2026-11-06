@@ -95,6 +95,8 @@ class EufySecurityBinarySensor(BinarySensorEntity, EufySecurityEntity):
     @property
     def is_on(self):
         """Return true if the binary sensor is on."""
+        if self.metadata.name == "personDetected" and getattr(self.product, "record_person_until", 0) > self.hass.loop.time():
+            return True
         return bool(get_child_value(self.product.properties, self.metadata.name))
 
 

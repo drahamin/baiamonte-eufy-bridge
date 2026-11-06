@@ -40,6 +40,7 @@ from .evidence import (
     normalize_aic_event,
     normalize_cloud_event,
     normalize_local_event,
+    normalize_face_roster,
 )
 from .snapshot import (
     cached_snapshot_outranks_current,
@@ -73,6 +74,14 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         self._reload_pending = False
         self.last_bridge_error: str | None = None
         self._evidence_records: dict[str, dict] = {}
+        self._homebase_rosters: dict[str, dict] = {}
+        self._pro_evidence_lock = asyncio.Lock()
+        self._person_recovery_pending: dict[str, datetime] = {}
+        self._person_recovery_last: dict[str, float] = {}
+        self._person_recovery_seen: dict[str, bool] = {}
+        self._person_recovery_task: asyncio.Task | None = None
+        self._person_recovery_listeners: list[tuple] = []
+        self._person_recovery_resets: set[asyncio.TimerHandle] = set()
         self._evidence_video_cache: dict[str, bytes] = {}
         self._evidence_recognition_image_cache: dict[str, tuple[bytes, str]] = {}
         self._last_snapshot_event_ids: dict[str, str] = {}
@@ -103,6 +112,8 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 await self._api.connect()
                 await self._refresh_bridge_status()
                 await self._restore_snapshot_cache()
+                if self.config.s380_person_from_record:
+                    self._setup_person_recovery()
                 self._schedule_snapshot_cache_write()
                 if (
                     self._daily_snapshot_task is None
@@ -139,12 +150,91 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
     @property
     def devices(self) -> dict:
         """get devices from API"""
-        return self._api.devices
+        return (self._api.devices or {}) if self._api else {}
 
     @property
     def stations(self) -> dict:
         """get stations from API"""
-        return self._api.stations
+        return (self._api.stations or {}) if self._api else {}
+
+    def _setup_person_recovery(self) -> None:
+        """Opt-in, S380-only reads; at most one per minute per camera and one at a time."""
+        for device in self.devices.values():
+            station = self.stations.get(device.properties.get("stationSerialNumber"))
+            if station is None or station.model != "T8030":
+                continue
+            was_motion = [bool(device.properties.get("motionDetected"))]
+
+            def changed(camera=device, previous=was_motion):
+                motion = bool(camera.properties.get("motionDetected"))
+                rising = motion and not previous[0]
+                previous[0] = motion
+                now = self.hass.loop.time()
+                if not rising or now - self._person_recovery_last.get(camera.serial_no, -60) < 60:
+                    return
+                if len(self._person_recovery_pending) >= 8:
+                    return
+                self._person_recovery_last[camera.serial_no] = now
+                self._person_recovery_pending[camera.serial_no] = datetime.now(timezone.utc)
+                if self._person_recovery_task is None or self._person_recovery_task.done():
+                    self._person_recovery_task = self.hass.async_create_background_task(
+                        self._recover_record_people(), "eufy_s380_person_recovery"
+                    )
+
+            device.add_state_update_listener(changed)
+            self._person_recovery_listeners.append((device, changed))
+
+    async def _recover_record_people(self) -> None:
+        while self._person_recovery_pending:
+            serial, motion_at = next(iter(self._person_recovery_pending.items()))
+            del self._person_recovery_pending[serial]
+            await asyncio.sleep(3)
+            device = self.devices.get(serial)
+            if device is None or device.properties.get("personDetected"):
+                continue
+            station = self.stations.get(device.properties.get("stationSerialNumber"))
+            if station is None or station.model != "T8030":
+                continue
+            try:
+                async with asyncio.timeout(25):
+                    raw = await station.database_query_local(
+                        [serial], (motion_at - timedelta(minutes=2)).strftime("%Y%m%d"),
+                        datetime.now(timezone.utc).strftime("%Y%m%d"),
+                    )
+                for record in raw[:200]:
+                    if record.get("device_sn") != serial:
+                        continue
+                    ai = local_ai_details(record, s380_person_from_record=True)
+                    event = normalize_local_event(record)
+                    if not ai["person_from_record"] or not event.get("start"):
+                        continue
+                    recorded_at = datetime.fromisoformat(event["start"])
+                    if not -15 <= (recorded_at - motion_at).total_seconds() <= 120:
+                        continue
+                    if (datetime.now(timezone.utc) - recorded_at).total_seconds() > 120:
+                        continue
+                    if event["event_id"] in self._person_recovery_seen or device.properties.get("personDetected"):
+                        continue
+                    self._person_recovery_seen[event["event_id"]] = True
+                    while len(self._person_recovery_seen) > 256:
+                        self._person_recovery_seen.pop(next(iter(self._person_recovery_seen)))
+                    device.record_person_until = self.hass.loop.time() + 10
+                    device.notify_state_update()
+                    timer = [None]
+
+                    def reset(camera=device, owner=timer):
+                        self._person_recovery_resets.discard(owner[0])
+                        camera.notify_state_update()
+
+                    timer[0] = self.hass.loop.call_later(10, reset)
+                    self._person_recovery_resets.add(timer[0])
+                    self.hass.bus.async_fire("eufy_security_person_from_record", {
+                        "event_id": event["event_id"], "device_name": device.name,
+                        "recorded_at": event["start"], "recognized": False,
+                    })
+                    break
+            except (RuntimeError, ValueError, WebSocketConnectionException, asyncio.TimeoutError):
+                _LOGGER.debug("S380 recording person recovery deferred")
 
     @staticmethod
     def _person_key(value: object) -> str:
@@ -220,6 +310,9 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
         events: list[dict] = []
         warnings: list[str] = []
         local_stations = []
+        if not self.available or not self.stations:
+            return {"source": source, "window_days": days, "events": [], "count": 0,
+                    "warnings": ["Bridge inventory is initializing; retry shortly"], "local_homebase_models": []}
 
         if source in {"hybrid", "cloud", "latest"}:
             try:
@@ -248,7 +341,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
         if source in {"hybrid", "local", "latest"}:
             semaphore = asyncio.Semaphore(1)
-            pro_semaphore = asyncio.Semaphore(1)
+            pro_semaphore = self._pro_evidence_lock
 
             async def query_station(station):
                 if station_serial and station.serial_no != station_serial:
@@ -264,6 +357,11 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                             raw_aic = await station.database_query_aic_events(
                                 start.isoformat(), end.isoformat(), min(max_results, 200)
                             )
+                        self._homebase_rosters[station.serial_no] = {
+                            "people": normalize_face_roster(raw_aic.get("personBasicInfoList", []), station.serial_no),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                            "status": "loaded" if raw_aic.get("personBasicInfoList") else "empty_or_not_returned",
+                        }
                         station_events = []
                         for record in join_aic_event_data(raw_aic):
                             record["station_sn"] = station.serial_no
@@ -338,7 +436,11 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         device = self.devices.get(record.get("device_sn"))
                         event["device_name"] = device.name if device else "Camera"
                         event["station_name"] = station.name
-                        event["ai"] = local_ai_details(record)
+                        event["ai"] = local_ai_details(
+                            record,
+                            s380_person_from_record=(station.model == "T8030" and getattr(self.config, "s380_person_from_record", False)),
+                        )
+                        event["ai_categories"] = event["ai"]["categories"]
                         self._link_ha_people(event)
                         self._add_ai_image_urls(event)
                         self._remember_evidence(event["event_id"], "local", record)
@@ -367,7 +469,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 asyncio.create_task(query_station(station))
                 for station in self.stations.values()
             ]
-            done, pending = await asyncio.wait(tasks, timeout=70)
+            done, pending = await asyncio.wait(tasks, timeout=70) if tasks else (set(), set())
             for task in pending:
                 task.cancel()
             if pending:
@@ -436,6 +538,28 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             "warnings": warnings,
             "events": result,
         }
+
+    async def homebase_tables(self, *, days: int = 1, station_serial: str = "") -> dict:
+        """Read bounded supported tables through the existing authenticated evidence route."""
+        result = await self.search_evidence(source="local", days=days, max_results=200, station_serial=station_serial)
+        stations = []
+        for station in self.stations.values():
+            if station_serial and station.serial_no != station_serial:
+                continue
+            if station.model not in {"T8030", "T9000"}:
+                continue
+            cached = self._homebase_rosters.get(station.serial_no)
+            people = [dict(person) for person in (cached or {}).get("people", [])]
+            for person in people:
+                if person["recognized"]:
+                    linked = {"ai": {"recognized_people": [person["name"]]}}
+                    self._link_ha_people(linked)
+                    person["ha_persons"] = linked.get("ha_persons", [])
+            stations.append({"name": station.name, "model": station.model, "people": people,
+                             "roster_updated_at": (cached or {}).get("updated_at"),
+                             "roster_status": cached.get("status", "loaded") if cached else "not_returned"})
+        return {"stations": stations, "recordings": result["events"], "warnings": result.get("warnings", []),
+                "updated_at": datetime.now(timezone.utc).isoformat(), "limit": 200}
 
     def _remember_evidence(self, event_id: str, source: str, record: dict) -> None:
         """Keep bounded raw lookup material in memory for protected media requests."""
@@ -727,7 +851,8 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 "data": content,
                 "type": {"mime": content_type},
             }
-            device.image_last_updated = event_time or datetime.now(timezone.utc)
+            # Retrieval time cannot turn an undated stored image into a fresh capture.
+            device.image_last_updated = event_time
             device.snapshot_source = event.get("source") or "hybrid_index"
             self._last_snapshot_event_ids[device.serial_no] = event_id
             device.notify_state_update()
@@ -1407,6 +1532,17 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def disconnect(self):
         """disconnect from api"""
+        for device, listener in self._person_recovery_listeners:
+            device.remove_state_update_listener(listener)
+        self._person_recovery_listeners.clear()
+        for handle in self._person_recovery_resets:
+            handle.cancel()
+        self._person_recovery_resets.clear()
+        if self._person_recovery_task is not None:
+            self._person_recovery_task.cancel()
+            await asyncio.gather(self._person_recovery_task, return_exceptions=True)
+            self._person_recovery_task = None
+        self._person_recovery_pending.clear()
         if self._listener_flush_handle is not None:
             self._listener_flush_handle.cancel()
             self._listener_flush_handle = None

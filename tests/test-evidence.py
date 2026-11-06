@@ -40,6 +40,26 @@ def test_cloud_ai_details() -> None:
     ]
 
 
+def test_roster_exposes_names_without_identity_templates_or_media_secrets():
+    rows = [{"person_id": 7, "name": "Alice", "face_data": "secret", "face_path": "/private", "token": "secret"},
+            {"person_id": 7, "name": "duplicate"}, {"person_id": 8, "name": "stranger42"}, {}, None]
+    roster = evidence.normalize_face_roster(rows, "hub-a")
+    assert len(roster) == 2
+    assert roster[0]["name"] == "Alice" and roster[0]["recognized"]
+    assert not roster[1]["recognized"]
+    assert set(roster[0]) == {"reference", "name", "recognized"}
+    assert roster[0]["reference"] != evidence.normalize_face_roster(rows, "hub-b")[0]["reference"]
+
+
+def test_s380_recording_classification_is_opt_in_and_does_not_invent_identity():
+    row = {"history": {"trigger_type": 4}}
+    assert evidence.local_ai_details(row)["categories"] == []
+    result = evidence.local_ai_details(row, s380_person_from_record=True)
+    assert result["categories"] == ["person"] and result["person_from_record"]
+    assert "recognized_people" not in result
+    assert evidence.local_ai_details({"trigger_type": 2}, s380_person_from_record=True)["categories"] == []
+
+
 def test_current_app_cloud_snapshot_is_advertised() -> None:
     """Current app snapshot fields must produce a protected thumbnail route."""
     normalized = evidence.normalize_cloud_event(
