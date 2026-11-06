@@ -10,6 +10,7 @@ import hmac
 import json
 import os
 import re
+import signal
 import struct
 import sys
 import time
@@ -761,7 +762,11 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
     signed = await sign_token(sign_url, headers)
     log("RTC sign accepted")
     oracle = Oracle()
-    await oracle.start()
+    try:
+        await oracle.start()
+    except BaseException:
+        await oracle.close()
+        raise
     collector = EventCollector(config, oracle)
     peer = RTCPeerConnection(RTCConfiguration(iceServers=[]))
     channels: dict[str, Any] = {}
@@ -801,6 +806,7 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
             nonlocal command_open
             if channel.label == "WebrtcDataChannel":
                 command_open = True
+                log("RTC command channel open")
                 maybe_start()
 
         @channel.on("message")
@@ -817,6 +823,7 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
     async def connection_changed() -> None:
         nonlocal connected
         if peer.connectionState == "connected":
+            log("RTC peer connected")
             connected = True
             maybe_start()
         elif peer.connectionState in {"failed", "closed"} and not collector.done.is_set():
@@ -871,6 +878,7 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
             user_agent_header=USER_AGENT,
             max_size=4 * 1024 * 1024,
         ) as websocket:
+            log("RTC signalling open")
             signal = Signal(websocket, station_serial, session_id, config["accountId"], token)
             await signal.join()
             answered = False
@@ -901,6 +909,7 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
                         await signal.action("scall", {"timestamp": int(time.time()), "account": signal.account()})
                     elif inner.get("action") == 3 and isinstance(data, dict):
                         if data.get("format") == "SDP" and not answered:
+                            log("RTC offer received")
                             answered = True
                             value = data["value"]
                             if isinstance(value, str):
@@ -993,7 +1002,15 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
 
 async def main() -> None:
     config = json.load(sys.stdin)
-    result = await run(config)
+    # Budget includes discovery, signing and ICE; leave time for peer/SCTP
+    # cleanup before the parent's 60-second hard deadline.
+    task = asyncio.current_task()
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGTERM, task.cancel)
+    try:
+        result = await asyncio.wait_for(run(config), timeout=50)
+    finally:
+        loop.remove_signal_handler(signal.SIGTERM)
     json.dump(result, sys.stdout, separators=(",", ":"))
     sys.stdout.write("\n")
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.66 — 2026-11-06
+
+- Bound the entire Pro helper operation, including discovery and setup, to 50 seconds so
+  peer/SCTP cleanup completes before the bridge's hard deadline. Handle SIGTERM gracefully
+  and release a framing subprocess whose startup fails.
+
 ## 1.6.65 — 2026-11-06
 
 - Bundle Security 9.6.42: consume the Pro's bounded embedded thumbnails before network fallback,
