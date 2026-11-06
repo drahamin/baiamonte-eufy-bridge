@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.68 — 2026-11-06
+
+- Request latest covers for cameras actually observed in the Pro's authenticated
+  recording table, even when the older assignment inventory has not caught up.
+  Retain the existing result, concurrency, image-size and total-time bounds.
+
 ## 1.6.67 — 2026-11-06
 
 - Add default-off `pro_session_compatibility` for testing the previously working portal
