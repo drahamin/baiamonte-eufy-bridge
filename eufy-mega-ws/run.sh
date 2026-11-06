@@ -118,6 +118,10 @@ if bashio::config.has_value 'username' && bashio::config.has_value 'password'; t
     export BAIAMONTE_PRO_EVENT_PYTHON="/opt/baiamonte-pro-events/venv/bin/python"
     export BAIAMONTE_SCTP_ORACLE="/opt/baiamonte-pro-events/sctp_oracle.cjs"
     export BAIAMONTE_PERSISTENT_FILE="/data/persistent.json"
+    export BAIAMONTE_PRO_SESSION_COMPATIBILITY="0"
+    if bashio::config.true 'pro_session_compatibility'; then
+        export BAIAMONTE_PRO_SESSION_COMPATIBILITY="1"
+    fi
     if [[ "${BAIAMONTE_SKIP_DASHBOARD:-false}" != "true" ]]; then
         /usr/bin/node /opt/baiamonte-eufy-dashboard/server.cjs &
     fi

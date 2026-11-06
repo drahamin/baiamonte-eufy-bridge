@@ -41,3 +41,6 @@ configuration:
   ipv4first:
     name: Forzar direcciones IPv4 primero
     description: Fuerza el orden de los resultados dns en Node.js para devolver primero las direcciones IPv4
+  pro_session_compatibility:
+    name: Compatibilidad de sesión Pro
+    description: Usa el formato anterior de mensajes solo para el firmware Pro que lo necesita. La autenticación Mega sigue activa.

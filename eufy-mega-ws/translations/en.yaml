@@ -41,3 +41,6 @@ configuration:
   ipv4first:
     name: Force IPv4 addresses first
     description: Forces the dns result order on Node.js to return IPv4 addresses first
+  pro_session_compatibility:
+    name: Pro session compatibility
+    description: Use the earlier portal message format only for Pro firmware that needs it. Mega authentication stays enabled.

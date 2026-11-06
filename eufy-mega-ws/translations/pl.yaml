@@ -41,3 +41,6 @@ configuration:
   ipv4first:
     name: Wymuś najpierw adresy IPv4
     description: Wymusza kolejność wyników dns w Node.js, aby najpierw zwracane były adresy IPv4
+  pro_session_compatibility:
+    name: Zgodność sesji Pro
+    description: Używa wcześniejszego formatu wiadomości tylko dla oprogramowania Pro, które go wymaga. Uwierzytelnianie Mega pozostaje aktywne.

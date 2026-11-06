@@ -41,3 +41,6 @@ configuration:
   ipv4first:
     name: Forceer eerst IPv4-adressen
     description: Forceert de DNS-resultaatvolgorde op Node.js om eerst IPv4-adressen te retourneren
+  pro_session_compatibility:
+    name: Compatibiliteit voor Pro-sessies
+    description: Gebruik het eerdere berichtformaat alleen voor Pro-firmware die dit nodig heeft. Mega-authenticatie blijft actief.

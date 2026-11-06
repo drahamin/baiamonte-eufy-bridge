@@ -41,3 +41,6 @@ configuration:
   ipv4first:
     name: Forcer les adresses IPv4 en premier
     description: Force l'ordre des résultats dns sur Node.js à retourner d'abord les adresses IPv4
+  pro_session_compatibility:
+    name: Compatibilité de session Pro
+    description: Utilise le format précédent des messages pour les micrologiciels Pro qui en ont besoin. L’authentification Mega reste active.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.67 — 2026-11-06
+
+- Add default-off `pro_session_compatibility` for testing the previously working portal
+  message envelope on Pro firmware that does not answer the newer SDK envelope. Mega
+  authentication, WEB region discovery and graceful session cleanup are unchanged.
+
 ## 1.6.66 — 2026-11-06
 
 - Bound the entire Pro helper operation, including discovery and setup, to 50 seconds so
