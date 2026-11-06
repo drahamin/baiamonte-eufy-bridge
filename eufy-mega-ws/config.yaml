@@ -2,7 +2,7 @@ name: Baiamonte eufy Bridge
 description: >-
   Baiamonte-branded Schema-21 bridge and dashboard for eufy devices, using Mega
   authentication and discovery with safe compatibility coverage and native P2P control.
-version: "1.6.66"
+version: "1.6.67"
 slug: baiamonte_eufy_bridge
 url: https://github.com/drahamin/baiamonte-eufy-bridge
 init: false
@@ -29,6 +29,7 @@ options:
   polling_interval: 10
   accept_invitations: true
   debug: false
+  pro_session_compatibility: false
   ipv4first: false
   event_duration: 10
   snapshot_cache: true
@@ -43,6 +44,7 @@ schema:
   polling_interval: int(1,1440)
   accept_invitations: bool
   debug: bool
+  pro_session_compatibility: bool
   ipv4first: bool
   event_duration: int(1,3600)
   snapshot_cache: bool

@@ -367,15 +367,16 @@ class Oracle:
 
 
 class Signal:
-    def __init__(self, websocket, station_serial: str, session_id: str, account_id: str, token: str) -> None:
+    def __init__(self, websocket, station_serial: str, session_id: str, account_id: str, token: str, compatibility: bool = False) -> None:
         self.websocket = websocket
         self.station_serial = station_serial
         self.session_id = session_id
         self.account_id = account_id
         self.token = token
+        self.compatibility = compatibility
 
     async def send(self, inner: dict[str, Any]) -> None:
-        message_id = "0" if inner.get("action") == 1 else f"{self.token}_{uuid.uuid4().hex}"
+        message_id = str(uuid.uuid4()) if self.compatibility else "0" if inner.get("action") == 1 else f"{self.token}_{uuid.uuid4().hex}"
         await self.websocket.send(json.dumps({"msgid": message_id, "data": json.dumps(inner)}))
 
     async def join(self) -> None:
@@ -409,6 +410,10 @@ class Signal:
         )
 
     def account(self, timestamp: int | None = None) -> str:
+        if self.compatibility:
+            # Older Pro firmware used this as a random session tag. The socket
+            # is still authenticated with the same Mega token and RTC sign.
+            return hashlib.md5(uuid.uuid4().bytes, usedforsecurity=False).hexdigest()
         ts = int(time.time()) if timestamp is None else timestamp
         return hmac.new(self.token.encode(), f"0{self.account_id}{ts}".encode(), hashlib.sha256).hexdigest()
 
@@ -879,7 +884,8 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
             max_size=4 * 1024 * 1024,
         ) as websocket:
             log("RTC signalling open")
-            signal = Signal(websocket, station_serial, session_id, config["accountId"], token)
+            signal = Signal(websocket, station_serial, session_id, config["accountId"], token,
+                            compatibility=os.environ.get("BAIAMONTE_PRO_SESSION_COMPATIBILITY") == "1")
             await signal.join()
             answered = False
             pending_candidates: list[str] = []

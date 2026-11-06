@@ -82,3 +82,21 @@ def test_pro_session_signs_the_same_timestamp_and_uses_portal_message_ids():
     data = json.loads(inner["data"])
     assert data["timestamp"] == inner["ts"] == 1793980800
     assert data["account"] == hmac.new(b"synthetic-token", b"0admin1793980800", hashlib.sha256).hexdigest()
+
+
+def test_compatibility_uses_only_the_older_session_envelope():
+    sent = []
+    class Socket:
+        async def send(self, value): sent.append(json.loads(value))
+    namespace = dict(json=json, Any=Any, hmac=hmac, hashlib=hashlib, uuid=uuid, time=time)
+    node = next(n for n in TREE.body if isinstance(n, ast.ClassDef) and n.name == "Signal")
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(PATH), "exec"), namespace)
+    session = namespace["Signal"](Socket(), "hub", "signed-session", "admin", "synthetic-token", compatibility=True)
+    async def exercise():
+        await session.join()
+        await session.action("scall", {})
+    asyncio.run(exercise())
+    assert all(not message["msgid"].startswith("synthetic-token_") for message in sent)
+    inner = json.loads(sent[1]["data"])
+    assert inner["sessionId"] == "signed-session"
+    assert len(json.loads(inner["data"])["account"]) == 32
