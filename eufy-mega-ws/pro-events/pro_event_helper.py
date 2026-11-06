@@ -431,6 +431,7 @@ class EventCollector:
         self.pictures: list[dict[str, Any]] = []
         self.evidence: list[dict[str, Any]] = []
         self.people: list[dict[str, Any]] = []
+        self.thumbnail_budget_timer: asyncio.TimerHandle | None = None
         self.thumbnail_queue: list[tuple[str, str]] = []
         self.thumbnail_by_path: dict[str, str] = {}
         self.thumbnail_timeouts: dict[str, asyncio.TimerHandle] = {}
@@ -640,7 +641,22 @@ class EventCollector:
             path = record.get("thumb_path") if isinstance(record, dict) else None
             if isinstance(path, str) and path and len(path) <= 4096:
                 self.thumbnail_queue.append((serial, path))
+        # File reads are optional: keep an unresponsive cover batch from
+        # discarding an already successful recording/roster query.
+        if self.thumbnail_queue:
+            self.thumbnail_budget_timer = asyncio.get_running_loop().call_later(6, self.finish_thumbnails)
         self.send_next_thumbnail()
+
+    def finish_thumbnails(self) -> None:
+        if self.thumbnail_budget_timer is not None:
+            self.thumbnail_budget_timer.cancel()
+            self.thumbnail_budget_timer = None
+        for timer in self.thumbnail_timeouts.values():
+            timer.cancel()
+        self.thumbnail_timeouts.clear()
+        self.thumbnail_by_path.clear()
+        self.thumbnail_queue.clear()
+        self.done.set()
 
     def send_next_thumbnail(self) -> None:
         while self.thumbnail_queue and len(self.thumbnail_by_path) < MAX_THUMBNAIL_IN_FLIGHT:
@@ -655,7 +671,7 @@ class EventCollector:
                 path,
             )
         if not self.thumbnail_queue and not self.thumbnail_by_path:
-            self.done.set()
+            self.finish_thumbnails()
 
     def thumbnail_timed_out(self, path: str) -> None:
         """Release one unresponsive file request without blocking other evidence."""
@@ -987,6 +1003,8 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
         if "receiver" in locals():
             receiver.cancel()
             await asyncio.gather(receiver, return_exceptions=True)
+        if collector.thumbnail_budget_timer is not None:
+            collector.thumbnail_budget_timer.cancel()
         for handle in collector.thumbnail_timeouts.values():
             handle.cancel()
         if heartbeat:
