@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from functools import lru_cache
 from io import BytesIO
 
@@ -12,6 +13,23 @@ except ImportError:  # Home Assistant includes Pillow; keep import tests portabl
 
 MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024
 MAX_ENHANCE_BYTES = 3 * 1024 * 1024
+
+
+def decode_inline_snapshot(value: object) -> bytes:
+    """Decode bounded Pro data URIs/URL-safe base64, including firmware line whitespace."""
+    if not isinstance(value, str) or len(value) > MAX_SNAPSHOT_BYTES * 4 // 3 + 65_536:
+        return b""
+    if value.startswith("data:"):
+        prefix, separator, value = value.partition(",")
+        if not separator or prefix not in {"data:image/jpeg;base64", "data:image/png;base64", "data:image/webp;base64"}:
+            return b""
+    encoded = "".join(value.split()).replace("-", "+").replace("_", "/")
+    encoded += "=" * (-len(encoded) % 4)
+    try:
+        decoded = base64.b64decode(encoded, validate=True)
+    except (ValueError, TypeError):
+        return b""
+    return decoded if is_valid_snapshot(decoded) else b""
 
 
 def evidence_identity(wrapper: object) -> tuple[str | None, str | None, int | None]:
