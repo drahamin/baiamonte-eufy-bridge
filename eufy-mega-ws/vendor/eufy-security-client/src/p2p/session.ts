@@ -92,7 +92,8 @@ import {
   SmartLockBleCommandFunctionType1,
   SmartLockFunctionType,
 } from "./types";
-import { AlarmMode } from "../http/types";
+import { AlarmMode, DeviceType } from "../http/types";
+import { homeBase3RecordingPayload } from "./recording";
 import {
   P2PDataMessage,
   P2PDataMessageAudio,
@@ -548,6 +549,13 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
 
   private isOwnSessionChannel(channel: number): boolean {
     return this.deviceSNs[channel]?.sn === this.rawStation.station_sn;
+  }
+
+  /** Only the camera's negotiated cipher-0 own session accepts clear stored reads. */
+  private usesClearStoredReads(channel: number): boolean {
+    return (
+      this.gatewayCipherId === 0 && this.encryption !== EncryptionType.LEVEL_2 && this.isOwnSessionChannel(channel)
+    );
   }
 
   private _isBetween(n: number, lowBoundary: number, highBoundary: number): boolean {
@@ -1214,7 +1222,15 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           this.isOwnSessionChannel(channel) &&
           message.p2pCommand.commandType === CommandType.CMD_STOP_REALTIME_MEDIA;
 
-        if (clearOwnSessionStart) {
+        const clearStoredRead =
+          this.usesClearStoredReads(channel) &&
+          message.p2pCommand.commandType === CommandType.CMD_SET_PAYLOAD &&
+          (message.nestedCommandType === CommandType.CMD_DATABASE ||
+            message.nestedCommandType === CommandType.CMD_DATABASE_IMAGE);
+
+        if (clearStoredRead) {
+          clearCommandNumber = this.nextClearCommandNumber();
+        } else if (clearOwnSessionStart) {
           clearCommandNumber = this.nextClearCommandNumber();
           const original = JSON.parse(stringPayload) as {
             data?: { accountId?: string; account_id?: string; encryptkey?: string };
@@ -1295,7 +1311,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
               message.p2pCommand.commandType,
               stringPayload,
               channel,
-              clearOwnSessionStart ? clearCommandNumber : undefined
+              clearOwnSessionStart || clearStoredRead ? clearCommandNumber : undefined
             );
             break;
           default:
@@ -2210,6 +2226,18 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
       const commandStr = CommandType[message.commandId];
       const result_msg = message.type === 1 ? true : false;
 
+      // Cipher-0 cameras can return database/image bodies on DATA rather than
+      // CONTROL. Command acknowledgements still use the result path below.
+      if (
+        !result_msg &&
+        message.signCode === 0 &&
+        this.usesClearStoredReads(message.channel) &&
+        (message.commandId === CommandType.CMD_DATABASE || message.commandId === CommandType.CMD_DATABASE_IMAGE)
+      ) {
+        this.handleDataControl(message);
+        return;
+      }
+
       if (result_msg) {
         let return_code = 0;
         let resultData: Buffer | undefined;
@@ -2553,6 +2581,12 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   }
 
   private handleDataBinaryAndVideo(message: P2PDataMessage): void {
+    if (
+      message.dataType === P2PDataType.BINARY &&
+      this.rawStation.device_type === DeviceType.HB3 &&
+      message.channel !== this.currentMessageState[P2PDataType.BINARY].p2pStreamChannel
+    )
+      return;
     if (!this.currentMessageState[message.dataType].invalidStream) {
       switch (message.commandId) {
         case CommandType.CMD_VIDEO_FRAME:
@@ -2583,15 +2617,21 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           videoMetaData.videoTimestamp = message.data.subarray(14, 20).readUIntLE(0, 6);
 
           let payloadStart = 22;
-          let video_data = this.mediaFrameDecoder?.decode(message.data);
-          if (video_data !== undefined) {
+          const clearStoredVideo =
+            message.dataType === P2PDataType.BINARY && this.rawStation.device_type === DeviceType.HB3;
+          let video_data = clearStoredVideo
+            ? homeBase3RecordingPayload(message.data)
+            : this.mediaFrameDecoder?.decode(message.data);
+          // Do not feed an encrypted or truncated stored frame into the live ECC/RSA decoder.
+          if (clearStoredVideo && video_data === undefined) return;
+          if (video_data !== undefined && !clearStoredVideo) {
             this.mediaStartKeys.set(message.channel, { kind: "ecc", answered: true });
             rootP2PLogger.debug("Decoded authenticated P-256 HomeBase media frame", {
               stationSN: this.rawStation.station_sn,
               channel: message.channel,
               isKeyFrame,
             });
-          } else if (message.signCode > 0 && data_length >= 128) {
+          } else if (!clearStoredVideo && message.signCode > 0 && data_length >= 128) {
             const key = message.data.subarray(22, 150);
             const rsaKey = this.currentMessageState[message.dataType].rsaKey;
             if (rsaKey) {
@@ -2976,7 +3016,13 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             stationSN: this.rawStation.station_sn,
             channel: message.channel,
           });
-          this.endStream(P2PDataType.BINARY);
+          // An unrelated camera's completion must not terminate this transfer.
+          if (
+            message.channel === this.currentMessageState[P2PDataType.BINARY].p2pStreamChannel ||
+            (this.rawStation.device_type === DeviceType.HB3 ? message.channel === 255 : message.channel === 0)
+          ) {
+            this.endStream(P2PDataType.BINARY);
+          }
           break;
         case CommandType.CMD_DOORBELL_NOTIFY_PAYLOAD:
           try {
@@ -4191,9 +4237,9 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
                 break;
               }
               case CommandType.CMD_DATABASE_COUNT_BY_DATE: {
-                let data: Array<P2PDatabaseCountByDateResponse> = [];
-                if (databaseResponse.data !== undefined && (databaseResponse.data as unknown as string) !== "[]")
-                  data = databaseResponse.data as Array<P2PDatabaseCountByDateResponse>;
+                const data = Array.isArray(databaseResponse.data)
+                  ? (databaseResponse.data as Array<P2PDatabaseCountByDateResponse>)
+                  : [];
                 const result: Array<DatabaseCountByDate> = [];
                 for (const record of data) {
                   result.push({
@@ -4205,9 +4251,9 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
                 break;
               }
               case CommandType.CMD_DATABASE_QUERY_LOCAL: {
-                let data: Array<P2PDatabaseQueryLocalResponse> = [];
-                if (databaseResponse.data !== undefined && (databaseResponse.data as unknown as string) !== "[]")
-                  data = databaseResponse.data as Array<P2PDatabaseQueryLocalResponse>;
+                const data = Array.isArray(databaseResponse.data)
+                  ? (databaseResponse.data as Array<P2PDatabaseQueryLocalResponse>)
+                  : [];
                 const result: SortedMap<number, Partial<DatabaseQueryLocal>> = new SortedMap<
                   number,
                   Partial<DatabaseQueryLocal>
@@ -4307,9 +4353,9 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
                 break;
               }
               case CommandType.CMD_DATABASE_QUERY_BY_DATE: {
-                let data: Array<P2PDatabaseQueryByDateRecord> = [];
-                if (databaseResponse.data !== undefined && (databaseResponse.data as unknown as string) !== "[]")
-                  data = databaseResponse.data as unknown as Array<P2PDatabaseQueryByDateRecord>;
+                const data = Array.isArray(databaseResponse.data)
+                  ? (databaseResponse.data as unknown as Array<P2PDatabaseQueryByDateRecord>)
+                  : [];
 
                 const result: Array<DatabaseQueryByDate> = [];
                 for (const record of data) {
@@ -4787,7 +4833,10 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
         this.currentMessageState[datatype].p2pStreamingTimeout = undefined;
       }
 
-      if (!this.currentMessageState[datatype].invalidStream && !this.currentMessageState[datatype].p2pStreamNotStarted)
+      if (
+        datatype === P2PDataType.BINARY ||
+        (!this.currentMessageState[datatype].invalidStream && !this.currentMessageState[datatype].p2pStreamNotStarted)
+      )
         this.emitStreamStopEvent(datatype);
 
       if (this.currentMessageState[datatype].queuedData.size > 0) {

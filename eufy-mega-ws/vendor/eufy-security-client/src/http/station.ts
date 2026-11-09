@@ -4,6 +4,7 @@ import { spawn } from "child_process";
 const { format } = require("date-and-time");
 
 import { HTTPApi } from "./api";
+import { homeBase3RecordingPath } from "../p2p/recording";
 import {
   AlarmMode,
   AlarmTone,
@@ -999,6 +1000,9 @@ export class Station extends TypedEmitter<StationEvents> {
   }
 
   public isP2PConnectableDevice(): boolean {
+    // T9000 control and evidence use the portal RTC route; P2P lookup never answers.
+    if (this.getDeviceType() === DeviceType.HOMEBASE_PRO || Station.isStationHomeBaseProBySn(this.getSerial()))
+      return false;
     if (Device.isSmartTrack(this.getDeviceType()) || (!Device.isSupported(this.getDeviceType()) && !this.isStation())) {
       if (!Device.isSupported(this.getDeviceType()) && !this.isStation()) {
         rootHTTPLogger.debug("Station not supported, no connection over p2p will be initiated", {
@@ -1127,6 +1131,7 @@ export class Station extends TypedEmitter<StationEvents> {
   }
 
   public async connect(): Promise<void> {
+    if (!this.isP2PConnectableDevice()) return;
     if (!this.p2pSession.isConnected() && !this.p2pSession.isConnecting()) {
       rootHTTPLogger.debug(`Connecting to station ${this.getSerial()}...`, {
         stationSN: this.getSerial(),
@@ -1666,6 +1671,7 @@ export class Station extends TypedEmitter<StationEvents> {
   }
 
   private scheduleReconnect(): void {
+    if (!this.isP2PConnectableDevice()) return;
     if (!this.reconnectTimeout) {
       const delay = this.getCurrentDelay();
       rootHTTPLogger.debug(`Station schedule reconnect`, { stationSN: this.getSerial(), delay: delay });
@@ -7622,26 +7628,18 @@ export class Station extends TypedEmitter<StationEvents> {
       cipherID: cipher_id,
     });
     if (this.getDeviceType() === DeviceType.HB3) {
-      //TODO: Implement HB3 Support! Actually doesn't work and returns return_code -104 (ERROR_INVALID_ACCOUNT). It could be that we need the new encrypted p2p protocol to make this work...
-      const rsa_key = this.p2pSession.getDownloadRSAPrivateKey();
-      this.p2pSession.sendCommandWithStringPayload(
+      const storedPath = homeBase3RecordingPath(device.getChannel(), path);
+      if (!storedPath) throw new TypeError("Invalid S380 recording path for this camera channel");
+      // S380 recordings are served by the native string-pair 1024 command,
+      // not the old RSA-key SET_PAYLOAD wrapper. No live camera stream opens.
+      this.p2pSession.sendCommandWithString(
         {
-          commandType: CommandType.CMD_SET_PAYLOAD,
-          value: JSON.stringify({
-            account_id: this.rawStation.member.admin_user_id,
-            cmd: CommandType.CMD_DOWNLOAD_VIDEO,
-            mChannel: device.getChannel(),
-            mValue3: CommandType.CMD_DOWNLOAD_VIDEO,
-            payload: {
-              filepath: path,
-              key: rsa_key?.exportKey("components-public").n.subarray(1).toString("hex").toUpperCase(),
-            },
-          }),
+          commandType: CommandType.CMD_DOWNLOAD_VIDEO,
+          strValue: storedPath,
+          strValueSub: this.rawStation.member.admin_user_id,
           channel: device.getChannel(),
         },
-        {
-          command: commandData,
-        }
+        { command: commandData }
       );
     } else if (cipher_id !== undefined) {
       const cipher = await this.api.getCipher(
@@ -15542,6 +15540,10 @@ export class Station extends TypedEmitter<StationEvents> {
         context: { commandName: commandData.name, commandValue: commandData.value, station: this.getSerial() },
       });
     }
+    if (this.isStationHomeBasePro() || Station.isStationHomeBaseProBySn(this.getSerial())) {
+      throw new NotSupportedError("Pro images must come from the authenticated RTC evidence response");
+    }
+    const channel = this.isStation() ? Station.CHANNEL : 0;
     rootHTTPLogger.debug(`Station download image - sending command`, {
       stationSN: this.getSerial(),
       value: cover_path,
@@ -15552,11 +15554,11 @@ export class Station extends TypedEmitter<StationEvents> {
         value: JSON.stringify({
           account_id: this.rawStation.member.admin_user_id,
           cmd: CommandType.CMD_DATABASE_IMAGE,
-          mChannel: Station.CHANNEL, //TODO: Check indoor devices
+          mChannel: channel,
           payload: [{ file: cover_path }],
           transaction: cover_path,
         }),
-        channel: Station.CHANNEL, //TODO: Check indoor devices
+        channel,
         strValueSub: this.rawStation.member.admin_user_id,
       },
       {
