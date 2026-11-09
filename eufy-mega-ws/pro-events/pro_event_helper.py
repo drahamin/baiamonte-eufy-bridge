@@ -929,6 +929,11 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
                     inner, data = parse_signal(raw)
                     if not isinstance(inner, dict):
                         continue
+                    if inner.get("action") == 3 and inner.get("dataType") == "hangup" and not command_open:
+                        log("RTC hub hung up before the command channel opened")
+                        collector.error = RuntimeError("HomeBase Pro ended the call before its command channel opened")
+                        collector.done.set()
+                        return
                     if inner.get("action") == 1:
                         await signal.action("scall", {"timestamp": int(time.time()), "account": signal.account()})
                     elif inner.get("action") == 3 and isinstance(data, dict):
@@ -998,6 +1003,10 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
             receiver.cancel()
             await asyncio.gather(receiver, return_exceptions=True)
     finally:
+        # Fixed local state only: no station IDs, URLs, tokens or SDP in diagnostics.
+        phase = collector.phase if collector.phase in {"roster", "initial", "filters", "thumbnails"} else "unknown"
+        peer_state = peer.connectionState if peer.connectionState in {"new", "connecting", "connected", "disconnected", "failed", "closed"} else "unknown"
+        log(f"RTC session end: phase={phase}, peer={peer_state}, command_open={int(command_open)}")
         if collector.event_reply_timer is not None:
             collector.event_reply_timer.cancel()
         if "receiver" in locals():

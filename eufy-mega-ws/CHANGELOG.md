@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.70 — 2026-11-09
+
+- Correct standalone image requests to camera channel 0 and port negotiated
+  cipher-0 own-session stored-image/database reads and DATA replies;
+  preserve encryption for other cameras, writes and established level-2 sessions.
+- Keep HomeBase Pro off unsupported P2P warm-up/reconnect loops, fail pre-open
+  portal hangups promptly, and report only fixed local state on session cleanup.
+- Use the S380 native stored-recording command, validate camera/channel paths,
+  retain plaintext H.264/H.265 recording chunks, and accept its finish channel.
+- Serialize recording admission per HomeBase and release a failed/empty transfer
+  without leaving a reserved download lane. Harden empty database table replies.
+- Client 4.1.1-mega.45; companion remains 9.6.42. No automatic live viewing.
+
 ## 1.6.69 — 2026-11-06
 
 - Give optional Pro thumbnail file reads a six-second phase budget and retain

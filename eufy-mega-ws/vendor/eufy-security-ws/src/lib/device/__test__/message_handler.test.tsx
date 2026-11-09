@@ -718,6 +718,27 @@ describe("DeviceMessageHandler", () => {
       expect(result).toEqual({ async: true });
     });
 
+    it("reserves the station before an asynchronous start and prevents another camera interrupting it", async () => {
+      mockClient = createMockClient(13);
+      let release: (() => void) | undefined;
+      mockStation.startDownload.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
+      const first = DeviceMessageHandler.handle(message, mockDriver, mockClient);
+      await Promise.resolve();
+      await expect(DeviceMessageHandler.handle({...message, messageId: "msg2"}, mockDriver, createMockClient(13)))
+        .rejects.toThrow(DownloadOnlyOneAtATimeError);
+      release?.();
+      await first;
+      expect(mockStation.startDownload).toHaveBeenCalledTimes(1);
+    });
+
+    it("releases the station reservation when start fails", async () => {
+      mockClient = createMockClient(13);
+      mockStation.startDownload.mockRejectedValueOnce(new Error("refused"));
+      await expect(DeviceMessageHandler.handle(message, mockDriver, mockClient)).rejects.toThrow("refused");
+      expect(DeviceMessageHandler.getDownloadingDevices("STATION001")).toEqual([]);
+      expect(mockClient.receiveDownloadStream["DEVICE001"]).toBeUndefined();
+    });
+
     it("throws DownloadOnlyOneAtATimeError when another client is downloading", async () => {
       mockClient = createMockClient(13);
       mockStation.isDownloading.mockReturnValue(true);

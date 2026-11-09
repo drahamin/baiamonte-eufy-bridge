@@ -426,6 +426,12 @@ export class DeviceMessageHandler {
       case DeviceCommand.startDownload:
         if (client.schemaVersion >= 3) {
           if (!station.isDownloading(device)) {
+            // Reserve before the first await: each HomeBase has one download lane.
+            // A second camera must not interrupt the first camera's stored clip.
+            if (DeviceMessageHandler.getDownloadingDevices(station.getSerial()).length > 0) {
+              throw new DownloadOnlyOneAtATimeError("A recording download is already running on this HomeBase");
+            }
+            DeviceMessageHandler.addDownloadingDevice(station.getSerial(), client);
             await station
               .startDownload(
                 device,
@@ -433,6 +439,7 @@ export class DeviceMessageHandler {
                 (message as IncomingCommandDeviceStartDownload).cipherId,
               )
               .catch((error) => {
+                DeviceMessageHandler.removeDownloadingDevice(station.getSerial(), client);
                 throw error;
               });
             client.receiveDownloadStream[serialNumber] = true;
