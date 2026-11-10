@@ -9,6 +9,7 @@ from .event import Event
 from .exceptions import (
     CameraRTSPStreamNotEnabled,
     CameraRTSPStreamNotSupported,
+    FailedCommandException,
     WebSocketConnectionException,
 )
 from .p2p_streamer import P2PStreamer
@@ -107,7 +108,11 @@ class Camera(Device):
             try:
                 async with asyncio.timeout(8):
                     await self.api.stop_livestream(self.product_type, self.serial_no)
-            except (asyncio.TimeoutError, WebSocketConnectionException):
+            except (
+                asyncio.TimeoutError,
+                FailedCommandException,
+                WebSocketConnectionException,
+            ):
                 _LOGGER.warning("Bridge did not acknowledge late stream cleanup")
             return
         self.p2p_started_event.set()
