@@ -128,7 +128,8 @@ def test_stop_invalidates_pending_start_and_late_event_without_relay_restart():
         status = SimpleNamespace(IDLE="idle", STREAMING="streaming", PREPARING="preparing")
         namespace = dict(asyncio=asyncio, StreamStatus=status,
             StreamProvider=SimpleNamespace(P2P="p2p"), Event=object,
-            WebSocketConnectionException=ConnectionError, _LOGGER=logging.getLogger("test"))
+            WebSocketConnectionException=ConnectionError, FailedCommandException=RuntimeError,
+            _LOGGER=logging.getLogger("test"))
         path = "custom_components/eufy_security/eufy_security_api/camera.py"
         start = method(path, "start_livestream", namespace)
         stop = method(path, "stop_livestream", namespace)
@@ -212,4 +213,63 @@ def test_late_frames_do_not_accumulate_after_stop():
         camera.stream_status = status.PREPARING
         await receive(camera, event)
         assert list(camera.video_queue) == [bytearray([1, 2, 3])]
+    asyncio.run(exercise())
+
+
+def test_rejected_late_stop_keeps_queued_camera_and_station_events_flowing():
+    async def exercise():
+        from collections import OrderedDict
+        from enum import Enum
+        import logging
+        namespace = dict(asyncio=asyncio, Enum=Enum, Event=object,
+            _LOGGER=logging.getLogger("test"), StreamStatus=SimpleNamespace(IDLE="idle"))
+        api_root = ROOT / "custom_components/eufy_security/eufy_security_api"
+        for filename, names in [
+            ("exceptions.py", {"BaseEufySecurityException", "FailedCommandException", "WebSocketConnectionException"}),
+            ("const.py", {"EventNameToHandler"}),
+        ]:
+            tree = ast.parse((api_root / filename).read_text())
+            nodes = [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name in names]
+            exec(compile(ast.Module(body=nodes, type_ignores=[]), filename, "exec"), namespace)
+        late = method("custom_components/eufy_security/eufy_security_api/camera.py", "_handle_livestream_started", namespace)
+        process = method("custom_components/eufy_security/eufy_security_api/product.py", "process_event", namespace)
+        drain = method("custom_components/eufy_security/eufy_security_api/web_socket_client.py", "_process_events", namespace)
+        updates, notifications = [], []
+        finished = asyncio.Event()
+        rejected = namespace["FailedCommandException"]("stop-test", "device_livestream_not_running")
+        camera = SimpleNamespace(stream_status="idle", _stream_generation=1,
+            api=SimpleNamespace(stop_livestream=AsyncMock(side_effect=rejected)),
+            product_type="camera", serial_no="test", p2p_started_event=asyncio.Event(),
+            notify_state_update=lambda: notifications.append("camera"))
+        camera._handle_livestream_started = MethodType(late, camera)
+        async def changed(event):
+            updates.append(event.data["target"])
+            if len(updates) == 2: finished.set()
+        camera._handle_property_changed = changed
+        station = SimpleNamespace(_handle_property_changed=changed,
+            notify_state_update=lambda: notifications.append("station"))
+        async def callback(payload):
+            product, event = payload
+            await process(product, event)
+        queue = OrderedDict(enumerate([
+            (camera, SimpleNamespace(type="livestream started", data={})),
+            (camera, SimpleNamespace(type="property changed", data={"target": "camera"})),
+            (station, SimpleNamespace(type="property changed", data={"target": "station"})),
+        ]))
+        client = SimpleNamespace(_event_ready=asyncio.Event(), _pending_events=queue,
+            message_callback=callback)
+        client._event_ready.set()
+        worker = asyncio.create_task(drain(client))
+        try:
+            await asyncio.wait_for(finished.wait(), 0.2)
+            await asyncio.sleep(0)
+            assert not worker.done()
+            assert updates == ["camera", "station"]
+            assert notifications == ["camera", "camera", "station"]
+            assert not camera.p2p_started_event.is_set()
+            assert camera.stream_status == "idle"
+            camera.api.stop_livestream.assert_awaited_once()
+        finally:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
     asyncio.run(exercise())
