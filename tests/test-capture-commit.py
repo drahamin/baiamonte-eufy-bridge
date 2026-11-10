@@ -196,3 +196,20 @@ def test_relay_failure_retries_unless_user_stopped_during_request():
         assert relay.retry is (False if stopped else True)
     asyncio.run(exercise(False))
     asyncio.run(exercise(True))
+
+
+def test_late_frames_do_not_accumulate_after_stop():
+    async def exercise():
+        from collections import deque
+        status = SimpleNamespace(IDLE="idle", PREPARING="preparing")
+        namespace = dict(StreamStatus=status, Event=object)
+        receive = method("custom_components/eufy_security/eufy_security_api/camera.py",
+            "_handle_livestream_video_data_received", namespace)
+        camera = SimpleNamespace(stream_status=status.IDLE, video_queue=deque())
+        event = SimpleNamespace(data={"buffer": {"data": [1, 2, 3]}})
+        await receive(camera, event)
+        assert not camera.video_queue
+        camera.stream_status = status.PREPARING
+        await receive(camera, event)
+        assert list(camera.video_queue) == [bytearray([1, 2, 3])]
+    asyncio.run(exercise())

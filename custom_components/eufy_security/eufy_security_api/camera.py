@@ -134,7 +134,8 @@ class Camera(Device):
             await self.stream_stopped_listener()
 
     async def _handle_livestream_video_data_received(self, event: Event):
-        self.video_queue.append(bytearray(event.data["buffer"]["data"]))
+        if self.stream_status != StreamStatus.IDLE:
+            self.video_queue.append(bytearray(event.data["buffer"]["data"]))
 
     async def _handle_livestream_audio_data_received(self, event: Event):
         pass
