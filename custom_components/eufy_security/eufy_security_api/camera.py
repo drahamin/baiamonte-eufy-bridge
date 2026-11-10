@@ -74,6 +74,7 @@ class Camera(Device):
 
         self.stream_future = None
         self.stream_checker = None
+        self._stream_generation = 0
         self.stream_stopped_listener = None
 
         self.p2p_streamer = P2PStreamer(self)
@@ -100,6 +101,15 @@ class Camera(Device):
     async def _handle_livestream_started(self, event: Event):
         # automatically find this function for respective event
         _LOGGER.debug("Livestream started")
+        if self.stream_status == StreamStatus.IDLE and self._stream_generation:
+            # A command can complete after its caller timed out or stopped it.
+            # Do not resurrect the retired capture or its relay worker.
+            try:
+                async with asyncio.timeout(8):
+                    await self.api.stop_livestream(self.product_type, self.serial_no)
+            except (asyncio.TimeoutError, WebSocketConnectionException):
+                _LOGGER.warning("Bridge did not acknowledge late stream cleanup")
+            return
         self.p2p_started_event.set()
 
     async def _handle_livestream_stopped(self, event: Event):
@@ -242,7 +252,10 @@ class Camera(Device):
 
     async def start_livestream(self) -> bool:
         """Process start p2p livestream call"""
+        generation = self._stream_generation
         if await self._initiate_start_stream(StreamProvider.P2P) is False:
+            return False
+        if generation != self._stream_generation:
             return False
         self.stream_future = asyncio.create_task(self.p2p_streamer.start())
         self.stream_checker = asyncio.create_task(self._check_live_stream())
@@ -251,14 +264,22 @@ class Camera(Device):
 
     async def stop_livestream(self, is_internal=False):
         """Process stop p2p livestream call"""
-        if is_internal is True:
-            # called from another function, so respect retry value
-            pass
-        else:
+        if not is_internal:
+            self._stream_generation += 1
             self.p2p_streamer.retry = False
-        if self.stream_status == StreamStatus.IDLE:
-            return
-        await self.api.stop_livestream(self.product_type, self.serial_no)
+            # Stop a checker that may already be waiting to reconnect. Cancelling
+            # only the HTTP relay does not cancel its separate retry task.
+            current = asyncio.current_task()
+            for task in (self.stream_checker, self.stream_future):
+                if task is not None and task is not current and not task.done():
+                    task.cancel()
+        try:
+            # Send even if locally idle: the remote start may have arrived late.
+            await self.api.stop_livestream(self.product_type, self.serial_no)
+        finally:
+            self.stream_status = StreamStatus.IDLE
+            self.video_queue.clear()
+            self.audio_queue.clear()
 
     async def start_rtsp_livestream(self) -> bool:
         """Process start rtsp livestream call"""

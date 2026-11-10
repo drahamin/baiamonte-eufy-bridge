@@ -369,6 +369,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
 
         async with self._scheduled_snapshot_lock:
             started = False
+            owns_stream = not self.is_streaming
             captured_at = None
             try:
                 # A user-opened stream can supply the explicit still without a
@@ -430,7 +431,10 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             ):
                 return False
             finally:
-                if started:
+                # A timed-out start may still have reached the bridge. Always
+                # retire a capture-owned session, including failed/cancelled starts.
+                # A stream borrowed from a user remains theirs to close.
+                if owns_stream:
                     try:
                         async with asyncio.timeout(8):
                             await self.product.stop_livestream()
