@@ -77,3 +77,16 @@ standalone/HomeBase image channels, S380 command/path ownership, split stored fr
 bytes, malformed/foreign frames, finish channel and empty-transfer cleanup, and
 concurrent station download admission/release. Existing client/server/Python and
 configuration suites, static checks, builds and hosted container CI are required.
+
+
+## Companion 9.6.43: failed capture cleanup
+
+A production check of Top Vineyard 360 failed to produce a new still, then later
+reported streaming. The test stream was explicitly stopped. Capture cleanup now
+retires every capture-owned start even when startup fails or times out. Explicit
+stop invalidates pending starts, cancels relay/checker tasks, and prevents a late
+start event from reopening the relay. Relay retries and byte generators preserve
+stop intent and are isolated by stream generation. Borrowed user streams are not
+stopped by still capture. Regression checks cover failed capture ownership,
+pending-start invalidation, late events, and old relay generations. These repairs
+do not establish that missing camera images or Pro recording downloads work.

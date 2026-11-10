@@ -19,10 +19,14 @@ class P2PStreamer:
         self.camera = camera
         self.retry = None
 
-    async def chunk_generator(self, queue, queue_name):
+    async def chunk_generator(self, queue, queue_name, generation):
         retry_count = 0
         max_retry_count = int(STREAM_TIMEOUT_SECONDS / 0.1)
-        while retry_count < max_retry_count:
+        while (
+            retry_count < max_retry_count
+            and self.retry is not False
+            and generation == self.camera._stream_generation
+        ):
             try:
                 item = queue.popleft()
                 # _LOGGER.debug(f"chunk_generator {queue_name} yield data {retry_count} - {len(item)}")
@@ -32,25 +36,29 @@ class P2PStreamer:
                 retry_count = retry_count + 1
                 await asyncio.sleep(0.1)
 
-    async def write_bytes(self, queue, queue_name):
+    async def write_bytes(self, queue, queue_name, generation):
         url = GO2RTC_API_URL.format(
             self.camera.config.rtsp_server_address, GO2RTC_API_PORT
         )
         url = f"{url}?dst={str(self.camera.serial_no)}"
 
-        self.retry = None
+        if generation != self.camera._stream_generation or self.retry is False:
+            return
         try:
             async with aiohttp.ClientSession() as session:
                 resp = await session.post(
                     url,
-                    data=self.chunk_generator(queue, queue_name),
+                    data=self.chunk_generator(queue, queue_name, generation),
                     timeout=aiohttp.ClientTimeout(total=None, connect=5),
                 )
+                if generation != self.camera._stream_generation:
+                    return
                 _LOGGER.debug("P2P stream relay response status %s", resp.status)
                 if resp is not None and resp.status is not None:
                     if resp.status == 500:
-                        self.retry = self.retry or True
-                self.retry = self.retry or False
+                        self.retry = self.retry is not False
+                if self.retry is None:
+                    self.retry = False
 
             _LOGGER.debug("write_bytes - post ended - {self.retry}")
         except (
@@ -59,15 +67,18 @@ class P2PStreamer:
         ):
             # live stream probabaly stopped, handle peacefully
             _LOGGER.debug("P2P stream relay ended without retry")
-            self.retry = self.retry or False
+            if generation == self.camera._stream_generation:
+                self.retry = False
         except aiohttp.client_exceptions.ServerDisconnectedError:
             # connection to go2rtc server is broken, try again``
             _LOGGER.debug("P2P stream relay disconnected; retrying")
-            self.retry = self.retry or True
+            if generation == self.camera._stream_generation:
+                self.retry = self.retry is not False
         except Exception:  # pylint: disable=broad-except
             # other exceptions, log the error
             _LOGGER.debug("P2P stream relay stopped after an unexpected error")
-            self.retry = self.retry or False
+            if generation == self.camera._stream_generation:
+                self.retry = False
 
         _LOGGER.debug(f"write_bytes {queue_name} - ended with {self.retry}")
 
@@ -93,15 +104,16 @@ class P2PStreamer:
             async with session.put(url, params=parameters) as response:
                 _LOGGER.debug("go2rtc create response status %s", response.status)
 
-    def _run(self, queue, name):
-        asyncio.run(self.write_bytes(queue, name))
+    def _run(self, queue, name, generation):
+        asyncio.run(self.write_bytes(queue, name, generation))
 
     async def start(self):
         """start streaming thread"""
         # send API command to go2rtc to create a new stream
+        generation = self.camera._stream_generation
         self.retry = None
         await self._create_stream_on_go2rtc()
         await asyncio.gather(
             # asyncio.to_thread(self._run, self.camera.audio_queue, "audio"),
-            asyncio.to_thread(self._run, self.camera.video_queue, "video")
+            asyncio.to_thread(self._run, self.camera.video_queue, "video", generation)
         )
