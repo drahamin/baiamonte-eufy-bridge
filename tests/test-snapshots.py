@@ -183,7 +183,7 @@ def test_evidence_identity_supports_current_app_spellings() -> None:
 def test_pro_offline_status_images_are_not_camera_snapshots() -> None:
     fixture_dir = Path(__file__).parent / "fixtures"
     good = b"\xff\xd8\xff" + b"g" * (30546 - 3)
-    for name in ("pro-offline-cyan.jpg", "pro-offline-violet.jpg"):
+    for name in ("pro-offline-cyan.jpg", "pro-offline-violet.jpg", "pro-offline-cyan-raw.jpg", "pro-offline-violet-raw.jpg"):
         content = (fixture_dir / name).read_bytes()
         assert not snapshot.is_valid_snapshot(content)
         assert snapshot.product_snapshot_bytes(Product(content), good) == good

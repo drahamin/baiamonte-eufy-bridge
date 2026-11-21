@@ -15,13 +15,15 @@ except ImportError:  # Home Assistant includes Pillow; keep import tests portabl
 
 MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024
 MAX_ENHANCE_BYTES = 3 * 1024 * 1024
-# Exact fingerprints of two observed Pro RTC "Device is offline" JPEGs.
+# Exact fingerprints of observed raw and dashboard Pro RTC "Device is offline" JPEGs.
 # Keep this conservative: no brightness/entropy heuristic may reject real scenes.
 _OFFLINE_PLACEHOLDER_HASHES = {
+    "55a86000e88b5886fce76325846caeaaf6e95f9c1a57a254eb844921ad2e1326",
+    "e602ed97d64a068a271a0c69c68a72b53b0f28b824be5267db104deda63f98b4",
     "2dae851f7f51328eca3e2e1623c193f91340b0d73d7515e749a5510241184404",
     "34620f910dfc2094b3c09a4f8547c472f3564c7b5b93f1768691dce87e70df99",
 }
-_OFFLINE_PLACEHOLDER_SIZES = {30546, 31126}
+_OFFLINE_PLACEHOLDER_SIZES = {30546, 31126, 41342, 40607}
 
 
 def decode_inline_snapshot(value: object) -> bytes:
