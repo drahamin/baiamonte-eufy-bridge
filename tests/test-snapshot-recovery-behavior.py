@@ -70,6 +70,7 @@ def test_rejected_thumbnail_does_not_abort_other_camera_updates():
         class Rejected(Exception): pass
         ns = dict(asyncio=asyncio, datetime=datetime, timedelta=timedelta, timezone=timezone,
                   product_snapshot_bytes=lambda d: d.picture,
+                  snapshot_source_has_capture_time=lambda _:True,
                   FailedCommandException=Rejected, WebSocketConnectionException=ConnectionError,
                   aiohttp=SimpleNamespace(ClientError=OSError))
         refresh = extract("custom_components/eufy_security/coordinator.py", "_refresh_latest_snapshots_unlocked", ns)
