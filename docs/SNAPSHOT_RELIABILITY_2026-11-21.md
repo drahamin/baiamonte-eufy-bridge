@@ -11,6 +11,8 @@ Bridge 1.6.71, patched client 4.1.1-mega.46, companion 9.6.45.
 - Manual refresh includes the Pro latest-event index, retaining its timeout and serialization bounds. Routine maintenance remains non-live.
 - Add a camera snapshot_refresh_needed attribute and flag future timestamps as stale in the panel. Bump the frontend asset version so browsers load the repair. Preserve cached pictures and their original times when retrieval fails; receipt time is never invented as capture time.
 
+- Cache the Python/WebRTC runtime independently of camera source changes so future ARM updates do not recompile it for every client fix. Dependency versions, pinned SCTP assets and startup self-test remain unchanged.
+
 ## Verification and limits
 
 Regression tests cover authenticated key unwrap, wrong keys/tags/truncation, both reply layouts, outgoing frame bytes, concurrent and retired key lookups, decrypted DATA database replies, heartbeat silence/acks/shutdown, guarded station recovery and wiring, per-station recovery serialization, stale selection, Pro-pass reuse, cooldown and no live captures. Existing client/server, Python, Node, shell, build and CI gates must pass before rollout.

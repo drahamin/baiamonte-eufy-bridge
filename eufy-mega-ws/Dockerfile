@@ -39,7 +39,15 @@ RUN \
     && test "$(node -p "require('./package.json').version")" = "3.1.0" \
     && grep -q "maxSchemaVersion = 21" dist/lib/const.js
 
-FROM ghcr.io/home-assistant/base:3.23
+# Keep Python/WebRTC dependencies independent of client/dashboard source changes.
+# Camera fixes must not recompile the native RTC stack on every ARM update.
+FROM ghcr.io/home-assistant/base:3.23 AS runtime-deps
+RUN apk add --no-cache jq nodejs python3 py3-pip curl
+RUN python3 -m venv /opt/baiamonte-pro-events/venv \
+    && /opt/baiamonte-pro-events/venv/bin/pip install --no-cache-dir \
+        aiortc==1.15.0 websockets==17.3 aiohttp==3.14.5 truststore==0.10.5
+
+FROM runtime-deps
 
 ARG BUILD_ARCH
 ARG BUILD_VERSION
@@ -53,8 +61,6 @@ LABEL \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.source="https://github.com/drahamin/baiamonte-eufy-bridge" \
     org.opencontainers.image.version="${BUILD_VERSION}"
-
-RUN apk add --no-cache jq nodejs python3 py3-pip curl
 
 WORKDIR /usr/src/app/node_modules/eufy-security-ws
 COPY --from=server-builder /build/eufy-security-ws/dist ./dist
@@ -92,9 +98,6 @@ COPY dashboard/ /opt/baiamonte-eufy-dashboard/
 COPY pro-events/ /opt/baiamonte-pro-events/
 RUN \
     set -eux \
-    && python3 -m venv /opt/baiamonte-pro-events/venv \
-    && /opt/baiamonte-pro-events/venv/bin/pip install --no-cache-dir \
-        aiortc==1.15.0 websockets==17.3 aiohttp==3.14.5 truststore==0.10.5 \
     && mkdir -p /opt/baiamonte-pro-events/worker \
     && curl -fsSL https://security.eufy.com/plugin/libsctp_0_0_4.js \
         -o /opt/baiamonte-pro-events/worker/libsctp_0_0_4.js \
