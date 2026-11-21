@@ -106,12 +106,13 @@ def test_failed_capture_retires_its_start_but_does_not_stop_borrowed_stream():
         capture = method("custom_components/eufy_security/camera.py", "async_refresh_stale_snapshot", namespace)
         product = SimpleNamespace(commands=["start_livestream", "stop_livestream"],
             image_last_updated=None, stream_status=status.STREAMING if borrowed else status.IDLE,
-            start_livestream=AsyncMock(return_value=False), stop_livestream=AsyncMock())
+            start_livestream=AsyncMock(return_value=False), stop_livestream=AsyncMock(), properties={})
         class Camera:
             @property
             def is_streaming(self): return product.stream_status == status.STREAMING
         camera = Camera()
         camera.product, camera.hass = product, object()
+        camera.coordinator = SimpleNamespace(stations={})
         camera._scheduled_snapshot_lock = asyncio.Lock()
         camera.stream_source = AsyncMock(return_value="test-source")
         assert not await capture(camera, force=True)

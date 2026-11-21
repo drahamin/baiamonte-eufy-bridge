@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.73 — 2026-11-21
+
+- Add an explicit, serialized Pro RTC live-still request from SDK #345, with HEVC decoding, bounded JPEG output and stop/DTLS cleanup. Stored-evidence maintenance remains non-live.
+- Security 9.6.47 routes Pro-attached snapshot captures through RTC, reports the station model, and reports its current version correctly in diagnostics. Preserve cached images/times on failure.
+
 ## 1.6.72 — 2026-11-21
 
 - Read the supported Pro history table once when an AIC query returns empty success. Preserve record dates and bound public history results to the requested window.

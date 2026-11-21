@@ -13,6 +13,7 @@ import {
   IncomingCommandHasProperty,
   IncomingCommandChime,
   IncomingCommandDownloadImage,
+  IncomingCommandCaptureLiveSnapshot,
   IncomingCommandDatabaseQueryLocal,
   IncomingCommandDatabaseQueryByDate,
   IncomingCommandDatabaseCountByDate,
@@ -35,6 +36,16 @@ export class StationMessageHandler {
 
     const station = await driver.getStation(serialNumber);
     switch (command) {
+      case StationCommand.captureLiveSnapshot: {
+        if (client.schemaVersion < 21) throw new UnknownCommandError(command);
+        const device = await driver.getDevice(
+          (message as IncomingCommandCaptureLiveSnapshot).deviceSN,
+        );
+        if (device.getStationSerial() !== station.getSerial()) {
+          throw new Error("Snapshot camera is not attached to this station");
+        }
+        return station.captureLiveSnapshot(device);
+      }
       case StationCommand.reboot:
         station.rebootHUB();
         return client.schemaVersion >= 13 ? { async: true } : {};

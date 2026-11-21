@@ -1,7 +1,7 @@
 import { DatabaseReadWatchdog } from "../p2p/databaseWatchdog";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { Readable } from "stream";
-import { spawn } from "child_process";
+import { runProRtcHelper } from "./proRtcHelper";
 const { format } = require("date-and-time");
 
 import { HTTPApi } from "./api";
@@ -183,7 +183,7 @@ import {
   StorageInfoBodyHB3,
   AdvancedLockSetParamsTypeT8520,
 } from "../p2p/models";
-import { Device, DoorbellCamera, Lock, SmartSafe } from "./device";
+import { Camera, Device, DoorbellCamera, Lock, SmartSafe } from "./device";
 import {
   encodeLockPayload,
   encryptLockAESData,
@@ -270,7 +270,10 @@ export class Station extends TypedEmitter<StationEvents> {
     );
     this.p2pSession.on("connect", (address: Address) => this.onConnect(address));
     this.databaseReadWatchdog = new DatabaseReadWatchdog(
-      () => !this.isStationHomeBasePro() && this.p2pSession.isConnected() && this.mediaStations.size === 0 &&
+      () =>
+        !this.isStationHomeBasePro() &&
+        this.p2pSession.isConnected() &&
+        this.mediaStations.size === 0 &&
         !this.p2pSession.hasActiveMedia(),
       () => {
         rootHTTPLogger.warn("Recovering a previously responsive, now silent station history session");
@@ -15681,6 +15684,60 @@ export class Station extends TypedEmitter<StationEvents> {
     endDate: Date,
     count: number
   ): Promise<void> {
+    const response = await this.runProRequest(helper, startDate, endDate, count);
+    const envelope = response as { data?: unknown };
+    this.onDatabaseQueryAicEvents(DatabaseReturnCode.SUCCESSFUL, normalizeAicEventData(envelope?.data));
+  }
+
+  /** A single explicit still via the Pro's RTC play slot (SDK #345), never a P2P start. */
+  public async captureLiveSnapshot(device: Device): Promise<{ data: string; mimeType: string; capturedAt: string }> {
+    if (!(device instanceof Camera) || !this.isStationHomeBasePro() || device.getStationSerial() !== this.getSerial()) {
+      throw new NotSupportedError("RTC stills require a camera attached to this HomeBase Pro");
+    }
+    const helper = process.env.BAIAMONTE_PRO_EVENT_HELPER;
+    if (!helper) throw new NotSupportedError("HomeBase Pro RTC helper is unavailable");
+    if (this.proEventQueryRunning || this.mediaStations.size > 0 || this.isLiveStreaming(device)) {
+      throw new Error("HomeBase Pro is busy; retry after its current operation");
+    }
+    this.proEventQueryRunning = true;
+    try {
+      const now = new Date();
+      const response = (await this.runProRequest(helper, now, now, 1, {
+        mode: "snapshot",
+        cameraChannel: device.getChannel(),
+      })) as { data?: { snapshot?: { data?: unknown; mimeType?: unknown; capturedAt?: unknown } } };
+      const picture = response?.data?.snapshot;
+      if (
+        typeof picture?.data !== "string" ||
+        picture.data.length > 2_796_204 ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(picture.data) ||
+        typeof picture.capturedAt !== "string"
+      ) {
+        throw new Error("HomeBase Pro returned an invalid snapshot");
+      }
+      const bytes = Buffer.from(picture.data, "base64");
+      const captured = Date.parse(picture.capturedAt);
+      if (
+        !bytes.subarray(0, 3).equals(Buffer.from([255, 216, 255])) ||
+        bytes.length > 2 * 1024 * 1024 ||
+        !Number.isFinite(captured) ||
+        Math.abs(Date.now() - captured) > 120_000
+      ) {
+        throw new Error("HomeBase Pro snapshot failed validation");
+      }
+      return { data: picture.data, mimeType: "image/jpeg", capturedAt: new Date(captured).toISOString() };
+    } finally {
+      this.proEventQueryRunning = false;
+    }
+  }
+
+  private async runProRequest(
+    helper: string,
+    startDate: Date,
+    endDate: Date,
+    count: number,
+    extra: { mode?: "snapshot"; cameraChannel?: number } = {}
+  ): Promise<unknown> {
     const python = process.env.BAIAMONTE_PRO_EVENT_PYTHON || "python3";
     const persistentPath = process.env.BAIAMONTE_PERSISTENT_FILE || "/data/persistent.json";
     const expectedDeviceSerials = (this.rawStation.devices || [])
@@ -15695,54 +15752,9 @@ export class Station extends TypedEmitter<StationEvents> {
       endSeconds: Math.floor(endDate.getTime() / 1000),
       count: Math.max(1, Math.min(300, Math.trunc(count))),
       expectedDeviceSerials,
+      ...extra,
     };
-    const response = await new Promise<unknown>((resolve, reject) => {
-      const processHandle = spawn(python, [helper], {
-        stdio: ["pipe", "pipe", "pipe"],
-        env: process.env,
-      });
-      let stdout = Buffer.alloc(0);
-      let stderr = "";
-      let settled = false;
-      const finish = (callback: (value: unknown) => void, value: unknown): void => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        callback(value);
-      };
-      const timeout = setTimeout(() => {
-        processHandle.kill("SIGTERM");
-        finish(reject, new Error("HomeBase Pro event helper timed out"));
-      }, 60_000);
-      processHandle.stdout.on("data", (chunk: Buffer) => {
-        if (stdout.length + chunk.length > 16 * 1024 * 1024) {
-          processHandle.kill("SIGTERM");
-          finish(reject, new Error("HomeBase Pro event response exceeded 16 MB"));
-          return;
-        }
-        stdout = Buffer.concat([stdout, chunk]);
-      });
-      processHandle.stderr.on("data", (chunk: Buffer) => {
-        if (stderr.length < 4096) stderr += chunk.toString("utf8").slice(0, 4096 - stderr.length);
-      });
-      processHandle.on("error", (error) => finish(reject, error));
-      processHandle.on("close", (code) => {
-        if (settled) return;
-        if (code !== 0) {
-          finish(reject, new Error(`HomeBase Pro event helper exited ${code}: ${stderr.trim().slice(-300)}`));
-          return;
-        }
-        try {
-          finish(resolve, JSON.parse(stdout.toString("utf8")));
-        } catch (error) {
-          finish(reject, ensureError(error));
-        }
-      });
-      processHandle.stdin.end(JSON.stringify(request));
-    });
-    const envelope = response as { data?: unknown };
-    const normalized = normalizeAicEventData(envelope?.data);
-    this.onDatabaseQueryAicEvents(DatabaseReturnCode.SUCCESSFUL, normalized);
+    return runProRtcHelper(python, helper, request);
   }
 
   public databaseQueryLocal(

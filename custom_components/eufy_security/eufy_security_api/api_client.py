@@ -542,6 +542,14 @@ class ApiClient:
 
     # station level commands
 
+    async def capture_live_snapshot(self, serial_no: str, device_serial_no: str) -> dict:
+        """Request one explicit Pro RTC still; the worker closes before responding."""
+        return await self._send_message_get_response(
+            OutgoingMessage(OutgoingMessageType.capture_live_snapshot,
+                            serial_no=serial_no, device_serial_no=device_serial_no),
+            response_timeout=65,
+        )
+
     async def get_storage_info(self, serial_no: str) -> None:
         """Request current HomeBase storage information."""
         await self._send_message_get_response(
@@ -763,12 +771,12 @@ class ApiClient:
         _LOGGER.error("Bridge WebSocket error: %s", type(error).__name__)
         raise WebSocketConnectionException(error)
 
-    async def _send_message_get_response(self, message: OutgoingMessage) -> dict:
+    async def _send_message_get_response(self, message: OutgoingMessage, *, response_timeout: float = 30) -> dict:
         future: "asyncio.Future[dict]" = asyncio.get_running_loop().create_future()
         self._result_futures[message.id] = future
-        await self.send_message(message.content)
         try:
-            return await asyncio.wait_for(future, timeout=30)
+            await self.send_message(message.content)
+            return await asyncio.wait_for(future, timeout=response_timeout)
         except asyncio.TimeoutError as exc:
             raise WebSocketConnectionException(
                 "Timed out waiting for the eufy bridge response"

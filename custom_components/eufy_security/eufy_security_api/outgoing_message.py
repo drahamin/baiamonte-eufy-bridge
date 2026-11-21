@@ -12,6 +12,7 @@ class OutgoingMessageToParameter(Enum):
 
     schemaVersion = "schema_version"
     serialNumber = "serial_no"
+    deviceSN = "device_serial_no"
     name = "name"
     value = "value"
     seconds = "seconds"
@@ -225,6 +226,11 @@ class OutgoingMessageType(Enum):
         MessageField.DUMMY: auto(),
         MessageField.DOMAIN: EventSourceType.station,
         MessageField.FILE: None,
+    }
+    capture_live_snapshot = {
+        MessageField.DUMMY: auto(),
+        MessageField.DOMAIN: EventSourceType.station,
+        MessageField.DEVICE_SERIAL_NO: None,
     }
     database_query_local = {
         MessageField.DUMMY: auto(),

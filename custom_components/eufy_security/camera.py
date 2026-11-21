@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import logging
 from datetime import datetime, timedelta, timezone
@@ -288,6 +289,8 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         return {
             **super().extra_state_attributes,
             "model": self.product.model,
+            "station_model": getattr(self.coordinator.stations.get(
+                self.product.properties.get("stationSerialNumber")), "model", None),
             "connected": bool(self.product.properties.get("connected", True)),
             "bridge_available": self.coordinator.available,
             "inventory_present": self.product.properties.get("connected"),
@@ -362,6 +365,13 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             and datetime.now(timezone.utc) - updated_at < timedelta(hours=24)
         ):
             return False
+        station = getattr(self.coordinator, "stations", {}).get(
+            self.product.properties.get("stationSerialNumber")
+        )
+        if station is not None and str(station.model).upper().startswith("T9000"):
+            if not force:
+                return False
+            return await self._capture_pro_snapshot(station)
         if not {
             "start_livestream",
             "stop_livestream",
@@ -458,6 +468,43 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             self.product.snapshot_source = (
                 "explicit_live_capture" if force else "scheduled_live_capture"
             )
+            self.product.notify_state_update()
+            if not await self.coordinator.async_persist_snapshot_capture(self.product):
+                return False
+            self.async_update_token()
+            self.async_write_ha_state()
+            return True
+
+    async def _capture_pro_snapshot(self, station) -> bool:
+        """Use the Pro's RTC still path instead of an unreachable attached P2P start."""
+        if self._scheduled_snapshot_lock.locked() or self.coordinator._pro_evidence_lock.locked():
+            return False
+        async with self._scheduled_snapshot_lock, self.coordinator._pro_evidence_lock:
+            if any(
+                device.properties.get("stationSerialNumber") == station.serial_no
+                and getattr(device, "stream_status", StreamStatus.IDLE) != StreamStatus.IDLE
+                for device in self.coordinator.devices.values()
+            ):
+                return False
+            try:
+                result = await self.coordinator._api.capture_live_snapshot(
+                    station.serial_no, self.product.serial_no
+                )
+                encoded = result.get("data")
+                if not isinstance(encoded, str) or len(encoded) > 2_796_204:
+                    return False
+                frame = base64.b64decode(encoded, validate=True)
+                captured_at = datetime.fromisoformat(result["capturedAt"].replace("Z", "+00:00"))
+                if (captured_at.tzinfo is None or not is_valid_snapshot(frame)
+                        or not timedelta(seconds=-5) <= datetime.now(timezone.utc) - captured_at < timedelta(minutes=2)):
+                    return False
+            except (ValueError, KeyError, TypeError, asyncio.TimeoutError,
+                    FailedCommandException, WebSocketConnectionException):
+                return False
+            self._last_image = frame
+            self.product.properties["picture"] = {"data": frame, "type": {"mime": "image/jpeg"}}
+            self.product.image_last_updated = captured_at
+            self.product.snapshot_source = "explicit_live_capture:homebase_pro_rtc"
             self.product.notify_state_update()
             if not await self.coordinator.async_persist_snapshot_capture(self.product):
                 return False

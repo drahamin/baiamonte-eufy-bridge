@@ -89,6 +89,11 @@ export interface IncomingCommandDownloadImage extends IncomingCommandStationBase
   file: string;
 }
 
+export interface IncomingCommandCaptureLiveSnapshot extends IncomingCommandStationBase {
+  command: StationCommand.captureLiveSnapshot;
+  deviceSN: string;
+}
+
 export interface IncomingCommandDatabaseQueryLatest extends IncomingCommandStationBase {
   command: StationCommand.databaseQueryLatestInfo;
 }
@@ -149,6 +154,7 @@ export type IncomingMessageStation =
   | IncomingCommandGetCommands
   | IncomingCommandChime
   | IncomingCommandDownloadImage
+  | IncomingCommandCaptureLiveSnapshot
   | IncomingCommandDatabaseQueryLatest
   | IncomingCommandDatabaseQueryAicEvents
   | IncomingCommandDatabaseQueryLocal

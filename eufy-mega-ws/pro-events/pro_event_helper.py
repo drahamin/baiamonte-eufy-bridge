@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Read HomeBase Professional event thumbnails without starting camera streams."""
+"""Read Pro evidence, or take one explicitly requested bounded RTC live still."""
+
+# RTC still framing adapted from mega-yfue/eufy-sdk PR #345 (Apache-2.0).
+# Modified for Baiamonte's Python one-frame worker; see NOTICE and LICENSE-eufy-sdk.
 
 from __future__ import annotations
 
@@ -15,6 +18,8 @@ import struct
 import sys
 import time
 import uuid
+from fractions import Fraction
+from datetime import datetime, timezone
 from collections.abc import Callable
 import truststore
 truststore.inject_into_ssl()
@@ -175,6 +180,61 @@ def build_command(account_id: str, command: int, payload: Any, segment: int) -> 
     return bytes(header) + body
 
 
+def build_live_command(account_id: str, channel: int, segment: int, *, stop: bool = False) -> bytes:
+    """SDK #345's Pro play-slot-1 request; never used by evidence maintenance."""
+    if type(channel) is not int or not 0 <= channel <= 254:
+        raise ValueError("Invalid Pro camera channel")
+    payload = {} if stop else {
+        "ClientOS": "WEB", "entrytype": 0, "camera_type": 0, "key": "",
+        "msg_id": 116, "audio_chn": -1, "streamtype": 2, "stitch_mode": 1,
+        "chn_list": [{"index": 0, "chn": channel, "sensor": 0, "isUps": 0, "isClicked": True}],
+        "pip_cord": {"x1": 0, "y1": 0, "x2": 0, "y2": 0},
+        "station_video_type": 6, "play_id": 1,
+    }
+    frame = bytearray(build_command(account_id, 1004 if stop else 1003, payload, segment))
+    frame[14] = 1  # Portal streamId, distinct from the camera's channel.
+    return bytes(frame)
+
+
+def parse_live_media(frame: bytes, link: int) -> bytes | None:
+    """Accept only complete Pro HEVC video on live link 5 / play channel 101."""
+    if link != 5 or len(frame) < 38 or frame[:4] != b"XZYH":
+        return None
+    if struct.unpack_from("<H", frame, 4)[0] != 1300 or frame[12] != 101:
+        return None
+    length = struct.unpack_from("<I", frame, 6)[0]
+    if length < 22 or length > len(frame) - 16:
+        return None
+    body = frame[16:16 + length]
+    video_length = struct.unpack_from("<I", body, 0)[0]
+    width, height = struct.unpack_from("<HH", body, 10)
+    if body[5] != 1 or not 0 < video_length <= 4 * 1024 * 1024 or video_length > len(body) - 22:
+        return None
+    if width > 4096 or height > 2160:
+        return None
+    return body[22:22 + video_length]
+
+
+def encode_live_still(frame) -> bytes:
+    """Encode a high-quality JPEG within the companion's existing WS size limit."""
+    import av
+
+    if not 0 < frame.width <= 4096 or not 0 < frame.height <= 2160:
+        raise ValueError("Pro snapshot dimensions exceed limit")
+    encoder = av.CodecContext.create("mjpeg", "w")
+    encoder.width, encoder.height = frame.width, frame.height
+    encoder.pix_fmt = "yuvj420p"
+    encoder.time_base = Fraction(1, 1)
+    encoder.flags |= av.codec.context.Flags.qscale
+    encoder.global_quality = 3 * 118  # libavcodec FF_QP2LAMBDA; fixed high quality.
+    rgb = frame.reformat(format="yuvj420p")
+    rgb.pts, rgb.time_base = 0, Fraction(1, 1)
+    encoded = b"".join(bytes(packet) for packet in [*encoder.encode(rgb), *encoder.encode(None)])
+    if not encoded.startswith(b"\xff\xd8\xff") or len(encoded) > 2 * 1024 * 1024:
+        raise ValueError("Pro snapshot encoding exceeded limit")
+    return encoded
+
+
 def build_event_query(
     account_id: str,
     start_seconds: int,
@@ -306,7 +366,7 @@ class Oracle:
     def __init__(self) -> None:
         self.process: asyncio.subprocess.Process | None = None
         self.ready = asyncio.Event()
-        self.frames: asyncio.Queue[tuple[int, bytes]] = asyncio.Queue()
+        self.frames: asyncio.Queue[tuple[int, bytes]] = asyncio.Queue(maxsize=8)
         self.send_packet: Callable[[bytes], None] | None = None
 
     async def start(self) -> None:
@@ -744,6 +804,95 @@ class EventCollector:
         }
 
 
+class SnapshotCollector(EventCollector):
+    """One explicit Pro still; holds no retained video and always releases its play slot."""
+
+    def __init__(self, config: dict[str, Any], oracle: Oracle) -> None:
+        import av
+
+        channel = config.get("cameraChannel")
+        if type(channel) is not int or not 0 <= channel <= 254:
+            raise ValueError("Invalid Pro camera channel")
+        super().__init__(config, oracle)
+        self.channel = channel
+        self.phase = "snapshot"
+        self.start_sent = False
+        self.start_accepted = False
+        self.start_refused = False
+        self.stop_sent = False
+        self.start_segment = 0
+        self.media_frames = 0
+        self.image: bytes | None = None
+        self.captured_at: str | None = None
+        self.decoder = av.CodecContext.create("hevc", "r")
+        self.decoder.thread_count = 1
+
+    def send_initial(self) -> None:
+        self.start_segment = self.next_segment()
+        self.oracle.send(build_live_command(self.account_id, self.channel, self.start_segment))
+        self.start_sent = True
+
+    def add_ack(self, frame: bytes, link: int) -> None:
+        if not self.start_sent or link != 1 or len(frame) < 20 or not frame[14] or frame[11] != self.start_segment:
+            return
+        if struct.unpack_from("<H", frame, 4)[0] != 1350:
+            return
+        declared = struct.unpack_from("<I", frame, 6)[0]
+        if declared < 4 or declared > len(frame) - 16:
+            return
+        if struct.unpack_from("<i", frame, 16)[0] != 0:
+            self.start_refused = True
+            self.error = RuntimeError("HomeBase Pro refused the snapshot start")
+            self.done.set()
+        else:
+            self.start_accepted = True
+
+    def _decode(self, data: bytes) -> bytes | None:
+        import av
+
+        try:
+            frames = self.decoder.decode(av.Packet(data))
+        except av.FFmpegError:
+            return None
+        return encode_live_still(frames[0]) if frames else None
+
+    async def add_media(self, frame: bytes, link: int) -> None:
+        if self.done.is_set() or not self.start_accepted:
+            return
+        media = parse_live_media(frame, link)
+        if media is None:
+            return
+        self.media_frames += 1
+        if self.media_frames > 120:
+            self.error = RuntimeError("HomeBase Pro snapshot frame budget exhausted")
+            self.done.set()
+            return
+        try:
+            image = await asyncio.to_thread(self._decode, media)
+        except Exception as error:
+            self.error = RuntimeError("HomeBase Pro snapshot decoding failed")
+            self.error.__cause__ = error
+            self.done.set()
+            return
+        if image:
+            self.image = image
+            self.captured_at = datetime.now(timezone.utc).isoformat()
+            self.done.set()
+
+    def stop(self) -> None:
+        # A refused start owns no play slot and must not stop somebody else's view.
+        if not self.start_sent or self.start_refused or self.stop_sent:
+            return
+        self.stop_sent = True
+        self.oracle.send(build_live_command(self.account_id, self.channel, self.next_segment(), stop=True))
+
+    def result(self) -> dict[str, Any]:
+        if not self.image:
+            raise RuntimeError("HomeBase Pro did not deliver a snapshot")
+        return {"snapshot": {"data": base64.b64encode(self.image).decode(),
+                             "mimeType": "image/jpeg", "capturedAt": self.captured_at}}
+
+
 async def sign_token(url: str, headers: dict[str, str]) -> str:
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=20), allow_redirects=False) as response:
@@ -790,22 +939,38 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
     signed = await sign_token(sign_url, headers)
     log("RTC sign accepted")
     oracle = Oracle()
+    # Validate capture mode and codec availability before starting a worker.
+    collector = SnapshotCollector(config, oracle) if config.get("mode") == "snapshot" else EventCollector(config, oracle)
     try:
         await oracle.start()
     except BaseException:
         await oracle.close()
         raise
-    collector = EventCollector(config, oracle)
     peer = RTCPeerConnection(RTCConfiguration(iceServers=[]))
     channels: dict[str, Any] = {}
     connected = False
     command_open = False
     started = False
+    capture_keepalive: asyncio.Task | None = None
 
     def maybe_start() -> None:
-        nonlocal started
+        nonlocal started, capture_keepalive
         if connected and command_open and not started:
             started = True
+            if isinstance(collector, SnapshotCollector):
+                collector.send_initial()
+                async def keep_live_slot() -> None:
+                    while not collector.done.is_set():
+                        await asyncio.sleep(25)
+                        channel = channels.get("WebrtcDataChannel")
+                        if channel is None or channel.readyState != "open":
+                            return
+                        try:
+                            channel.send(bytes.fromhex("0009000010000000000000006300000000000000585a5948730400000000000000000002"))
+                        except (ConnectionError, RuntimeError):
+                            return
+                capture_keepalive = asyncio.create_task(keep_live_slot())
+                return
             oracle.send(build_command(collector.account_id, 9100, {}, collector.next_segment()))
 
             async def delayed_query() -> None:
@@ -860,8 +1025,13 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
 
     async def consume_frames() -> None:
         while not collector.done.is_set():
-            _link, frame = await oracle.frames.get()
+            link, frame = await oracle.frames.get()
             if len(frame) < 16 or frame[:4] != b"XZYH":
+                continue
+            if isinstance(collector, SnapshotCollector):
+                collector.add_ack(frame, link)
+                if not collector.done.is_set():
+                    await collector.add_media(frame, link)
                 continue
             command = struct.unpack_from("<H", frame, 4)[0]
             payload = frame[16:]
@@ -1008,8 +1178,18 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
             receiver.cancel()
             await asyncio.gather(receiver, return_exceptions=True)
     finally:
+        if capture_keepalive:
+            capture_keepalive.cancel()
+            await asyncio.gather(capture_keepalive, return_exceptions=True)
+        if isinstance(collector, SnapshotCollector):
+            try:
+                collector.stop()
+                # Let the framed stop leave the worker before closing DTLS.
+                await asyncio.sleep(0.15)
+            except (BrokenPipeError, ConnectionError, RuntimeError):
+                pass
         # Fixed local state only: no station IDs, URLs, tokens or SDP in diagnostics.
-        phase = collector.phase if collector.phase in {"roster", "initial", "filters", "thumbnails"} else "unknown"
+        phase = collector.phase if collector.phase in {"roster", "initial", "filters", "thumbnails", "snapshot"} else "unknown"
         peer_state = peer.connectionState if peer.connectionState in {"new", "connecting", "connected", "disconnected", "failed", "closed"} else "unknown"
         log(f"RTC session end: phase={phase}, peer={peer_state}, command_open={int(command_open)}")
         if collector.event_reply_timer is not None:
@@ -1029,6 +1209,8 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
         await oracle.close()
     if collector.error:
         raise collector.error
+    if isinstance(collector, SnapshotCollector):
+        return {"data": collector.result(), "liveStreamsStarted": int(collector.start_sent)}
     return {
         "data": collector.result(),
         "liveStreamsStarted": 0,
@@ -1055,9 +1237,34 @@ async def main() -> None:
     sys.stdout.write("\n")
 
 
+def codec_selftest() -> None:
+    """Build-time decode/encode test using synthetic, non-camera HEVC frames."""
+    import av
+    import io
+    from pathlib import Path
+
+    decoder = av.CodecContext.create("hevc", "r")
+    decoder.thread_count = 1
+    raw = (Path(__file__).parent / "fixtures" / "pro-still.hevc").read_bytes()
+    frames = []
+    for packet in [*decoder.parse(raw), *decoder.parse(b"")]:
+        frames.extend(decoder.decode(packet))
+    frames.extend(decoder.decode(None))
+    if not frames:
+        raise RuntimeError("Pro HEVC decoder self-test failed")
+    image = encode_live_still(frames[0])
+    with av.open(io.BytesIO(image)) as container:
+        verified = next(container.decode(video=0))
+        if (verified.width, verified.height) != (64, 48):
+            raise RuntimeError("Pro JPEG encoder self-test failed")
+
+
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        if sys.argv[1:] == ["--codec-selftest"]:
+            codec_selftest()
+        else:
+            asyncio.run(main())
     except Exception as error:
         log(type(error).__name__)
         raise SystemExit(1) from error
