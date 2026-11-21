@@ -19,3 +19,19 @@ Bridge 1.6.71, patched client 4.1.1-mega.46, companion 9.6.45.
 Regression tests cover authenticated key unwrap, wrong keys/tags/truncation, both reply layouts, outgoing frame bytes, concurrent and retired key lookups, decrypted DATA database replies, heartbeat silence/acks/shutdown, guarded station recovery and wiring, per-station recovery serialization, stale selection, Pro-pass reuse, cooldown and no live captures. Existing client/server, Python, Node, shell, build and CI gates must pass before rollout.
 
 This does not supply missing vault keys, promise new firmware capabilities, enable automatic live viewing, or establish hardware success before host testing. The Pro full-frame recording image route remains an open upstream limitation ([#558](https://github.com/mega-yfue/eufy-sdk/issues/558)); [v8 image decoding #455](https://github.com/mega-yfue/eufy-sdk/pull/455) remains unfinished. A key negotiation repair is not proof of a camera streaming or an image becoming current.
+
+
+## Hardware-validation follow-up: 1.6.72 / Security 9.6.46
+
+The first live stored refresh on Miami reached the Pro index but a rejected
+`device_not_supported` image fallback escaped the batch. Catch that failure both
+at the per-path fallback and camera-batch boundaries, preserving other cameras'
+successful images and failed cameras' prior bytes/times. Regressions prove mixed
+successful/rejected batches and continued candidate fallback.
+
+The legacy station model branches can emit integer 1003 or wrapped 1350 starts
+instead of 1700. On a negotiated GCM, explicit refusal, or cipher-0 own session,
+normalize those legacy starts to the same proven native forms while retaining
+the generated media modulus. Attached cameras and unknown/legacy negotiation
+retain their existing commands. Wire tests cover all three input forms under
+GCM and refusal, with matching stop bytes. Client 4.1.1-mega.47.

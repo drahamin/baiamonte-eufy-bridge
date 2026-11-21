@@ -1217,6 +1217,21 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     if (isP2PQueueMessage(message)) {
       const ageing = +new Date() - message.timestamp;
       if (ageing <= this.MAX_COMMAND_QUEUE_TIMEOUT) {
+        const ownChannel = this.isOwnSessionChannel(message.p2pCommand.channel ?? 0);
+        const legacyOwnStart = ownChannel && (this.sessionGcmKey || this.gatewayRefusedLevel2 || this.gatewayCipherId === 0) &&
+          (message.p2pCommand.commandType === CommandType.CMD_START_REALTIME_MEDIA ||
+            (message.p2pCommand.commandType === CommandType.CMD_SET_PAYLOAD && message.nestedCommandType === CommandType.CMD_START_REALTIME_MEDIA));
+        if (legacyOwnStart) {
+          const original = message.p2pCommandType === InternalP2PCommandType.WithStringPayload ?
+            JSON.parse(message.p2pCommand.value as string) : undefined;
+          const modulus = original?.payload?.key ?? message.p2pCommand.strValue;
+          if (typeof modulus === "string" && modulus.length > 0) {
+            message = {...message, p2pCommandType: InternalP2PCommandType.WithStringPayload,
+              nestedCommandType: ParamType.COMMAND_START_LIVESTREAM,
+              p2pCommand: {...message.p2pCommand, commandType: CommandType.CMD_DOORBELL_SET_PAYLOAD,
+                value: JSON.stringify({commandType: ParamType.COMMAND_START_LIVESTREAM, data:{encryptkey:modulus}})}};
+          }
+        }
         const refusedOwnStart = this.gatewayRefusedLevel2 && !this.sessionGcmKey &&
           this.isOwnSessionChannel(message.p2pCommand.channel ?? 0) &&
           message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
@@ -1249,7 +1264,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
               streamtype: 2, video_type: 12, timestamp: now, transaction: String(now)}});
         }
         const clearOwnSessionStart =
-          this.gatewayCipherId === 0 &&
+          this.gatewayCipherId === 0 && !this.sessionGcmKey &&
           this.isOwnSessionChannel(channel) &&
           message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
           message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM;
