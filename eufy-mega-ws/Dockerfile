@@ -13,7 +13,7 @@ RUN \
     && npm ci \
     && npm run build \
     && npm pack --ignore-scripts --pack-destination /tmp \
-    && test -s /tmp/eufy-security-client-4.1.1-mega.45.tgz
+    && test -s /tmp/eufy-security-client-4.1.1-mega.46.tgz
 
 FROM ghcr.io/home-assistant/base:3.23 AS server-builder
 
@@ -21,7 +21,7 @@ RUN apk add --no-cache nodejs npm
 
 WORKDIR /build/eufy-security-ws
 COPY vendor/eufy-security-ws/ ./
-COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.45.tgz /tmp/eufy-security-client-4.1.1-mega.45.tgz
+COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.46.tgz /tmp/eufy-security-client-4.1.1-mega.46.tgz
 
 # Compile the exact schema-21 server source and retain only its locked runtime dependencies.
 RUN \
@@ -31,7 +31,7 @@ RUN \
     && npm ci \
     && rm -rf node_modules/eufy-security-client \
     && mkdir -p node_modules/eufy-security-client \
-    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.45.tgz \
+    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.46.tgz \
         --strip-components=1 \
         -C node_modules/eufy-security-client \
     && npm run build \
@@ -39,7 +39,15 @@ RUN \
     && test "$(node -p "require('./package.json').version")" = "3.1.0" \
     && grep -q "maxSchemaVersion = 21" dist/lib/const.js
 
-FROM ghcr.io/home-assistant/base:3.23
+# Keep Python/WebRTC dependencies independent of client/dashboard source changes.
+# Camera fixes must not recompile the native RTC stack on every ARM update.
+FROM ghcr.io/home-assistant/base:3.23 AS runtime-deps
+RUN apk add --no-cache jq nodejs python3 py3-pip curl
+RUN python3 -m venv /opt/baiamonte-pro-events/venv \
+    && /opt/baiamonte-pro-events/venv/bin/pip install --no-cache-dir \
+        aiortc==1.15.0 websockets==17.3 aiohttp==3.14.5 truststore==0.10.5
+
+FROM runtime-deps
 
 ARG BUILD_ARCH
 ARG BUILD_VERSION
@@ -54,18 +62,16 @@ LABEL \
     org.opencontainers.image.source="https://github.com/drahamin/baiamonte-eufy-bridge" \
     org.opencontainers.image.version="${BUILD_VERSION}"
 
-RUN apk add --no-cache jq nodejs python3 py3-pip curl
-
 WORKDIR /usr/src/app/node_modules/eufy-security-ws
 COPY --from=server-builder /build/eufy-security-ws/dist ./dist
 COPY --from=server-builder /build/eufy-security-ws/node_modules ./node_modules
 COPY --from=server-builder /build/eufy-security-ws/package.json ./package.json
 COPY --from=server-builder /build/eufy-security-ws/LICENSE ./LICENSE
 
-COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.45.tgz /tmp/eufy-security-client-4.1.1-mega.45.tgz
+COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.46.tgz /tmp/eufy-security-client-4.1.1-mega.46.tgz
 
 # eufy-security-ws 3.1.0 pins client 4.1.0 exactly. Replace that package with the compatible
-# 4.1.1-mega.45 source build carrying authenticated HomeBase 3 media decode
+# 4.1.1-mega.46 source build carrying authenticated HomeBase 3 media decode
 # and cipher-0 standalone-camera live-view support,
 # evidence-ranked native catalogs, safe value profiles, T9000, and snapshot fixes.
 RUN \
@@ -74,27 +80,24 @@ RUN \
     && case "$(node --version)" in v24.*) ;; *) echo "Expected Node 24" >&2; exit 1 ;; esac \
     && rm -rf node_modules/eufy-security-client \
     && mkdir -p node_modules/eufy-security-client \
-    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.45.tgz \
+    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.46.tgz \
         --strip-components=1 \
         -C node_modules/eufy-security-client \
     && package_tmp="$(mktemp)" \
-    && jq '.dependencies["eufy-security-client"] = "4.1.1-mega.45"' \
+    && jq '.dependencies["eufy-security-client"] = "4.1.1-mega.46"' \
         package.json > "${package_tmp}" \
     && mv "${package_tmp}" package.json \
-    && test "$(node -p "require('./node_modules/eufy-security-client/package.json').version")" = "4.1.1-mega.45" \
+    && test "$(node -p "require('./node_modules/eufy-security-client/package.json').version")" = "4.1.1-mega.46" \
     && grep -q "retrying request after fresh key exchange" \
         node_modules/eufy-security-client/build/http/megaApi.js \
     && grep -q "snapshotCache" node_modules/eufy-security-client/build/eufysecurity.js \
     && grep -q "or_and" node_modules/eufy-security-client/build/http/station.js \
-    && rm /tmp/eufy-security-client-4.1.1-mega.45.tgz
+    && rm /tmp/eufy-security-client-4.1.1-mega.46.tgz
 
 COPY dashboard/ /opt/baiamonte-eufy-dashboard/
 COPY pro-events/ /opt/baiamonte-pro-events/
 RUN \
     set -eux \
-    && python3 -m venv /opt/baiamonte-pro-events/venv \
-    && /opt/baiamonte-pro-events/venv/bin/pip install --no-cache-dir \
-        aiortc==1.15.0 websockets==17.3 aiohttp==3.14.5 truststore==0.10.5 \
     && mkdir -p /opt/baiamonte-pro-events/worker \
     && curl -fsSL https://security.eufy.com/plugin/libsctp_0_0_4.js \
         -o /opt/baiamonte-pro-events/worker/libsctp_0_0_4.js \

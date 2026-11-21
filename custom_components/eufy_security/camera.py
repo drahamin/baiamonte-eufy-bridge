@@ -26,7 +26,7 @@ from .eufy_security_api.exceptions import (
     WebSocketConnectionException,
 )
 from .eufy_security_api.metadata import Metadata
-from .snapshot import enhance_dashboard_snapshot, is_valid_snapshot, product_snapshot_bytes
+from .snapshot import enhance_dashboard_snapshot, is_valid_snapshot, product_snapshot_bytes, snapshot_needs_recovery
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -298,6 +298,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                 "capture" if "explicit_live_capture" in str(getattr(self.product, "snapshot_source", "")) else "event_record"
             ),
             "snapshot_available": snapshot is not None,
+            "snapshot_refresh_needed": snapshot_needs_recovery(snapshot, snapshot_updated_at, datetime.now(timezone.utc)),
             "snapshot_updated_at": (
                 snapshot_updated_at.isoformat() if snapshot_updated_at else None
             ),

@@ -212,7 +212,9 @@ class BaiamonteEufySecurityPanel extends HTMLElement {
     if (!connected) return { state: "down", label: "Bridge or camera entity unavailable" };
     if (!available) return { state: "pending", label: "Checking latest snapshot" };
     if (!updatedAt) return { state: "stale", label: "Stored image · capture time unknown · reachability unverified" };
-    const ageMs = Math.max(0, Date.now() - new Date(updatedAt).getTime());
+    const timestamp = new Date(updatedAt).getTime();
+    if (timestamp > Date.now() + 5 * 60 * 1000) return { state: "stale", label: "Stored image · timestamp is ahead of the clock" };
+    const ageMs = Math.max(0, Date.now() - timestamp);
     const minutes = Math.floor(ageMs / 60000);
     const age = minutes < 1 ? "just now" : minutes < 60 ? `${minutes}m ago` : `${Math.floor(minutes / 60)}h ago`;
     if (!Number.isFinite(ageMs)) return { state: "stale", label: "Stored image · invalid timestamp" };

@@ -1,3 +1,4 @@
+import { DatabaseReadWatchdog } from "../p2p/databaseWatchdog";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { Readable } from "stream";
 import { spawn } from "child_process";
@@ -234,6 +235,7 @@ export class Station extends TypedEmitter<StationEvents> {
   private proEventQueryRunning = false;
   private mediaOnly = false;
   private mediaStations = new Map<number, Station>();
+  private databaseReadWatchdog?: DatabaseReadWatchdog;
   private mediaStartupTimers = new Map<number, NodeJS.Timeout>();
   private mediaOptions: { ipAddress?: string; enableEmbeddedPKCS1Support: boolean };
   private mediaStreamTimeouts: StreamTimeoutOptions = {};
@@ -267,6 +269,15 @@ export class Station extends TypedEmitter<StationEvents> {
       enableEmbeddedPKCS1Support
     );
     this.p2pSession.on("connect", (address: Address) => this.onConnect(address));
+    this.databaseReadWatchdog = new DatabaseReadWatchdog(
+      () => !this.isStationHomeBasePro() && this.p2pSession.isConnected() && this.mediaStations.size === 0 &&
+        !this.p2pSession.hasActiveMedia(),
+      () => {
+        rootHTTPLogger.warn("Recovering a previously responsive, now silent station history session");
+        this.p2pSession.close();
+        void this.connect().catch(() => rootHTTPLogger.warn("Station history reconnect was deferred"));
+      }
+    );
     this.p2pSession.on("close", () => this.onDisconnect());
     this.p2pSession.on("timeout", () => this.onTimeout());
     this.p2pSession.on("command", (result: CommandResult) => this.onCommandResponse(result));
@@ -1112,6 +1123,7 @@ export class Station extends TypedEmitter<StationEvents> {
   }
 
   public close(): void {
+    this.databaseReadWatchdog?.reset();
     this.terminating = true;
     for (const channel of this.mediaStations.keys()) this.releaseMediaStation(channel);
     if (this.reconnectTimeout) {
@@ -1640,6 +1652,7 @@ export class Station extends TypedEmitter<StationEvents> {
   }
 
   private onDisconnect(): void {
+    this.databaseReadWatchdog?.reset();
     rootHTTPLogger.info(`Disconnected from station ${this.getSerial()}`);
     this.emit("close", this);
     this.pinVerified = false;
@@ -15582,6 +15595,7 @@ export class Station extends TypedEmitter<StationEvents> {
     }
 
     rootHTTPLogger.debug(`Station database query latest info - sending command`, { stationSN: this.getSerial() });
+    this.databaseReadWatchdog?.begin();
     this.p2pSession.sendCommandWithStringPayload(
       {
         commandType: CommandType.CMD_SET_PAYLOAD,
@@ -15769,6 +15783,7 @@ export class Station extends TypedEmitter<StationEvents> {
     // The Professional app sends database reads on the station channel (255). Older HomeBases
     // retain their proven channel-0 wire shape.
     const channel = this.isStationHomeBasePro() ? Station.CHANNEL : 0;
+    this.databaseReadWatchdog?.begin();
     this.p2pSession.sendCommandWithStringPayload(
       {
         commandType: CommandType.CMD_SET_PAYLOAD,
@@ -15848,6 +15863,7 @@ export class Station extends TypedEmitter<StationEvents> {
     const endDateStr = format(endDate, "YYYYMMDD");
 
     const channel = this.isStationHomeBasePro() ? Station.CHANNEL : 0;
+    this.databaseReadWatchdog?.begin();
     this.p2pSession.sendCommandWithStringPayload(
       {
         commandType: CommandType.CMD_SET_PAYLOAD,
@@ -15971,6 +15987,7 @@ export class Station extends TypedEmitter<StationEvents> {
   }
 
   private onDatabaseQueryLatest(returnCode: DatabaseReturnCode, data: Array<DatabaseQueryLatestInfo>): void {
+    this.databaseReadWatchdog?.reply();
     this.emit("database query latest", this, returnCode, data);
   }
 
@@ -15984,10 +16001,12 @@ export class Station extends TypedEmitter<StationEvents> {
   }
 
   private onDatabaseQueryLocal(returnCode: DatabaseReturnCode, data: Array<DatabaseQueryLocal>): void {
+    this.databaseReadWatchdog?.reply();
     this.emit("database query local", this, returnCode, data);
   }
 
   private onDatabaseQueryByDate(returnCode: DatabaseReturnCode, data: Array<DatabaseQueryByDate>): void {
+    this.databaseReadWatchdog?.reply();
     this.emit("database query by date", this, returnCode, data);
   }
   private onDatabaseCountByDate(returnCode: DatabaseReturnCode, data: Array<DatabaseCountByDate>): void {

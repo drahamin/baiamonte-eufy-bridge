@@ -20,6 +20,8 @@ export class PushClient extends TypedEmitter<PushClientEvents> {
 
   private readonly HEARTBEAT_INTERVAL = 5 * 60 * 1000;
 
+  private lastRxAt = 0;
+  private heartbeatAwaitingSince?: number;
   private loggedIn = false;
   private streamId = 0;
   private lastStreamIdReported = -1;
@@ -52,6 +54,10 @@ export class PushClient extends TypedEmitter<PushClientEvents> {
 
   private initialize(): void {
     this.loggedIn = false;
+    this.lastRxAt = 0;
+    this.heartbeatAwaitingSince = undefined;
+    if (this.heartbeatTimeout) clearTimeout(this.heartbeatTimeout);
+    this.heartbeatTimeout = undefined;
     this.streamId = 0;
     this.lastStreamIdReported = -1;
 
@@ -79,6 +85,8 @@ export class PushClient extends TypedEmitter<PushClientEvents> {
   public connect(): void {
     this.initialize();
 
+    // A reconnect must not accumulate parser callbacks and duplicate detections.
+    this.pushClientParser.removeAllListeners("message");
     this.pushClientParser.on("message", (message) => this.handleParsedMessage(message));
 
     this.client = tls.connect(this.PORT, this.HOST, {
@@ -202,6 +210,8 @@ export class PushClient extends TypedEmitter<PushClientEvents> {
   }
 
   private handleParsedMessage(message: Message): void {
+    this.lastRxAt = Date.now();
+    this.heartbeatAwaitingSince = undefined;
     this.resetCurrentDelay();
     switch (message.tag) {
       case MessageTag.DataMessageStanza:
@@ -306,6 +316,17 @@ export class PushClient extends TypedEmitter<PushClientEvents> {
     }
 
     if (this.client && this.isConnected()) {
+      // A quiet camera is normal; an unanswered protocol heartbeat is not.
+      if (this.heartbeatAwaitingSince !== undefined &&
+          Date.now() - this.heartbeatAwaitingSince >= this.getHeartbeatInterval() &&
+          this.lastRxAt <= this.heartbeatAwaitingSince) {
+        rootPushLogger.warn("Push client - Unanswered heartbeat; reconnecting");
+        this.loggedIn = false;
+        this.client.destroy();
+        this.scheduleReconnect();
+        return false;
+      }
+      if (this.heartbeatAwaitingSince === undefined) this.heartbeatAwaitingSince = Date.now();
       rootPushLogger.debug(`Push client - Sending heartbeat...`, { streamId: streamId });
       this.client.write(this.buildHeartbeatPingRequest(streamId));
       return true;

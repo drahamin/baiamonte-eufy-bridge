@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.71 — 2026-11-21
+
+- Recover stale and undated snapshots through bounded, serialized station reads; manual refresh includes HomeBase Pro evidence.
+- Reconnect silent push sockets and remove duplicate reconnect listeners.
+- Negotiate authenticated version-8 session keys by header version; retain RSA compatibility and protect image/history replies with GCM authentication.
+- Reopen a previously responsive station history session after three silent read windows, preserving live streams and recording transfers. No full-system restart loop.
+- Cache native WebRTC dependencies separately so later camera updates can reuse them on ARM hosts.
+- Security 9.6.45 reports images needing refresh and flags future timestamps. Cached images remain available after failed reads; live viewing stays manual.
+
 ## 1.6.70 — 2026-11-09
 
 - Correct standalone image requests to camera channel 0 and port negotiated

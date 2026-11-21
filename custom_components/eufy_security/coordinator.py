@@ -51,6 +51,7 @@ from .snapshot import (
     is_valid_snapshot,
     product_snapshot_bytes,
     snapshot_dimensions,
+    snapshot_needs_recovery,
     snapshot_source_has_capture_time,
 )
 
@@ -689,7 +690,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
 
         # A busy multi-home account can fill the broad result window before a
         # quiet camera's last event appears.  Query only cameras that still have
-        # no verified pixels by immutable serial, over the full supported
+        # no fresh, dated pixels by immutable serial, over the full supported
         # history window.  Quiet solar cameras can legitimately keep the same
         # cover for months, so use a one-year serial-scoped window while keeping
         # the response capped at twenty rows.  This remains cloud/HomeBase evidence retrieval: it
@@ -701,20 +702,30 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             for device in self.devices.values()
             if recover_missing
             if getattr(device, "is_camera", False)
-            and not self._valid_snapshot(product_snapshot_bytes(device))
+            and snapshot_needs_recovery(
+                product_snapshot_bytes(device), getattr(device, "image_last_updated", None),
+                datetime.now(timezone.utc),
+            )
             and device.serial_no not in latest_by_serial
-            and now - self._targeted_snapshot_refresh_at.get(device.serial_no, 0) >= 6 * 60 * 60
+            and (device.serial_no not in self._targeted_snapshot_refresh_at
+                 or now - self._targeted_snapshot_refresh_at[device.serial_no] >= 6 * 60 * 60)
         ]
         targeted_events = 0
         targeted_warnings: list[str] = []
         semaphore = asyncio.Semaphore(2)
 
+        station_query_locks: dict[str, asyncio.Lock] = {}
+
         async def query_missing_camera(device):
-            self._targeted_snapshot_refresh_at[device.serial_no] = now
+            station_serial = str(device.properties.get("stationSerialNumber") or "")
+            station = self.stations.get(station_serial)
+            query_source = "cloud" if source == "latest" and str(getattr(station, "model", "")).startswith("T9000") else "hybrid"
+            station_lock = station_query_locks.setdefault(station_serial or device.serial_no, asyncio.Lock())
             try:
-                async with semaphore, asyncio.timeout(35):
+                async with semaphore, station_lock, asyncio.timeout(35):
+                    self._targeted_snapshot_refresh_at[device.serial_no] = self.hass.loop.time()
                     return await self.search_evidence(
-                        source="hybrid",
+                        source=query_source,
                         days=365,
                         max_results=20,
                         station_serial=str(

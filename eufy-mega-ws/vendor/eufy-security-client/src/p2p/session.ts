@@ -1,5 +1,6 @@
 import { createSocket, Socket, RemoteInfo } from "dgram";
 import { createECDH } from "crypto";
+import { unwrapGatewaySessionKey, unwrapRsaGatewaySessionKey, openSessionControl, sealSessionControl } from "./sessionCrypto";
 import { TypedEmitter } from "tiny-typed-emitter";
 import * as NodeRSA from "node-rsa";
 import { Readable } from "stream";
@@ -66,7 +67,6 @@ import {
   getNullTerminatedString,
   generateSmartLockAESKey,
   readNullTerminatedBuffer,
-  decryptP2PKeyECDH,
   EufyMediaFrameDecoder,
 } from "./utils";
 import {
@@ -497,8 +497,13 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   private channel = Station.CHANNEL;
   private encryption: EncryptionType = EncryptionType.NONE;
   private p2pKey?: Buffer;
+  private sessionGcmKey?: Buffer;
+  private sessionGcmSequence = 0;
+  private keyGeneration = 0;
+  private gatewayNegotiations = 0;
   /** Cipher announced by this connection's gateway-info response. Cipher 0 uses plaintext own-session commands. */
   private gatewayCipherId?: number;
+  private gatewayRefusedLevel2 = false;
   /** Per-connection counter used in header bytes [0x01, n] for commands sent in the clear. */
   private clearCommandCount = 0;
   private enableEmbeddedPKCS1Support = false;
@@ -554,7 +559,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   /** Only the camera's negotiated cipher-0 own session accepts clear stored reads. */
   private usesClearStoredReads(channel: number): boolean {
     return (
-      this.gatewayCipherId === 0 && this.encryption !== EncryptionType.LEVEL_2 && this.isOwnSessionChannel(channel)
+      this.gatewayCipherId === 0 && !this.sessionGcmKey && this.encryption !== EncryptionType.LEVEL_2 && this.isOwnSessionChannel(channel)
     );
   }
 
@@ -599,7 +604,12 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     this.customDataStaging = {};
     this.encryption = EncryptionType.NONE;
     this.p2pKey = undefined;
+    this.sessionGcmKey = undefined;
+    this.sessionGcmSequence = 0;
+    this.keyGeneration = (this.keyGeneration ?? 0) + 1;
+    this.gatewayNegotiations = 0;
     this.gatewayCipherId = undefined;
+    this.gatewayRefusedLevel2 = false;
     this.clearCommandCount = 0;
     this.lockAESKeys.clear();
 
@@ -1207,18 +1217,44 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     if (isP2PQueueMessage(message)) {
       const ageing = +new Date() - message.timestamp;
       if (ageing <= this.MAX_COMMAND_QUEUE_TIMEOUT) {
+        const refusedOwnStart = this.gatewayRefusedLevel2 && !this.sessionGcmKey &&
+          this.isOwnSessionChannel(message.p2pCommand.channel ?? 0) &&
+          message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
+          message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM;
+        if (refusedOwnStart) {
+          const original = JSON.parse(message.p2pCommand.value as string);
+          message = { ...message, nestedCommandType: CommandType.CMD_START_REALTIME_MEDIA,
+            p2pCommand: { ...message.p2pCommand, commandType: CommandType.CMD_SET_PAYLOAD,
+              value: JSON.stringify({ cmd: CommandType.CMD_START_REALTIME_MEDIA,
+                account_id: this.rawStation.member.admin_user_id,
+                payload: { ClientOS: "IOS", key: original.data?.encryptkey ?? "", entrytype: 0,
+                  timestamp: Date.now(), msg_id: 2, streamtype: 2 } }) } };
+        }
         const commandHeader = buildCommandHeader(this.seqNumber, message.p2pCommand.commandType);
         let payload: Buffer;
         const channel = message.p2pCommand.channel !== undefined ? message.p2pCommand.channel : 0;
         let clearCommandNumber: number | undefined;
         let stringPayload = message.p2pCommand.value as string;
+        if (this.sessionGcmKey && this.isOwnSessionChannel(channel) &&
+            message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
+            message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM) {
+          const original = JSON.parse(stringPayload);
+          const now = Date.now();
+          const account = this.rawStation.member.admin_user_id;
+          stringPayload = JSON.stringify({commandType: ParamType.COMMAND_START_LIVESTREAM,
+            data: {...original.data, cmd: ParamType.COMMAND_START_LIVESTREAM,
+              account_id: account, accountId: account, mValueStrSub: account, mChannel: channel,
+              mValue3: 0, mValue5: 0, msg_id: 1, camera_type: 0, entrytype: 0,
+              extValue: ParamType.COMMAND_START_LIVESTREAM, ivalue: 1, restore: 0,
+              streamtype: 2, video_type: 12, timestamp: now, transaction: String(now)}});
+        }
         const clearOwnSessionStart =
           this.gatewayCipherId === 0 &&
           this.isOwnSessionChannel(channel) &&
           message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
           message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM;
         const clearOwnSessionStop =
-          this.gatewayCipherId === 0 &&
+          (this.gatewayCipherId === 0 || (this.gatewayRefusedLevel2 && !this.sessionGcmKey)) &&
           this.isOwnSessionChannel(channel) &&
           message.p2pCommand.commandType === CommandType.CMD_STOP_REALTIME_MEDIA;
 
@@ -1228,7 +1264,9 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           (message.nestedCommandType === CommandType.CMD_DATABASE ||
             message.nestedCommandType === CommandType.CMD_DATABASE_IMAGE);
 
-        if (clearStoredRead) {
+        if (refusedOwnStart) {
+          clearCommandNumber = 0;
+        } else if (clearStoredRead) {
           clearCommandNumber = this.nextClearCommandNumber();
         } else if (clearOwnSessionStart) {
           clearCommandNumber = this.nextClearCommandNumber();
@@ -1250,7 +1288,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             clearCommandNumber: clearCommandNumber,
           });
         } else if (clearOwnSessionStop) {
-          clearCommandNumber = this.nextClearCommandNumber();
+          clearCommandNumber = this.gatewayRefusedLevel2 ? 0 : this.nextClearCommandNumber();
           rootP2PLogger.debug(`Sending cipher-0 own-session livestream stop in the clear`, {
             stationSN: this.rawStation.station_sn,
             channel: channel,
@@ -1311,12 +1349,23 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
               message.p2pCommand.commandType,
               stringPayload,
               channel,
-              clearOwnSessionStart || clearStoredRead ? clearCommandNumber : undefined
+              clearOwnSessionStart || clearStoredRead || refusedOwnStart ? clearCommandNumber : undefined
             );
             break;
           default:
             payload = buildVoidCommandPayload(channel);
             break;
+        }
+        if (this.sessionGcmKey && message.p2pCommandType === InternalP2PCommandType.WithStringPayload &&
+            [CommandType.CMD_SET_PAYLOAD, CommandType.CMD_DOORBELL_SET_PAYLOAD].includes(message.p2pCommand.commandType)) {
+          payload = sealSessionControl(Buffer.from(stringPayload), this.sessionGcmKey, this.sessionGcmSequence++, channel);
+          if (this.isOwnSessionChannel(channel) && message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM) payload[8] = 10;
+        } else if (this.sessionGcmKey && this.isOwnSessionChannel(channel) &&
+            message.p2pCommand.commandType === CommandType.CMD_STOP_REALTIME_MEDIA) {
+          const stop = Buffer.alloc(4); stop.writeUInt32LE(channel);
+          payload = sealSessionControl(stop, this.sessionGcmKey, this.sessionGcmSequence++, channel);
+        } else if (refusedOwnStart) {
+          payload[8] = 11;
         }
         const data = Buffer.concat([commandHeader, payload]);
         const messageState: P2PMessageState = {
@@ -2088,6 +2137,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           };
           header.commandId = data.subarray(4, 6).readUIntLE(0, 2);
           header.bytesToRead = data.subarray(6, 10).readUIntLE(0, 4);
+          header.version = data.readUInt8(10);
           header.channel = data.subarray(12, 13).readUInt8();
           header.signCode = data.subarray(13, 14).readUInt8();
           header.type = data.subarray(14, 15).readUInt8();
@@ -2230,8 +2280,8 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
       // CONTROL. Command acknowledgements still use the result path below.
       if (
         !result_msg &&
-        message.signCode === 0 &&
-        this.usesClearStoredReads(message.channel) &&
+        ((message.signCode === 0 && this.usesClearStoredReads(message.channel)) ||
+          (!!this.sessionGcmKey && [2, 8].includes(message.signCode))) &&
         (message.commandId === CommandType.CMD_DATABASE || message.commandId === CommandType.CMD_DATABASE_IMAGE)
       ) {
         this.handleDataControl(message);
@@ -2242,6 +2292,11 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
         let return_code = 0;
         let resultData: Buffer | undefined;
         if (message.bytesToRead > 0) {
+          if (this.sessionGcmKey && [2, 8].includes(message.signCode)) {
+            const opened = openSessionControl(message.data, this.sessionGcmKey, message.signCode);
+            if (!opened) return;
+            message = { ...message, data: opened, signCode: 0 };
+          }
           if (message.signCode > 0 && message.data.length > 0) {
             if (message.data.length % 16 === 0) {
               try {
@@ -2922,8 +2977,11 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   private handleDataControl(message: P2PDataMessage): void {
     try {
       let data: Buffer = message.data;
-      if (message.signCode > 0) {
-        //data = decryptP2PData(message.data, this.p2pKey!);
+      if (this.sessionGcmKey && [2, 8].includes(message.signCode)) {
+        const opened = openSessionControl(message.data, this.sessionGcmKey, message.signCode);
+        if (!opened) return; // An invalid authentication tag must never fall back to ECB/JSON.
+        data = opened;
+      } else if (message.signCode > 0) {
         try {
           data = decryptP2PData(
             message.data,
@@ -4418,149 +4476,51 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             });
           }
           break;
-        case CommandType.CMD_GATEWAYINFO:
-          const cipherID = data.subarray(0, 2).readUInt16LE();
+        case CommandType.CMD_GATEWAYINFO: {
+          if (data.length < 4) break;
+          const generation = this.keyGeneration;
+          const cipherID = data.readUInt16LE();
+          const ecc = message.version === 8;
           this.gatewayCipherId = cipherID;
-          //const unknownNumber = data.subarray(2, 2).readUInt16LE();
-          rootP2PLogger.debug(`Handle DATA ${P2PDataType[message.dataType]} - CMD_GATEWAYINFO - cipherID`, {
-            stationSN: this.rawStation.station_sn,
-            channel: message.channel,
-            data: data.toString("hex"),
-            cipherID: cipherID,
-          });
-          // Keep full raw buffer for ECDH — readNullTerminatedBuffer truncates binary ECIES envelopes at 0x00 bytes
-          const rawEncryptedKey = data.subarray(4);
-          const encryptedKey = readNullTerminatedBuffer(rawEncryptedKey);
-          const isECDHDevice =
-            this.rawStation.station_sn.startsWith("T8214") || this.rawStation.station_sn.startsWith("T8425");
-          this.api
-            .getCipher(/*this.rawStation.station_sn, */ cipherID, this.rawStation.member.admin_user_id)
-            .then((cipher) => {
-              rootP2PLogger.debug(
-                `Handle DATA ${P2PDataType[message.dataType]} - CMD_GATEWAYINFO - get cipher with cipherID`,
-                {
-                  stationSN: this.rawStation.station_sn,
-                  channel: message.channel,
-                  data: data.toString("hex"),
-                  cipherID: cipherID,
-                  cipher: JSON.stringify(cipher),
-                }
-              );
-              if (cipher !== undefined) {
-                // Try RSA first
-                try {
+          this.gatewayRefusedLevel2 = data.subarray(0, 4).equals(Buffer.from([0x99, 0xff, 0xff, 0xff]));
+          this.gatewayNegotiations = (this.gatewayNegotiations ?? 0) + 1;
+          const cipherRequest = this.gatewayRefusedLevel2 ? Promise.resolve(undefined) :
+            this.api.getCipher(cipherID, this.rawStation.member.admin_user_id);
+          cipherRequest.then((cipher) => {
+              if (generation !== this.keyGeneration || !cipher) return;
+              if (ecc) {
+                if (this.sessionGcmKey) return;
+                const key = cipher.ecc_private_key && unwrapGatewaySessionKey(data, cipher.ecc_private_key);
+                if (key) this.sessionGcmKey = key;
+              } else if (cipher.private_key) {
+                // The header, not the model name or presence of an ECC key,
+                // chooses the branch. A failed RSA reply cannot erase GCM.
+                const key = unwrapRsaGatewaySessionKey(data, cipher.private_key);
+                if (key) {
+                  this.p2pKey = key;
                   this.encryption = EncryptionType.LEVEL_2;
-                  const rsa = getRSAPrivateKey(cipher.private_key, this.enableEmbeddedPKCS1Support);
-                  this.p2pKey = rsa.decrypt(encryptedKey);
-                  rootP2PLogger.debug(
-                    `Handle DATA ${P2PDataType[message.dataType]} - CMD_GATEWAYINFO - RSA success - set encryption level 2`,
-                    { stationSN: this.rawStation.station_sn, key: this.p2pKey.toString("hex") }
-                  );
-                } catch (rsaErr) {
-                  const rsaError = ensureError(rsaErr);
-                  rootP2PLogger.debug(
-                    `Handle DATA ${P2PDataType[message.dataType]} - CMD_GATEWAYINFO - RSA decrypt failed`,
-                    {
-                      error: getError(rsaError),
-                      stationSN: this.rawStation.station_sn,
-                      isECDHDevice: isECDHDevice,
-                      hasEccKey: !!cipher.ecc_private_key,
-                    }
-                  );
-
-                  // Try ECDH only for known ECDH devices (T8214/T8425)
-                  if (isECDHDevice && cipher.ecc_private_key) {
-                    try {
-                      this.encryption = EncryptionType.LEVEL_2;
-                      this.p2pKey = decryptP2PKeyECDH(rawEncryptedKey, cipher.ecc_private_key);
-                      rootP2PLogger.debug(
-                        `Handle DATA ${P2PDataType[message.dataType]} - CMD_GATEWAYINFO - ECDH success - set encryption level 2`,
-                        {
-                          stationSN: this.rawStation.station_sn,
-                          key: this.p2pKey.toString("hex"),
-                          keyLength: this.p2pKey.length,
-                        }
-                      );
-                    } catch (ecdhErr) {
-                      const ecdhError = ensureError(ecdhErr);
-                      rootP2PLogger.debug(
-                        `Handle DATA ${P2PDataType[message.dataType]} - CMD_GATEWAYINFO - ECDH also failed, falling back to Level 1`,
-                        {
-                          error: getError(ecdhError),
-                          stationSN: this.rawStation.station_sn,
-                        }
-                      );
-                      this.encryption = EncryptionType.LEVEL_1;
-                      this.p2pKey = Buffer.from(
-                        getP2PCommandEncryptionKey(this.rawStation.station_sn, this.rawStation.p2p_did)
-                      );
-                    }
-                  } else {
-                    // Non-ECDH device or no ECC key — fall back to Level 1
-                    this.encryption = EncryptionType.LEVEL_1;
-                    this.p2pKey = Buffer.from(
-                      getP2PCommandEncryptionKey(this.rawStation.station_sn, this.rawStation.p2p_did)
-                    );
-                    rootP2PLogger.debug(
-                      `Handle DATA ${P2PDataType[message.dataType]} - CMD_GATEWAYINFO - RSA failed, set encryption level 1`,
-                      { stationSN: this.rawStation.station_sn, key: this.p2pKey.toString("hex") }
-                    );
-                  }
                 }
-              } else {
-                this.encryption = EncryptionType.LEVEL_1;
-                this.p2pKey = Buffer.from(
-                  getP2PCommandEncryptionKey(this.rawStation.station_sn, this.rawStation.p2p_did)
-                );
-                rootP2PLogger.debug(
-                  `Handle DATA ${P2PDataType[message.dataType]} - CMD_GATEWAYINFO - set encryption level 1`,
-                  { stationSN: this.rawStation.station_sn, key: this.p2pKey.toString("hex") }
-                );
               }
-              this._clearTimeout(this.messageStates.get(message.seqNo)?.timeout);
-              this.p2pSeqMapping.forEach((value: number, key: number, map: Map<number, number>) => {
-                if (value === message.seqNo) {
-                  map.delete(key);
-                }
-              });
-              this.p2pDataSeqNumber--;
-              this.messageStates.delete(message.seqNo);
-              this.sendQueuedMessage();
             })
-            .catch((err) => {
-              const error = ensureError(err);
-              this.encryption = EncryptionType.LEVEL_1;
-              this.p2pKey = Buffer.from(
-                getP2PCommandEncryptionKey(this.rawStation.station_sn, this.rawStation.p2p_did)
-              );
-              rootP2PLogger.debug(
-                `Handle DATA ${P2PDataType[message.dataType]} - CMD_GATEWAYINFO - set encryption level 1 (fallback)`,
-                {
-                  error: getError(error),
-                  stationSN: this.rawStation.station_sn,
-                  message: {
-                    seqNo: message.seqNo,
-                    channel: message.channel,
-                    commandType: CommandType[message.commandId],
-                    signCode: message.signCode,
-                    type: message.type,
-                    dataType: P2PDataType[message.dataType],
-                    data: message.data.toString("hex"),
-                  },
-                  key: this.p2pKey.toString("hex"),
-                }
-              );
+            .catch(() => rootP2PLogger.debug("Gateway key unavailable; retaining established session keys"))
+            .finally(() => {
+              if (generation !== this.keyGeneration) return;
+              if (!this.p2pKey) {
+                this.p2pKey = Buffer.from(getP2PCommandEncryptionKey(this.rawStation.station_sn, this.rawStation.p2p_did));
+                this.encryption = EncryptionType.LEVEL_1;
+              }
+              this.gatewayNegotiations--;
               this._clearTimeout(this.messageStates.get(message.seqNo)?.timeout);
-              this.p2pSeqMapping.forEach((value: number, key: number, map: Map<number, number>) => {
-                if (value === message.seqNo) {
-                  map.delete(key);
-                }
+              let mapped = false;
+              this.p2pSeqMapping.forEach((value, key, map) => {
+                if (value === message.seqNo) { map.delete(key); mapped = true; }
               });
-              this.p2pDataSeqNumber--;
+              if (mapped) this.p2pDataSeqNumber = (this.p2pDataSeqNumber + 0xffff) & 0xffff;
               this.messageStates.delete(message.seqNo);
-              this.sendQueuedMessage();
+              if (this.gatewayNegotiations === 0) this.sendQueuedMessage();
             });
           break;
+        }
         default:
           rootP2PLogger.debug(`Handle DATA ${P2PDataType[message.dataType]} - Not implemented`, {
             stationSN: this.rawStation.station_sn,
@@ -4894,6 +4854,12 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     if (this.currentMessageState[datatype].p2pStreamChannel === channel)
       return this.currentMessageState[datatype].p2pStreaming;
     return false;
+  }
+
+  public hasActiveMedia(): boolean {
+    return [P2PDataType.VIDEO, P2PDataType.BINARY].some((type) =>
+      Boolean(this.currentMessageState[type]?.p2pStreaming)
+    );
   }
 
   public isLiveStreaming(channel: number): boolean {
