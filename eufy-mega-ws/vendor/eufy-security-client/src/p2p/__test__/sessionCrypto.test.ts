@@ -107,4 +107,27 @@ describe("authenticated version-8 session control", () => {
       expect(openSessionControl(packet.subarray(header+10),key,8)?.toString()).toBe(json);
     } finally {jest.clearAllTimers();jest.useRealTimers();}
   });
+  it.each([false,true])("explicit own-session start/stop use matching wire forms (refused=%s)", async (refused) => {
+    const p=protocol(); Object.assign(p, {gatewayRefusedLevel2:refused,
+      sessionGcmKey:refused?undefined:key,seqNumber:0,p2pDataSeqNumber:0,
+      MAX_COMMAND_QUEUE_TIMEOUT:10000,MAX_SEQUENCE_NUMBER:65535,MAX_AKNOWLEDGE_TIMEOUT:10000,RESEND_NOT_ACKNOWLEDGED_COMMAND:10000,
+      sendMessage:jest.fn().mockResolvedValue(undefined),
+      currentMessageState:{[P2PDataType.VIDEO]:{p2pStreaming:false}},waitForStreamData:jest.fn(),endStream:jest.fn()});
+    jest.useFakeTimers();
+    try {
+      await p._sendCommand({timestamp:Date.now(),p2pCommandType:InternalP2PCommandType.WithStringPayload,
+        p2pCommand:{commandType:CommandType.CMD_DOORBELL_SET_PAYLOAD,channel:0,value:JSON.stringify({commandType:1000,data:{encryptkey:"modulus"}})},nestedCommandType:1000});
+      const start=p.sendMessage.mock.calls[0][3] as Buffer;
+      const h=buildCommandHeader(0,CommandType.CMD_SET_PAYLOAD).length;
+      expect(start[h+8]).toBe(refused?11:10);
+      const json=JSON.parse((refused?start.subarray(h+10):openSessionControl(start.subarray(h+10),key,8))!.toString());
+      if(refused) {expect(json.cmd).toBe(1003);expect(json.payload.key).toBe("modulus");expect(start[h+7]).toBe(0);}
+      else {expect(json.data.encryptkey).toBe("modulus");expect(json.data.video_type).toBe(12);expect(json.data.streamtype).toBe(2);}
+      await p._sendCommand({timestamp:Date.now(),p2pCommandType:InternalP2PCommandType.WithInt,
+        p2pCommand:{commandType:CommandType.CMD_STOP_REALTIME_MEDIA,channel:0,value:0}});
+      const stop=p.sendMessage.mock.calls[1][3] as Buffer;
+      expect(refused?stop.subarray(h+10):openSessionControl(stop.subarray(h+10),key,8)).toEqual(Buffer.alloc(4));
+    } finally {jest.clearAllTimers();jest.useRealTimers();}
+  });
+
 });

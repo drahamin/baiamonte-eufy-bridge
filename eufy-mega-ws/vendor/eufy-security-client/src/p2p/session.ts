@@ -503,6 +503,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   private gatewayNegotiations = 0;
   /** Cipher announced by this connection's gateway-info response. Cipher 0 uses plaintext own-session commands. */
   private gatewayCipherId?: number;
+  private gatewayRefusedLevel2 = false;
   /** Per-connection counter used in header bytes [0x01, n] for commands sent in the clear. */
   private clearCommandCount = 0;
   private enableEmbeddedPKCS1Support = false;
@@ -608,6 +609,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     this.keyGeneration = (this.keyGeneration ?? 0) + 1;
     this.gatewayNegotiations = 0;
     this.gatewayCipherId = undefined;
+    this.gatewayRefusedLevel2 = false;
     this.clearCommandCount = 0;
     this.lockAESKeys.clear();
 
@@ -1215,18 +1217,44 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
     if (isP2PQueueMessage(message)) {
       const ageing = +new Date() - message.timestamp;
       if (ageing <= this.MAX_COMMAND_QUEUE_TIMEOUT) {
+        const refusedOwnStart = this.gatewayRefusedLevel2 && !this.sessionGcmKey &&
+          this.isOwnSessionChannel(message.p2pCommand.channel ?? 0) &&
+          message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
+          message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM;
+        if (refusedOwnStart) {
+          const original = JSON.parse(message.p2pCommand.value as string);
+          message = { ...message, nestedCommandType: CommandType.CMD_START_REALTIME_MEDIA,
+            p2pCommand: { ...message.p2pCommand, commandType: CommandType.CMD_SET_PAYLOAD,
+              value: JSON.stringify({ cmd: CommandType.CMD_START_REALTIME_MEDIA,
+                account_id: this.rawStation.member.admin_user_id,
+                payload: { ClientOS: "IOS", key: original.data?.encryptkey ?? "", entrytype: 0,
+                  timestamp: Date.now(), msg_id: 2, streamtype: 2 } }) } };
+        }
         const commandHeader = buildCommandHeader(this.seqNumber, message.p2pCommand.commandType);
         let payload: Buffer;
         const channel = message.p2pCommand.channel !== undefined ? message.p2pCommand.channel : 0;
         let clearCommandNumber: number | undefined;
         let stringPayload = message.p2pCommand.value as string;
+        if (this.sessionGcmKey && this.isOwnSessionChannel(channel) &&
+            message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
+            message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM) {
+          const original = JSON.parse(stringPayload);
+          const now = Date.now();
+          const account = this.rawStation.member.admin_user_id;
+          stringPayload = JSON.stringify({commandType: ParamType.COMMAND_START_LIVESTREAM,
+            data: {...original.data, cmd: ParamType.COMMAND_START_LIVESTREAM,
+              account_id: account, accountId: account, mValueStrSub: account, mChannel: channel,
+              mValue3: 0, mValue5: 0, msg_id: 1, camera_type: 0, entrytype: 0,
+              extValue: ParamType.COMMAND_START_LIVESTREAM, ivalue: 1, restore: 0,
+              streamtype: 2, video_type: 12, timestamp: now, transaction: String(now)}});
+        }
         const clearOwnSessionStart =
           this.gatewayCipherId === 0 &&
           this.isOwnSessionChannel(channel) &&
           message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
           message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM;
         const clearOwnSessionStop =
-          this.gatewayCipherId === 0 &&
+          (this.gatewayCipherId === 0 || (this.gatewayRefusedLevel2 && !this.sessionGcmKey)) &&
           this.isOwnSessionChannel(channel) &&
           message.p2pCommand.commandType === CommandType.CMD_STOP_REALTIME_MEDIA;
 
@@ -1236,7 +1264,9 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           (message.nestedCommandType === CommandType.CMD_DATABASE ||
             message.nestedCommandType === CommandType.CMD_DATABASE_IMAGE);
 
-        if (clearStoredRead) {
+        if (refusedOwnStart) {
+          clearCommandNumber = 0;
+        } else if (clearStoredRead) {
           clearCommandNumber = this.nextClearCommandNumber();
         } else if (clearOwnSessionStart) {
           clearCommandNumber = this.nextClearCommandNumber();
@@ -1258,7 +1288,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             clearCommandNumber: clearCommandNumber,
           });
         } else if (clearOwnSessionStop) {
-          clearCommandNumber = this.nextClearCommandNumber();
+          clearCommandNumber = this.gatewayRefusedLevel2 ? 0 : this.nextClearCommandNumber();
           rootP2PLogger.debug(`Sending cipher-0 own-session livestream stop in the clear`, {
             stationSN: this.rawStation.station_sn,
             channel: channel,
@@ -1319,7 +1349,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
               message.p2pCommand.commandType,
               stringPayload,
               channel,
-              clearOwnSessionStart || clearStoredRead ? clearCommandNumber : undefined
+              clearOwnSessionStart || clearStoredRead || refusedOwnStart ? clearCommandNumber : undefined
             );
             break;
           default:
@@ -1329,6 +1359,13 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
         if (this.sessionGcmKey && message.p2pCommandType === InternalP2PCommandType.WithStringPayload &&
             [CommandType.CMD_SET_PAYLOAD, CommandType.CMD_DOORBELL_SET_PAYLOAD].includes(message.p2pCommand.commandType)) {
           payload = sealSessionControl(Buffer.from(stringPayload), this.sessionGcmKey, this.sessionGcmSequence++, channel);
+          if (this.isOwnSessionChannel(channel) && message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM) payload[8] = 10;
+        } else if (this.sessionGcmKey && this.isOwnSessionChannel(channel) &&
+            message.p2pCommand.commandType === CommandType.CMD_STOP_REALTIME_MEDIA) {
+          const stop = Buffer.alloc(4); stop.writeUInt32LE(channel);
+          payload = sealSessionControl(stop, this.sessionGcmKey, this.sessionGcmSequence++, channel);
+        } else if (refusedOwnStart) {
+          payload[8] = 11;
         }
         const data = Buffer.concat([commandHeader, payload]);
         const messageState: P2PMessageState = {
@@ -4445,9 +4482,11 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           const cipherID = data.readUInt16LE();
           const ecc = message.version === 8;
           this.gatewayCipherId = cipherID;
+          this.gatewayRefusedLevel2 = data.subarray(0, 4).equals(Buffer.from([0x99, 0xff, 0xff, 0xff]));
           this.gatewayNegotiations = (this.gatewayNegotiations ?? 0) + 1;
-          this.api.getCipher(cipherID, this.rawStation.member.admin_user_id)
-            .then((cipher) => {
+          const cipherRequest = this.gatewayRefusedLevel2 ? Promise.resolve(undefined) :
+            this.api.getCipher(cipherID, this.rawStation.member.admin_user_id);
+          cipherRequest.then((cipher) => {
               if (generation !== this.keyGeneration || !cipher) return;
               if (ecc) {
                 if (this.sessionGcmKey) return;
