@@ -2,6 +2,7 @@
 import ast
 import asyncio
 import base64
+import contextlib
 import io
 import json
 import struct
@@ -9,7 +10,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from fractions import Fraction
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -139,18 +140,19 @@ def test_pro_capture_commits_current_pixels_without_any_p2p_start():
         fresh = b'\xff\xd8\xff'+b'x'*1500; old = b'old'
         now = datetime.now(timezone.utc)
         status = SimpleNamespace(IDLE='idle', STREAMING='streaming')
-        ns = dict(asyncio=asyncio, base64=base64, datetime=datetime, timezone=timezone,
+        ns = dict(asyncio=asyncio, base64=base64, contextlib=contextlib, datetime=datetime, timezone=timezone,
                   timedelta=timedelta, StreamStatus=status, is_valid_snapshot=lambda b:b==fresh,
                   FailedCommandException=RuntimeError, WebSocketConnectionException=ConnectionError)
         method = extracted_method('_capture_pro_snapshot', ns)
         product = SimpleNamespace(serial_no='camera', properties={'stationSerialNumber':'pro','picture':{'data':old}},
-                                  stream_status='idle', notify_state_update=lambda:None)
+                                  stream_status='idle', image_last_updated=None, snapshot_source='old', notify_state_update=lambda:None)
         request = AsyncMock(return_value=dict(data=base64.b64encode(fresh).decode(),capturedAt=now.isoformat()))
         persist = AsyncMock(return_value=True)
         coordinator = SimpleNamespace(_pro_evidence_lock=asyncio.Lock(),devices={'camera':product},
             _api=SimpleNamespace(capture_live_snapshot=request),async_persist_snapshot_capture=persist)
         camera = SimpleNamespace(coordinator=coordinator,product=product,_scheduled_snapshot_lock=asyncio.Lock(),
-            async_update_token=lambda:None,async_write_ha_state=lambda:None)
+            async_update_token=lambda:None,async_write_ha_state=lambda:None,_last_image=old)
+        camera._commit_snapshot_capture=MethodType(extracted_method("_commit_snapshot_capture",ns),camera)
         assert await method(camera,SimpleNamespace(serial_no='pro'))
         assert product.properties['picture']['data'] == fresh and product.image_last_updated == now
         assert product.snapshot_source == 'explicit_live_capture:homebase_pro_rtc'

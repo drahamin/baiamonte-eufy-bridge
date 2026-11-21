@@ -1193,7 +1193,7 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
                 pass
             log(f"RTC still end: sent={int(collector.start_sent)}, ack={int(collector.start_accepted)}, "
                 f"refused={int(collector.start_refused)}, media={collector.media_packets_seen}, "
-                f"decoded={collector.media_frames}, image={int(collector.image is not None)}, stop={int(collector.stop_sent)}")
+                f"frames={collector.media_frames}, image={int(collector.image is not None)}, stop={int(collector.stop_sent)}")
         # Fixed local state only: no station IDs, URLs, tokens or SDP in diagnostics.
         phase = collector.phase if collector.phase in {"roster", "initial", "filters", "thumbnails", "snapshot"} else "unknown"
         peer_state = peer.connectionState if peer.connectionState in {"new", "connecting", "connected", "disconnected", "failed", "closed"} else "unknown"

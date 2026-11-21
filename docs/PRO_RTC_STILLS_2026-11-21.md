@@ -20,7 +20,9 @@ identity and authenticated RTC session setup. No second login or SDK daemon.
   Parent ownership lasts through child teardown, with a bounded forced exit.
 - Capture service routes attached Pro cameras through this extension and reports
   `station_model`. It preserves prior pixels/time on failure and confirms the
-  durable cache before success. Evidence maintenance remains non-live.
+  durable cache before success. Both Pro and P2P captures roll back all candidate
+  fields on failed/cancelled persistence, without overwriting a newer push image.
+  Evidence maintenance remains non-live.
 - The synthetic 64x48 HEVC fixture tests real decode/JPEG output. The image build
   runs the same codec self-test before an image can be installed.
 

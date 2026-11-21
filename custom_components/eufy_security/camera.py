@@ -457,23 +457,10 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                         self.product.stream_status = StreamStatus.IDLE
                         await self._stop_hass_streaming()
 
-            # Cleanup may replay an older bridge picture. Publish the verified
-            # frame afterwards and confirm the durable copy before success.
-            self._last_image = frame
-            self.product.properties["picture"] = {
-                "data": frame,
-                "type": {"mime": "image/jpeg"},
-            }
-            self.product.image_last_updated = captured_at
-            self.product.snapshot_source = (
-                "explicit_live_capture" if force else "scheduled_live_capture"
+            # Cleanup can replay an older bridge picture. Commit afterwards.
+            return await self._commit_snapshot_capture(
+                frame, captured_at, "explicit_live_capture" if force else "scheduled_live_capture"
             )
-            self.product.notify_state_update()
-            if not await self.coordinator.async_persist_snapshot_capture(self.product):
-                return False
-            self.async_update_token()
-            self.async_write_ha_state()
-            return True
 
     async def _capture_pro_snapshot(self, station) -> bool:
         """Use the Pro's RTC still path instead of an unreachable attached P2P start."""
@@ -501,16 +488,51 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             except (ValueError, KeyError, TypeError, asyncio.TimeoutError,
                     FailedCommandException, WebSocketConnectionException):
                 return False
-            self._last_image = frame
-            self.product.properties["picture"] = {"data": frame, "type": {"mime": "image/jpeg"}}
-            self.product.image_last_updated = captured_at
-            self.product.snapshot_source = "explicit_live_capture:homebase_pro_rtc"
-            self.product.notify_state_update()
+            return await self._commit_snapshot_capture(
+                frame, captured_at, "explicit_live_capture:homebase_pro_rtc"
+            )
+
+    async def _commit_snapshot_capture(self, frame: bytes, captured_at: datetime, source: str) -> bool:
+        """Publish only a confirmed durable capture; roll back a failed/cancelled write."""
+        had_picture = "picture" in self.product.properties
+        previous_picture = self.product.properties.get("picture")
+        previous_time = self.product.image_last_updated
+        previous_source = getattr(self.product, "snapshot_source", None)
+        previous_image = self._last_image
+        candidate = {"data": frame, "type": {"mime": "image/jpeg"}}
+
+        def rollback() -> None:
+            # A newer push can arrive during disk IO. Never replace its pixels/time.
+            if (self.product.properties.get("picture") is candidate
+                    and self.product.image_last_updated == captured_at
+                    and self.product.snapshot_source == source):
+                if had_picture:
+                    self.product.properties["picture"] = previous_picture
+                else:
+                    self.product.properties.pop("picture", None)
+                self.product.image_last_updated = previous_time
+                self.product.snapshot_source = previous_source
+                self._last_image = previous_image
+                # A timed-out writer is shielded and may finish later. Its next
+                # coalesced pass must restore the retained record too.
+                with contextlib.suppress(RuntimeError):
+                    self.coordinator._schedule_snapshot_cache_write()
+
+        self._last_image = frame
+        self.product.properties["picture"] = candidate
+        self.product.image_last_updated = captured_at
+        self.product.snapshot_source = source
+        try:
             if not await self.coordinator.async_persist_snapshot_capture(self.product):
+                rollback()
                 return False
-            self.async_update_token()
-            self.async_write_ha_state()
-            return True
+        except BaseException:
+            rollback()
+            raise
+        self.product.notify_state_update()
+        self.async_update_token()
+        self.async_write_ha_state()
+        return True
 
     async def _start_livestream(self) -> None:
         """Start a P2P source for the bounded camera proxy request."""
