@@ -150,6 +150,9 @@ def test_late_roster_response_cannot_advance_event_query_state() -> None:
     assert len(collector.people) == 1
 
     collector.add_response({"transaction": collector.pending_transaction, "data": [{"table_name": "history_record_info", "payload": []}]})
+    assert collector.phase == "initial"
+    assert collector.event_read_mode == "history_table"
+    collector.add_response({"transaction": collector.pending_transaction, "cmd": 10000, "data": []})
     assert collector.phase == "thumbnails"
     assert collector.done.is_set()
 
@@ -245,6 +248,13 @@ def test_stale_duplicate_and_unattributed_pro_replies_do_not_complete_a_new_read
     assert not collector.done.is_set()
     assert collector.error is None
     collector.add_response({**event, "transaction": active})
+    assert not collector.done.is_set()
+    assert collector.event_read_mode == "history_table"
+    fallback = collector.pending_transaction
+    assert fallback != active
+    collector.add_response({**event, "transaction": active})
+    assert not collector.done.is_set()
+    collector.add_response({"transaction": fallback, "cmd": 10000, "data": []})
     assert collector.done.is_set()
     frames = len(oracle.frames)
     collector.add_response({**event, "transaction": active})
@@ -321,4 +331,25 @@ def test_optional_cover_budget_preserves_metadata_and_stops_pending_reads():
         assert collector.records[0]["record_id"] == 1 and collector.people[0]["person_id"] == 7
         collector.send_next_thumbnail()
         assert len(sent) == 4
+    asyncio.run(exercise())
+
+
+def test_empty_successful_aic_reads_history_once_without_a_retry_loop():
+    class FakeOracle:
+        def __init__(self): self.frames=[]
+        def send(self, frame): self.frames.append(frame)
+    async def exercise():
+        oracle=FakeOracle()
+        collector=COLLECTOR_NAMESPACE["EventCollector"]({"accountId":"account","startSeconds":1,"endSeconds":2},oracle)
+        collector.send_initial()
+        collector.skip_optional_roster()
+        aic=collector.pending_transaction
+        collector.add_response({"transaction":aic,"cmd":10066,"mIntRet":0,"data":[]})
+        assert collector.event_read_mode == "history_table"
+        assert len(oracle.frames) == 3
+        collector.add_response({"transaction":aic,"cmd":10066,"mIntRet":0,"data":[]})
+        assert len(oracle.frames) == 3
+        collector.add_response({"transaction":collector.pending_transaction,"cmd":10000,"data":[]})
+        assert collector.done.is_set()
+        assert len(oracle.frames) == 3
     asyncio.run(exercise())

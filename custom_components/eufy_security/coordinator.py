@@ -27,6 +27,7 @@ from .eufy_security_api.api_client import ApiClient
 from .eufy_security_api.exceptions import (
     CaptchaRequiredException,
     DriverNotConnectedException,
+    FailedCommandException,
     MultiFactorCodeRequiredException,
     WebSocketConnectionException,
 )
@@ -36,6 +37,7 @@ from .evidence import (
     aic_thumbnail_sources,
     cloud_ai_details,
     event_merge_key,
+    event_in_window,
     join_aic_event_data,
     local_ai_details,
     normalize_aic_event,
@@ -492,6 +494,8 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 if warning:
                     warnings.append(warning)
 
+        if source != "latest":
+            events = [event for event in events if event_in_window(event.get("start"), start, end)]
         merged: dict[tuple, dict] = {}
         for event in events:
             key = event_merge_key(event)
@@ -846,7 +850,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             try:
                 async with thumbnail_semaphore, asyncio.timeout(8):
                     content, content_type = await self.evidence_thumbnail(event_id)
-            except (ValueError, RuntimeError, asyncio.TimeoutError):
+            except (ValueError, RuntimeError, asyncio.TimeoutError, FailedCommandException, WebSocketConnectionException, aiohttp.ClientError):
                 return None
             if not self._valid_snapshot(content):
                 return None
@@ -1210,7 +1214,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                             else {}
                         )
                         return data, image_type.get("mime") or "application/octet-stream"
-                    except (ValueError, RuntimeError, WebSocketConnectionException) as exc:
+                    except (ValueError, RuntimeError, WebSocketConnectionException, FailedCommandException) as exc:
                         last_error = exc
             if last_error is not None:
                 raise ValueError("HomeBase thumbnail sources were unavailable") from last_error
@@ -1253,7 +1257,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         else {}
                     )
                     return data, image_type.get("mime") or "application/octet-stream"
-                except (ValueError, RuntimeError, WebSocketConnectionException) as exc:
+                except (ValueError, RuntimeError, WebSocketConnectionException, FailedCommandException) as exc:
                     last_error = exc
         if last_error is not None:
             raise ValueError("HomeBase thumbnail sources were unavailable") from last_error

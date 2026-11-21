@@ -580,6 +580,11 @@ class EventCollector:
         history = self.rows(tables, "history_record_info")
         pictures = self.rows(tables, "record_crop_picture_info")
         smart = self.rows(tables, "smart_search_info")
+        if self.phase == "initial" and self.event_read_mode == "aic" and not history:
+            # Some firmware acknowledges AIC with an empty success while the
+            # supported whole history table still has the recording covers.
+            self.send_event_fallback()
+            return
         for record in history:
             serial = record.get("device_sn")
             if not isinstance(serial, str) or not serial:
