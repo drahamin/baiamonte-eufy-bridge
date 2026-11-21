@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from io import BytesIO
@@ -14,6 +15,13 @@ except ImportError:  # Home Assistant includes Pillow; keep import tests portabl
 
 MAX_SNAPSHOT_BYTES = 10 * 1024 * 1024
 MAX_ENHANCE_BYTES = 3 * 1024 * 1024
+# Exact fingerprints of two observed Pro RTC "Device is offline" JPEGs.
+# Keep this conservative: no brightness/entropy heuristic may reject real scenes.
+_OFFLINE_PLACEHOLDER_HASHES = {
+    "2dae851f7f51328eca3e2e1623c193f91340b0d73d7515e749a5510241184404",
+    "34620f910dfc2094b3c09a4f8547c472f3564c7b5b93f1768691dce87e70df99",
+}
+_OFFLINE_PLACEHOLDER_SIZES = {30546, 31126}
 
 
 def decode_inline_snapshot(value: object) -> bytes:
@@ -129,6 +137,9 @@ def is_valid_snapshot(content: object) -> bool:
     if not isinstance(content, (bytes, bytearray, memoryview)):
         return False
     value = bytes(content)
+    if (len(value) in _OFFLINE_PLACEHOLDER_SIZES
+            and hashlib.sha256(value).hexdigest() in _OFFLINE_PLACEHOLDER_HASHES):
+        return False
     return 1000 < len(value) <= MAX_SNAPSHOT_BYTES and (
         value.startswith(b"\xff\xd8\xff")
         or value.startswith(b"\x89PNG\r\n\x1a\n")
