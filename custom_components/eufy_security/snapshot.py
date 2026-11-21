@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from io import BytesIO
 
@@ -202,3 +203,13 @@ def product_snapshot_bytes(product, fallback: bytes | None = None) -> bytes | No
     if is_valid_snapshot(content):
         return bytes(content)
     return bytes(fallback) if is_valid_snapshot(fallback) else None
+
+
+def snapshot_needs_recovery(content: bytes, updated_at: object, now: datetime) -> bool:
+    """Missing, undated and day-old images deserve a bounded stored-history read."""
+    if not is_valid_snapshot(content) or not isinstance(updated_at, datetime):
+        return True
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
+    # Future timestamps cannot establish freshness either.
+    return updated_at > now + timedelta(minutes=5) or now - updated_at >= timedelta(hours=24)

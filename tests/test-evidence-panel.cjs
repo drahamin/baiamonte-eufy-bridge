@@ -31,6 +31,8 @@ test("inventory presence and unknown/invalid dates are never called current", ()
   assert.equal(panel.snapshotStatus(camera).state, "stale");
   camera.attributes.snapshot_updated_at = "invalid";
   assert.equal(panel.snapshotStatus(camera).state, "stale");
+  camera.attributes.snapshot_updated_at = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  assert.equal(panel.snapshotStatus(camera).state, "stale");
   camera.attributes.snapshot_updated_at = new Date().toISOString();
   assert.equal(panel.snapshotStatus(camera).state, "current");
   assert.match(panel.snapshotStatus(camera).label, /reachability unverified/);

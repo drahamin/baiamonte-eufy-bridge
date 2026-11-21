@@ -111,6 +111,7 @@ export interface P2PMessage {
 }
 
 export interface P2PDataHeader {
+  version?: number;
   commandId: number;
   bytesToRead: number;
   channel: number;

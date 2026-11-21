@@ -12,7 +12,7 @@ def test_missing_snapshots_use_bounded_serial_scoped_history() -> None:
         "@staticmethod\n    def _snapshot_name", 1
     )[0]
 
-    assert 'source="hybrid"' in method
+    assert 'else "hybrid"' in method
     assert "days=365" in method
     assert "max_results=20" in method
     assert "device_serial=device.serial_no" in method
@@ -36,7 +36,7 @@ def test_routine_refresh_does_not_wait_for_missing_camera_recovery() -> None:
     assert "if self._snapshot_refresh_lock.locked()" in coordinator
     assert '"deferred": True' in coordinator
     assert 'call.data.get("recover_missing", False)' in integration
-    assert 'source="cloud"' in integration
+    assert 'source="latest"' in integration
     assert "thumbnail_semaphore = asyncio.Semaphore(4)" in coordinator
     assert "asyncio.timeout(8)" in coordinator
 
@@ -44,3 +44,20 @@ def test_routine_refresh_does_not_wait_for_missing_camera_recovery() -> None:
 if __name__ == "__main__":
     test_missing_snapshots_use_bounded_serial_scoped_history()
     test_routine_refresh_does_not_wait_for_missing_camera_recovery()
+
+
+def test_recovery_includes_stale_undated_and_missing_but_not_recent_images():
+    from datetime import datetime, timedelta, timezone
+    import ast
+    tree = ast.parse((ROOT / "custom_components/eufy_security/snapshot.py").read_text())
+    node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "snapshot_needs_recovery")
+    ns = dict(datetime=datetime, timedelta=timedelta, timezone=timezone, is_valid_snapshot=lambda b: b == b"valid")
+    exec(compile(ast.Module(body=[node], type_ignores=[]), "snapshot.py", "exec"), ns)
+    recover = ns["snapshot_needs_recovery"]
+    now = datetime.now(timezone.utc)
+    assert recover(b"", now, now)
+    assert recover(b"valid", None, now)
+    assert recover(b"valid", now - timedelta(hours=24), now)
+    assert recover(b"valid", now + timedelta(hours=24), now)
+    assert not recover(b"valid", now - timedelta(hours=1), now)
+    assert not recover(b"valid", now.replace(tzinfo=None), now)
