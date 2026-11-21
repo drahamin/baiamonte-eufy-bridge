@@ -707,7 +707,8 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 datetime.now(timezone.utc),
             )
             and device.serial_no not in latest_by_serial
-            and now - self._targeted_snapshot_refresh_at.get(device.serial_no, 0) >= 6 * 60 * 60
+            and (device.serial_no not in self._targeted_snapshot_refresh_at
+                 or now - self._targeted_snapshot_refresh_at[device.serial_no] >= 6 * 60 * 60)
         ]
         targeted_events = 0
         targeted_warnings: list[str] = []

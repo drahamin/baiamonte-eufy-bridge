@@ -46,7 +46,7 @@ def test_stale_recovery_serializes_homebases_and_reuses_pro_pass_without_live_vi
             return {"events": [], "warnings": []}
         coordinator = SimpleNamespace(devices=devices,
             stations={"hb": SimpleNamespace(model="T8030"), "pro": SimpleNamespace(model="T9000")},
-            hass=SimpleNamespace(loop=asyncio.get_running_loop()), search_evidence=search,
+            hass=SimpleNamespace(loop=SimpleNamespace(time=lambda: 60)), search_evidence=search,
             _targeted_snapshot_refresh_at={}, _evidence_records={}, _last_snapshot_event_ids={},
             _snapshot_name=lambda n: n.lower(), _valid_snapshot=lambda b: b == b"image",
             _device_channel=lambda d: None)
