@@ -35,3 +35,10 @@ normalize those legacy starts to the same proven native forms while retaining
 the generated media modulus. Attached cameras and unknown/legacy negotiation
 retain their existing commands. Wire tests cover all three input forms under
 GCM and refusal, with matching stop bytes. Client 4.1.1-mega.47.
+
+
+After the user's Pro restart, the roster read succeeded without warnings but the
+AIC query still returned an empty success. Try the existing supported whole
+history-table read once in that case too, while rejecting late AIC transactions
+and avoiding a retry loop on an empty table. Date-filter public history results;
+latest-cover recovery can retain older pictures with their actual timestamps.

@@ -597,3 +597,16 @@ def normalize_local_event(record: dict[str, Any]) -> dict[str, Any]:
 def event_merge_key(event: dict[str, Any]) -> tuple[Any, ...]:
     """Deduplicate cloud and local descriptions of the same camera event."""
     return (event.get("device_name"), event.get("start"), event.get("end"))
+
+
+def event_in_window(value: object, start: datetime, end: datetime) -> bool:
+    """Keep full-table fallback rows out of a requested day unless dated inside it."""
+    if not isinstance(value, str):
+        return False
+    try:
+        at = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=timezone.utc)
+        return start <= at <= end
+    except (TypeError, ValueError):
+        return False

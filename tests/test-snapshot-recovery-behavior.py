@@ -117,3 +117,16 @@ def test_rejected_pro_image_candidate_falls_through_to_next_picture():
         assert await thumb(c,"event") == (b"image","image/jpeg")
         assert download.await_count == 2
     asyncio.run(exercise())
+
+
+def test_table_fallback_retains_real_dates_and_excludes_other_days():
+    ns=dict(datetime=datetime,timezone=timezone)
+    within=extract("custom_components/eufy_security/evidence.py","event_in_window",ns)
+    start=datetime(2026,11,20,tzinfo=timezone.utc)
+    end=datetime(2026,11,21,tzinfo=timezone.utc)
+    assert within("2026-11-20T12:00:00Z",start,end)
+    assert within("2026-11-20T12:00:00",start,end)
+    assert not within("2026-10-20T12:00:00Z",start,end)
+    assert not within("2026-11-22T12:00:00Z",start,end)
+    assert not within(None,start,end)
+    assert not within("invalid",start,end)

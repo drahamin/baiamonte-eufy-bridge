@@ -37,6 +37,7 @@ from .evidence import (
     aic_thumbnail_sources,
     cloud_ai_details,
     event_merge_key,
+    event_in_window,
     join_aic_event_data,
     local_ai_details,
     normalize_aic_event,
@@ -493,6 +494,8 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                 if warning:
                     warnings.append(warning)
 
+        if source != "latest":
+            events = [event for event in events if event_in_window(event.get("start"), start, end)]
         merged: dict[tuple, dict] = {}
         for event in events:
             key = event_merge_key(event)

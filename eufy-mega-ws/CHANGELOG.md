@@ -2,6 +2,8 @@
 
 ## 1.6.72 — 2026-11-21
 
+- Read the supported Pro history table once when an AIC query returns empty success. Preserve record dates and bound public history results to the requested window.
+
 - Normalize older integer and 1350 own-camera start requests to the camera's negotiated GCM/cipher-0/refusal form, preserving its media key and matching stop route. Attached cameras and unknown negotiation retain their existing commands.
 - Pair with Security 9.6.46: one rejected thumbnail candidate cannot abort the whole refresh batch; failed cameras keep their cache bytes and times.
 
