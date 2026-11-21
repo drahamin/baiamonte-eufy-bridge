@@ -7924,7 +7924,7 @@ export class Station extends TypedEmitter<StationEvents> {
         }
       );
     } else if (
-      (device.isIndoorPanAndTiltCameraS350() || device.isIndoorCamC24()) &&
+      (device.isIndoorPanAndTiltCameraS350() || device.isIndoorCamC24() || device.isWiredCamC31()) &&
       this.isDeviceControlledByHomeBase()
     ) {
       rootHTTPLogger.debug(`Station start livestream - sending command using CMD_SET_PAYLOAD`, {
@@ -7955,6 +7955,40 @@ export class Station extends TypedEmitter<StationEvents> {
         {
           command: commandData,
         }
+      );
+    } else if (device.isWiredCamC31() && device.getSerial() === this.getSerial() && device.getChannel() === 0) {
+      // Start on the camera's own channel. The P2P session negotiates and applies command encryption.
+      const account = this.rawStation.member.admin_user_id;
+      const timestamp = Date.now();
+      this.p2pSession.sendCommandWithStringPayload(
+        {
+          commandType: CommandType.CMD_DOORBELL_SET_PAYLOAD,
+          value: JSON.stringify({
+            commandType: ParamType.COMMAND_START_LIVESTREAM,
+            data: {
+              cmd: ParamType.COMMAND_START_LIVESTREAM,
+              account_id: account,
+              accountId: account,
+              mValueStrSub: account,
+              mChannel: 0,
+              mValue3: 0,
+              mValue5: 0,
+              msg_id: 1,
+              camera_type: 0,
+              entrytype: 0,
+              extValue: ParamType.COMMAND_START_LIVESTREAM,
+              ivalue: 1,
+              restore: 0,
+              streamtype: 2,
+              video_type: 12,
+              timestamp,
+              transaction: String(timestamp),
+              encryptkey: rsa_key?.exportKey("components-public").n.subarray(1).toString("hex"),
+            },
+          }),
+          channel: 0,
+        },
+        { command: commandData }
       );
     } else if (device.isIndoorPanAndTiltCameraS350()) {
       rootHTTPLogger.debug(`Station start livestream - sending command using CMD_DOORBELL_SET_PAYLOAD (4)`, {
