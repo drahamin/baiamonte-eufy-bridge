@@ -27,6 +27,7 @@ from .eufy_security_api.api_client import ApiClient
 from .eufy_security_api.exceptions import (
     CaptchaRequiredException,
     DriverNotConnectedException,
+    FailedCommandException,
     MultiFactorCodeRequiredException,
     WebSocketConnectionException,
 )
@@ -846,7 +847,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             try:
                 async with thumbnail_semaphore, asyncio.timeout(8):
                     content, content_type = await self.evidence_thumbnail(event_id)
-            except (ValueError, RuntimeError, asyncio.TimeoutError):
+            except (ValueError, RuntimeError, asyncio.TimeoutError, FailedCommandException, WebSocketConnectionException, aiohttp.ClientError):
                 return None
             if not self._valid_snapshot(content):
                 return None
@@ -1210,7 +1211,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                             else {}
                         )
                         return data, image_type.get("mime") or "application/octet-stream"
-                    except (ValueError, RuntimeError, WebSocketConnectionException) as exc:
+                    except (ValueError, RuntimeError, WebSocketConnectionException, FailedCommandException) as exc:
                         last_error = exc
             if last_error is not None:
                 raise ValueError("HomeBase thumbnail sources were unavailable") from last_error
@@ -1253,7 +1254,7 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
                         else {}
                     )
                     return data, image_type.get("mime") or "application/octet-stream"
-                except (ValueError, RuntimeError, WebSocketConnectionException) as exc:
+                except (ValueError, RuntimeError, WebSocketConnectionException, FailedCommandException) as exc:
                     last_error = exc
         if last_error is not None:
             raise ValueError("HomeBase thumbnail sources were unavailable") from last_error

@@ -63,3 +63,56 @@ def test_stale_recovery_serializes_homebases_and_reuses_pro_pass_without_live_vi
         assert again["targeted_queries"] == 0
         assert len(calls) == 1
     asyncio.run(exercise())
+
+
+def test_rejected_thumbnail_does_not_abort_other_camera_updates():
+    async def exercise():
+        class Rejected(Exception): pass
+        ns = dict(asyncio=asyncio, datetime=datetime, timedelta=timedelta, timezone=timezone,
+                  product_snapshot_bytes=lambda d: d.picture,
+                  FailedCommandException=Rejected, WebSocketConnectionException=ConnectionError,
+                  aiohttp=SimpleNamespace(ClientError=OSError))
+        refresh = extract("custom_components/eufy_security/coordinator.py", "_refresh_latest_snapshots_unlocked", ns)
+        now = datetime.now(timezone.utc)
+        old = now-timedelta(days=2)
+        events = [{"event_id": key,"thumbnail_url": "/protected/"+key,"start": now.isoformat()} for key in ["bad","good"]]
+        devices = {key: SimpleNamespace(serial_no=key,name=key,is_camera=True,picture=b"old",
+            image_last_updated=old,snapshot_source="explicit_live_capture",properties={}) for key in ["bad","good"]}
+        notified, persisted = [], []
+        for key, device in devices.items(): device.notify_state_update=lambda key=key: notified.append(key)
+        ns["evidence_identity"] = lambda retained: (retained["serial"],None,None)
+        async def search(**kwargs): return {"events":events,"warnings":[]}
+        async def thumbnail(key):
+            if key == "bad": raise Rejected("device_not_supported")
+            return b"new", "image/jpeg"
+        c = SimpleNamespace(devices=devices,stations={},hass=SimpleNamespace(loop=SimpleNamespace(time=lambda:60)),
+            search_evidence=search,evidence_thumbnail=thumbnail,_targeted_snapshot_refresh_at={},
+            _evidence_records={key:{"serial":key} for key in devices},_last_snapshot_event_ids={},
+            _snapshot_name=lambda n:(n or "").lower(),_valid_snapshot=lambda b:b in [b"old",b"new"],
+            _device_channel=lambda d:None,_schedule_snapshot_cache_write=lambda:persisted.append(True),
+            async_set_updated_data=lambda _:None,data={})
+        result=await refresh(c,source="latest",recover_missing=False)
+        assert result["updated"] == 1 and result["thumbnail_failures"] == 1
+        assert notified == ["good"] and persisted
+        assert devices["bad"].image_last_updated == old
+        assert devices["good"].image_last_updated == now
+        assert devices["good"].properties["picture"]["data"] == b"new"
+    asyncio.run(exercise())
+
+
+def test_rejected_pro_image_candidate_falls_through_to_next_picture():
+    async def exercise():
+        from unittest.mock import AsyncMock
+        class Rejected(Exception): pass
+        ns=dict(asyncio=asyncio,FailedCommandException=Rejected,WebSocketConnectionException=ConnectionError,
+            aiohttp=SimpleNamespace(ClientError=OSError),decode_inline_snapshot=lambda _:b"",
+            aic_thumbnail_sources=lambda record:[record])
+        thumb=extract("custom_components/eufy_security/coordinator.py","evidence_thumbnail",ns)
+        download=AsyncMock(side_effect=[Rejected("device_not_supported"),{"data":b"image","type":{"mime":"image/jpeg"}}])
+        record={"station_sn":"pro","thumb_path":"/missing.jpg","crop_path":"/present.jpg"}
+        c=SimpleNamespace(_evidence=lambda _: ("aic",record),_valid_snapshot=lambda b:b==b"image",
+            _record_field=lambda row,*names:next((row[n] for n in names if row.get(n)),None),
+            _buffer_bytes=lambda value:value,stations={"pro":SimpleNamespace(download_image=download)})
+        assert await thumb(c,"event") == (b"image","image/jpeg")
+        assert download.await_count == 2
+    asyncio.run(exercise())
