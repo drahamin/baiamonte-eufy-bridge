@@ -9,7 +9,7 @@ for a **single explicitly requested still**, preserving the existing Mega
 identity and authenticated RTC session setup. No second login or SDK daemon.
 
 - Station `1350/1003`, stream ID 1, station channel 255 and the requested camera
-  channel in `chn_list`; await the matching successful start ACK and accept only `1300` HEVC frames on live link 5/channel 101.
+  channel in `chn_list`; correlate start ACK/rejections and accept only `1300` HEVC frames on live link 5/channel 101.
 - Decode with the existing PyAV dependency and encode one high-quality JPEG,
   capped at 2 MiB so the companion retains its existing WebSocket message limit.
 - One Pro operation at a time, shared with roster/evidence reads. Reject a

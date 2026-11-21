@@ -96,15 +96,18 @@ def test_refused_start_never_stops_somebody_elses_play_slot():
     c.stop(); assert len(o.frames) == 1
 
 
-def test_real_hevc_frame_becomes_a_full_size_jpeg_and_releases_slot():
+@pytest.mark.parametrize("with_ack", [True, False])
+def test_real_hevc_frame_becomes_a_full_size_jpeg_and_releases_slot(with_ack):
     async def exercise():
-        c, o = collector(); c.send_initial()
+        c, o = collector()
         ack = bytearray(20); ack[:4] = b'XZYH'
         struct.pack_into('<H', ack, 4, 1350); struct.pack_into('<I', ack, 6, 4)
-        ack[14] = 1; ack[11] = c.start_segment
-        await c.add_media(video_packet(b'unacknowledged'), 5)
+        ack[14] = 1
+        await c.add_media(video_packet(b'before our start'), 5)
         assert c.media_frames == 0 and c.image is None
-        c.add_ack(bytes(ack), 1); assert c.start_accepted
+        c.send_initial(); ack[11] = c.start_segment
+        if with_ack:
+            c.add_ack(bytes(ack), 1); assert c.start_accepted
         parser = av.CodecContext.create('hevc', 'r')
         raw = (PATH.parent/'fixtures/pro-still.hevc').read_bytes()
         for packet in [*parser.parse(raw), *parser.parse(b'')]:

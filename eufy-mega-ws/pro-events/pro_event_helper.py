@@ -822,6 +822,7 @@ class SnapshotCollector(EventCollector):
         self.stop_sent = False
         self.start_segment = 0
         self.media_frames = 0
+        self.media_packets_seen = 0
         self.image: bytes | None = None
         self.captured_at: str | None = None
         self.decoder = av.CodecContext.create("hevc", "r")
@@ -857,7 +858,7 @@ class SnapshotCollector(EventCollector):
         return encode_live_still(frames[0]) if frames else None
 
     async def add_media(self, frame: bytes, link: int) -> None:
-        if self.done.is_set() or not self.start_accepted:
+        if self.done.is_set() or not self.start_sent:
             return
         media = parse_live_media(frame, link)
         if media is None:
@@ -1030,6 +1031,8 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
                 continue
             if isinstance(collector, SnapshotCollector):
                 collector.add_ack(frame, link)
+                if link == 5 and struct.unpack_from("<H", frame, 4)[0] == 1300:
+                    collector.media_packets_seen += 1
                 if not collector.done.is_set():
                     await collector.add_media(frame, link)
                 continue
@@ -1188,6 +1191,9 @@ async def run(config: dict[str, Any]) -> dict[str, Any]:
                 await asyncio.sleep(0.15)
             except (BrokenPipeError, ConnectionError, RuntimeError):
                 pass
+            log(f"RTC still end: sent={int(collector.start_sent)}, ack={int(collector.start_accepted)}, "
+                f"refused={int(collector.start_refused)}, media={collector.media_packets_seen}, "
+                f"decoded={collector.media_frames}, image={int(collector.image is not None)}, stop={int(collector.stop_sent)}")
         # Fixed local state only: no station IDs, URLs, tokens or SDP in diagnostics.
         phase = collector.phase if collector.phase in {"roster", "initial", "filters", "thumbnails", "snapshot"} else "unknown"
         peer_state = peer.connectionState if peer.connectionState in {"new", "connecting", "connected", "disconnected", "failed", "closed"} else "unknown"
