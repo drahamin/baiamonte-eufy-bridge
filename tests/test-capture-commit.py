@@ -54,6 +54,8 @@ def test_capture_publishes_and_commits_after_cleanup_replays_old_picture():
             def is_streaming(self): return product.stream_status == status.STREAMING
         camera = Camera()
         camera.product, camera.hass = product, object()
+        camera._last_image = OLD
+        camera._commit_snapshot_capture = MethodType(method("custom_components/eufy_security/camera.py", "_commit_snapshot_capture", namespace), camera)
         camera._scheduled_snapshot_lock = asyncio.Lock()
         camera.coordinator = SimpleNamespace(async_persist_snapshot_capture=persist)
         camera.stream_source = AsyncMock(return_value="test-source")
@@ -106,12 +108,13 @@ def test_failed_capture_retires_its_start_but_does_not_stop_borrowed_stream():
         capture = method("custom_components/eufy_security/camera.py", "async_refresh_stale_snapshot", namespace)
         product = SimpleNamespace(commands=["start_livestream", "stop_livestream"],
             image_last_updated=None, stream_status=status.STREAMING if borrowed else status.IDLE,
-            start_livestream=AsyncMock(return_value=False), stop_livestream=AsyncMock())
+            start_livestream=AsyncMock(return_value=False), stop_livestream=AsyncMock(), properties={})
         class Camera:
             @property
             def is_streaming(self): return product.stream_status == status.STREAMING
         camera = Camera()
         camera.product, camera.hass = product, object()
+        camera.coordinator = SimpleNamespace(stations={})
         camera._scheduled_snapshot_lock = asyncio.Lock()
         camera.stream_source = AsyncMock(return_value="test-source")
         assert not await capture(camera, force=True)
@@ -273,3 +276,40 @@ def test_rejected_late_stop_keeps_queued_camera_and_station_events_flowing():
             worker.cancel()
             await asyncio.gather(worker, return_exceptions=True)
     asyncio.run(exercise())
+
+
+def test_failed_or_cancelled_commit_restores_all_fields_without_publishing():
+    async def exercise(cancelled=False, newer_push=False):
+        now=datetime.now(timezone.utc); old_time=now-timedelta(days=2)
+        published=[]; scheduled=[]
+        product=SimpleNamespace(properties={'picture':{'data':OLD}},image_last_updated=old_time,
+            snapshot_source='disk_cache:push_event',notify_state_update=lambda:published.append('notify'))
+        camera=SimpleNamespace(product=product,_last_image=OLD,
+            async_update_token=lambda:published.append('token'),async_write_ha_state=lambda:published.append('state'))
+        async def persist(_):
+            assert published == []
+            if newer_push:
+                product.properties['picture']={'data':b'newer-push'}
+                product.image_last_updated=now+timedelta(seconds=1)
+                product.snapshot_source='push_event';camera._last_image=b'newer-push'
+            if cancelled:raise asyncio.CancelledError()
+            return False
+        camera.coordinator=SimpleNamespace(async_persist_snapshot_capture=persist,
+            _schedule_snapshot_cache_write=lambda:scheduled.append(True))
+        commit=method('custom_components/eufy_security/camera.py','_commit_snapshot_capture',
+                      dict(contextlib=contextlib,datetime=datetime))
+        if cancelled:
+            import pytest
+            with pytest.raises(asyncio.CancelledError):await commit(camera,FRESH,now,'explicit_live_capture')
+        else:assert not await commit(camera,FRESH,now,'explicit_live_capture')
+        assert published == []
+        if newer_push:
+            assert camera._last_image == b'newer-push' and product.snapshot_source == 'push_event'
+            assert product.image_last_updated == now+timedelta(seconds=1) and not scheduled
+        else:
+            assert camera._last_image == OLD and product.properties['picture']['data'] == OLD
+            assert product.image_last_updated == old_time and product.snapshot_source == 'disk_cache:push_event'
+            assert scheduled == [True]
+    asyncio.run(exercise())
+    asyncio.run(exercise(cancelled=True))
+    asyncio.run(exercise(newer_push=True))

@@ -2,7 +2,7 @@
 
 // Minimal Node wrapper around Eufy's public WebRTC SCTP framing module. The
 // bridge downloads and hash-verifies the exact public 0.0.4 module at build
-// time. Only command frames are accepted; this helper has no live-video path.
+// time. The Python collector selects evidence or one explicitly requested live still.
 const fs = require("fs");
 const path = require("path");
 const { decodePortalFrame } = require("./portal_frame.cjs");
@@ -82,7 +82,13 @@ function pushPacket(moduleObject, manager, bytes) {
 
 async function serve() {
   const moduleObject = await createModule();
-  const emit = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+  const emit = (message) => {
+    if (process.stdout.writableLength > 64 * 1024 * 1024) {
+      process.stderr.write("SCTP output backlog exceeded limit\n");
+      process.exit(1);
+    }
+    process.stdout.write(`${JSON.stringify(message)}\n`);
+  };
   const sender = createManager(moduleObject, 1, 0, {
     onPacket: (_id, bytes) => emit({ event: "packet", source: "sender", data: bytes.toString("base64") }),
   });

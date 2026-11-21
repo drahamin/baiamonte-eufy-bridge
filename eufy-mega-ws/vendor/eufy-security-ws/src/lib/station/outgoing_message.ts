@@ -29,6 +29,11 @@ export interface StationResultTypes {
   };
   [StationCommand.chime]: { async?: boolean };
   [StationCommand.downloadImage]: { async?: boolean };
+  [StationCommand.captureLiveSnapshot]: {
+    data: string;
+    mimeType: string;
+    capturedAt: string;
+  };
   [StationCommand.databaseQueryLatestInfo]: { async?: boolean };
   [StationCommand.databaseQueryAicEvents]: { async?: boolean };
   [StationCommand.databaseQueryLocal]: { async?: boolean };

@@ -13,7 +13,7 @@ RUN \
     && npm ci \
     && npm run build \
     && npm pack --ignore-scripts --pack-destination /tmp \
-    && test -s /tmp/eufy-security-client-4.1.1-mega.47.tgz
+    && test -s /tmp/eufy-security-client-4.1.1-mega.48.tgz
 
 FROM ghcr.io/home-assistant/base:3.23 AS server-builder
 
@@ -21,7 +21,7 @@ RUN apk add --no-cache nodejs npm
 
 WORKDIR /build/eufy-security-ws
 COPY vendor/eufy-security-ws/ ./
-COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.47.tgz /tmp/eufy-security-client-4.1.1-mega.47.tgz
+COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.48.tgz /tmp/eufy-security-client-4.1.1-mega.48.tgz
 
 # Compile the exact schema-21 server source and retain only its locked runtime dependencies.
 RUN \
@@ -31,7 +31,7 @@ RUN \
     && npm ci \
     && rm -rf node_modules/eufy-security-client \
     && mkdir -p node_modules/eufy-security-client \
-    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.47.tgz \
+    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.48.tgz \
         --strip-components=1 \
         -C node_modules/eufy-security-client \
     && npm run build \
@@ -45,7 +45,7 @@ FROM ghcr.io/home-assistant/base:3.23 AS runtime-deps
 RUN apk add --no-cache jq nodejs python3 py3-pip curl
 RUN python3 -m venv /opt/baiamonte-pro-events/venv \
     && /opt/baiamonte-pro-events/venv/bin/pip install --no-cache-dir \
-        aiortc==1.15.0 websockets==17.3 aiohttp==3.14.5 truststore==0.10.5
+        aiortc==1.15.0 av==17.1.0 websockets==17.3 aiohttp==3.14.5 truststore==0.10.5
 
 FROM runtime-deps
 
@@ -68,10 +68,10 @@ COPY --from=server-builder /build/eufy-security-ws/node_modules ./node_modules
 COPY --from=server-builder /build/eufy-security-ws/package.json ./package.json
 COPY --from=server-builder /build/eufy-security-ws/LICENSE ./LICENSE
 
-COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.47.tgz /tmp/eufy-security-client-4.1.1-mega.47.tgz
+COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.48.tgz /tmp/eufy-security-client-4.1.1-mega.48.tgz
 
 # eufy-security-ws 3.1.0 pins client 4.1.0 exactly. Replace that package with the compatible
-# 4.1.1-mega.47 source build carrying authenticated HomeBase 3 media decode
+# 4.1.1-mega.48 source build carrying authenticated HomeBase 3 media decode
 # and cipher-0 standalone-camera live-view support,
 # evidence-ranked native catalogs, safe value profiles, T9000, and snapshot fixes.
 RUN \
@@ -80,19 +80,19 @@ RUN \
     && case "$(node --version)" in v24.*) ;; *) echo "Expected Node 24" >&2; exit 1 ;; esac \
     && rm -rf node_modules/eufy-security-client \
     && mkdir -p node_modules/eufy-security-client \
-    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.47.tgz \
+    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.48.tgz \
         --strip-components=1 \
         -C node_modules/eufy-security-client \
     && package_tmp="$(mktemp)" \
-    && jq '.dependencies["eufy-security-client"] = "4.1.1-mega.47"' \
+    && jq '.dependencies["eufy-security-client"] = "4.1.1-mega.48"' \
         package.json > "${package_tmp}" \
     && mv "${package_tmp}" package.json \
-    && test "$(node -p "require('./node_modules/eufy-security-client/package.json').version")" = "4.1.1-mega.47" \
+    && test "$(node -p "require('./node_modules/eufy-security-client/package.json').version")" = "4.1.1-mega.48" \
     && grep -q "retrying request after fresh key exchange" \
         node_modules/eufy-security-client/build/http/megaApi.js \
     && grep -q "snapshotCache" node_modules/eufy-security-client/build/eufysecurity.js \
     && grep -q "or_and" node_modules/eufy-security-client/build/http/station.js \
-    && rm /tmp/eufy-security-client-4.1.1-mega.47.tgz
+    && rm /tmp/eufy-security-client-4.1.1-mega.48.tgz
 
 COPY dashboard/ /opt/baiamonte-eufy-dashboard/
 COPY pro-events/ /opt/baiamonte-pro-events/
@@ -106,6 +106,7 @@ RUN \
     && echo "1cf0326ab7b14a986af654d704f2eadcd9edb5e1290ca3f1a53a819d2054ea6a  /opt/baiamonte-pro-events/worker/libsctp_0_0_4.js" | sha256sum -c - \
     && echo "f9b49bca7611956f75f6198d1d05f5132e72a1fd1002522c15db15114584b227  /opt/baiamonte-pro-events/worker/libsctp_0_0_4.wasm" | sha256sum -c - \
     && chmod 0755 /opt/baiamonte-pro-events/pro_event_helper.py \
+    && /opt/baiamonte-pro-events/venv/bin/python /opt/baiamonte-pro-events/pro_event_helper.py --codec-selftest \
     && (node /opt/baiamonte-pro-events/sctp_oracle.cjs </dev/null >/tmp/sctp-selftest.out 2>/tmp/sctp-selftest.err & \
         oracle_pid=$!; ready=0; \
         for attempt in 1 2 3 4 5 6 7 8 9 10; do \

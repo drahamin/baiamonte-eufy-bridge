@@ -15,6 +15,7 @@ export enum StationCommand {
   hasCommand = "station.has_command",
   chime = "station.chime",
   downloadImage = "station.download_image",
+  captureLiveSnapshot = "station.capture_live_snapshot",
   databaseQueryLatestInfo = "station.database_query_latest_info",
   databaseQueryAicEvents = "station.database_query_aic_events",
   databaseQueryLocal = "station.database_query_local",

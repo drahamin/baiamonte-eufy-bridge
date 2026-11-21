@@ -1,0 +1,10 @@
+The Pro live-still wire protocol and media-header handling are adapted from
+mega-yfue/eufy-sdk, src/transport/rtc/live.ts and portal-packet.ts (PR #345).
+Copyright 2026 mega-yfue and contributors. Licensed under Apache-2.0;
+see LICENSE-eufy-sdk. Upstream: https://github.com/mega-yfue/eufy-sdk/pull/345
+
+Modified for Baiamonte: Python/aiortc transport, one-frame PyAV decode/JPEG
+encoding, explicit-only capture, shared evidence/capture serialization,
+bounded buffers/deadlines, refusal handling and unconditional owned cleanup.
+The included 64x48 HEVC regression fixture is a synthetic gray frame sequence
+generated locally for this project; it contains no camera or personal imagery.
