@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.74 — 2026-11-21
+
+- Recognize Wired Cam C31 (T817L) for camera discovery and video without adding camera settings or controls.
+
 ## 1.6.73 — 2026-11-21
 
 - Add an explicit, serialized Pro RTC live-still request from SDK #345, with HEVC decoding, bounded JPEG output and stop/DTLS cleanup. Stored-evidence maintenance remains non-live.

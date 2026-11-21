@@ -1,6 +1,7 @@
 import { Station } from "../station";
-import { DeviceType } from "../types";
-import { PanTiltDirection } from "../../p2p/types";
+import { Device } from "../device";
+import { CommandName, DeviceType, PropertyName } from "../types";
+import { CommandType, PanTiltDirection } from "../../p2p/types";
 import { P2PClientProtocol } from "../../p2p/session";
 import { Readable } from "stream";
 
@@ -204,6 +205,45 @@ describe("stored image command routing", () => {
     );
     expect(() => station.downloadImage("/stored-image.jpg")).toThrow("authenticated RTC evidence response");
     expect((station as any).p2pSession.sendCommandWithStringPayload).not.toHaveBeenCalled();
+    station.close();
+  });
+});
+
+describe("Wired Cam C31", () => {
+  it("advertises video and stills for exact C31 hardware and no camera controls", () => {
+    const camera = Object.assign(Object.create(Device.prototype) as Device, {
+      rawDevice: { device_type: DeviceType.WIRED_CAM_C31, device_model: "T817L", device_sn: "T817LTEST", station_sn: "T817LTEST" },
+    });
+    expect(Device.isCamera(DeviceType.WIRED_CAM_C31)).toBe(true);
+    expect(camera.getCommands()).toEqual([CommandName.DeviceStartLivestream, CommandName.DeviceStopLivestream]);
+    expect(camera.getPropertiesMetadata()[PropertyName.DevicePicture]).toBeDefined();
+    expect(camera.getPropertiesMetadata()[PropertyName.DeviceEnabled]).toBeUndefined();
+    jest.spyOn(camera, "getModel").mockReturnValue("other");
+    expect(camera.getCommands()).toEqual([]);
+  });
+
+  it("starts a standalone C31 through its existing own-session transport", async () => {
+    const serial = "T817LTEST";
+    const station = await Station.getInstance(
+      {} as never,
+      { station_sn: serial, device_type: DeviceType.WIRED_CAM_C31, member: { admin_user_id: "account" } } as never
+    );
+    const camera = Object.assign(Object.create(Device.prototype) as Device, {
+      rawDevice: { device_type: DeviceType.WIRED_CAM_C31, device_model: "T817L", device_sn: "T817LTEST", station_sn: "T817LTEST" },
+      getStationSerial: () => serial,
+      getSerial: () => serial,
+      getChannel: () => 0,
+    });
+    station.startLivestream(camera);
+    const session = (P2PClientProtocol as unknown as jest.Mock).mock.results.at(-1)!.value;
+    const [request, context] = session.sendCommandWithStringPayload.mock.calls[0];
+    expect(request.channel).toBe(0);
+    expect(request.commandType).toBe(CommandType.CMD_DOORBELL_SET_PAYLOAD);
+    expect(JSON.parse(request.value)).toMatchObject({
+      commandType: 1000,
+      data: { mChannel: 0, accountId: "account", streamtype: 2, video_type: 12 },
+    });
+    expect(context.command.name).toBe(CommandName.DeviceStartLivestream);
     station.close();
   });
 });

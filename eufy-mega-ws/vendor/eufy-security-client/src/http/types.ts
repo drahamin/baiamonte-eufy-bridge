@@ -113,6 +113,7 @@ export enum DeviceType {
   CAMERA_C35 = 10035, //T8110
   // Baiamonte internal type. Native Mega reports T87A0 as type 1 (which means Camera in the
   // legacy schema), so it must be translated to a non-colliding read-only type.
+  WIRED_CAM_C31 = 10031, // T817L
   SMART_DISPLAY_E10 = 10100, // T87A0
 }
 
@@ -1094,6 +1095,7 @@ export const GenericTypeProperty: PropertyMetadataNumeric = {
     10009: "Indoor Cam C210 (T8419)",
     10010: "Indoor Cam C220 (T8W11C)",
     10011: "Indoor Cam C220 (T8419N)",
+    10031: "Wired Cam C31 (T817L)",
     10035: "eufyCam C35 (T8110)",
     10100: "Smart Display E10 (T87A0)",
   },
@@ -5528,6 +5530,11 @@ export const LockT85V0DeviceProperties: IndexedProperty = {
 };
 
 export const DeviceProperties: Properties = {
+  [DeviceType.WIRED_CAM_C31]: {
+    ...GenericDeviceProperties,
+    [PropertyName.DevicePicture]: DevicePictureProperty,
+    [PropertyName.DevicePictureUrl]: DevicePictureUrlProperty,
+  },
   [DeviceType.SMART_DISPLAY_E10]: {
     ...GenericDeviceProperties,
     [PropertyName.DeviceConnected]: NativeMegaConnectedProperty,
@@ -10242,6 +10249,10 @@ export enum CommandName {
 }
 
 export const DeviceCommands: Commands = {
+  [DeviceType.WIRED_CAM_C31]: [
+    CommandName.DeviceStartLivestream,
+    CommandName.DeviceStopLivestream,
+  ],
   [DeviceType.CAMERA]: [
     CommandName.DeviceStartLivestream,
     CommandName.DeviceStopLivestream,

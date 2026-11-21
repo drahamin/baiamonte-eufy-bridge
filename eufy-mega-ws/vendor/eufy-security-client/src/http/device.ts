@@ -1834,6 +1834,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
   }
 
   public getCommands(): Array<CommandName> {
+    if (this.getDeviceType() === DeviceType.WIRED_CAM_C31 && !this.isWiredCamC31()) return [];
     const commands = DeviceCommands[this.getDeviceType()];
     if (commands === undefined) return [];
     return commands;
@@ -1879,6 +1880,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
 
   static isCamera(type: number): boolean {
     return (
+      type == DeviceType.WIRED_CAM_C31 ||
       type == DeviceType.CAMERA ||
       type == DeviceType.CAMERA2 ||
       type == DeviceType.CAMERA_E ||
@@ -2882,6 +2884,10 @@ export class Device extends TypedEmitter<DeviceEvents> {
 
   public isIndoorCamMini(): boolean {
     return Device.isIndoorCamMini(this.rawDevice.device_type);
+  }
+
+  public isWiredCamC31(): boolean {
+    return this.getDeviceType() === DeviceType.WIRED_CAM_C31 && this.getModel() === "T817L";
   }
 
   public isIndoorCamC24(): boolean {
