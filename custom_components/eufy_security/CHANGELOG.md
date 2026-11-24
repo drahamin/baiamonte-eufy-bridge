@@ -1,5 +1,10 @@
 # Changelog
 
+## 9.6.49 — 2026-11-24
+
+- Keep snapshots with only a push receipt time eligible for bounded stored-image recovery.
+- Use the same capture-time rule for the camera's refresh-needed status.
+
 ## 9.6.42 — 2026-11-06
 
 - Use the exact Pro recording's embedded thumbnail, including firmware base64 whitespace/data URIs.

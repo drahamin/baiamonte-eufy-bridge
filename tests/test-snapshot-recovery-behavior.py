@@ -16,23 +16,28 @@ def extract(path, name, ns):
     return ns[name]
 
 
-def test_stale_recovery_serializes_homebases_and_reuses_pro_pass_without_live_video():
+def test_recovery_uses_capture_time_and_preserves_cooldown_and_last_frame():
     async def exercise():
         ns = dict(asyncio=asyncio, datetime=datetime, timedelta=timedelta, timezone=timezone,
                   is_valid_snapshot=lambda b: b == b"image",
                   product_snapshot_bytes=lambda d: d.picture,
                   WebSocketConnectionException=ConnectionError)
-        ns["snapshot_needs_recovery"] = extract("custom_components/eufy_security/snapshot.py", "snapshot_needs_recovery", ns)
+        snapshot_module = "custom_components/eufy_security/snapshot.py"
+        extract(snapshot_module, "snapshot_source_has_capture_time", ns)
+        extract(snapshot_module, "snapshot_needs_recovery", ns)
         refresh = extract("custom_components/eufy_security/coordinator.py", "_refresh_latest_snapshots_unlocked", ns)
         now = datetime.now(timezone.utc)
-        def device(serial, station, date, picture=b"image"):
+        def device(serial, station, date, picture=b"image", source="account_index"):
             return SimpleNamespace(serial_no=serial, name=serial, is_camera=True,
-                image_last_updated=date, picture=picture, properties={"stationSerialNumber": station})
+                image_last_updated=date, snapshot_source=source, picture=picture,
+                properties={"stationSerialNumber": station})
         devices = {
             "old": device("old", "hb", now-timedelta(days=2)),
             "undated": device("undated", "hb", None),
             "missing": device("missing", "pro", None, b""),
-            "recent": device("recent", "hb", now),
+            "recent_capture": device("recent_capture", "hb", now, source="explicit_live_capture"),
+            "recent_push": device("recent_push", "hb", now, source="push_event"),
+            "restored_push": device("restored_push", "hb", now, source="disk_cache:push_event"),
         }
         calls, active, maximum = [], {}, {}
         async def search(**kwargs):
@@ -43,6 +48,8 @@ def test_stale_recovery_serializes_homebases_and_reuses_pro_pass_without_live_vi
                 maximum[station] = max(maximum.get(station, 0), active[station])
                 await asyncio.sleep(0.001)
                 active[station] -= 1
+            if kwargs.get("device_serial") == "recent_push":
+                raise asyncio.TimeoutError
             return {"events": [], "warnings": []}
         coordinator = SimpleNamespace(devices=devices,
             stations={"hb": SimpleNamespace(model="T8030"), "pro": SimpleNamespace(model="T9000")},
@@ -51,13 +58,20 @@ def test_stale_recovery_serializes_homebases_and_reuses_pro_pass_without_live_vi
             _snapshot_name=lambda n: n.lower(), _valid_snapshot=lambda b: b == b"image",
             _device_channel=lambda d: None)
         result = await refresh(coordinator, source="latest", recover_missing=True)
-        assert result["targeted_queries"] == 3
+        assert result["targeted_queries"] == 5
         targeted = [c for c in calls if c.get("device_serial")]
-        assert {c["device_serial"] for c in targeted} == {"old", "undated", "missing"}
+        assert {c["device_serial"] for c in targeted} == {
+            "old", "undated", "missing", "recent_push", "restored_push",
+        }
         assert all(c["days"] == 365 and c["max_results"] == 20 for c in targeted)
         assert next(c for c in targeted if c["device_serial"] == "missing")["source"] == "cloud"
         assert maximum["hb"] == 1
         assert result["scheduled_live_captures"] == 0
+        assert result["warnings"] == ["targeted snapshot: TimeoutError"]
+        assert result["updated"] == 0
+        assert devices["recent_push"].picture == b"image"
+        assert devices["recent_push"].image_last_updated == now
+        assert devices["recent_push"].snapshot_source == "push_event"
         calls.clear()
         again = await refresh(coordinator, source="latest", recover_missing=True)
         assert again["targeted_queries"] == 0
@@ -80,7 +94,9 @@ def test_rejected_thumbnail_does_not_abort_other_camera_updates():
         devices = {key: SimpleNamespace(serial_no=key,name=key,is_camera=True,picture=b"old",
             image_last_updated=old,snapshot_source="explicit_live_capture",properties={}) for key in ["bad","good"]}
         notified, persisted = [], []
-        for key, device in devices.items(): device.notify_state_update=lambda key=key: notified.append(key)
+        for key, device in devices.items():
+            device.properties["picture"] = {"data": b"old", "type": {"mime": "image/jpeg"}}
+            device.notify_state_update=lambda key=key: notified.append(key)
         ns["evidence_identity"] = lambda retained: (retained["serial"],None,None)
         async def search(**kwargs): return {"events":events,"warnings":[]}
         async def thumbnail(key):
@@ -96,6 +112,8 @@ def test_rejected_thumbnail_does_not_abort_other_camera_updates():
         assert result["updated"] == 1 and result["thumbnail_failures"] == 1
         assert notified == ["good"] and persisted
         assert devices["bad"].image_last_updated == old
+        assert devices["bad"].snapshot_source == "explicit_live_capture"
+        assert devices["bad"].properties["picture"]["data"] == b"old"
         assert devices["good"].image_last_updated == now
         assert devices["good"].properties["picture"]["data"] == b"new"
     asyncio.run(exercise())

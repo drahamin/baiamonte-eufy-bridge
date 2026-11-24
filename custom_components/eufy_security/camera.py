@@ -285,6 +285,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
         """
         commands = set(self.product.commands or [])
         snapshot_updated_at = self.product.image_last_updated
+        snapshot_source = getattr(self.product, "snapshot_source", None)
         snapshot = product_snapshot_bytes(self.product, self._last_image)
         return {
             **super().extra_state_attributes,
@@ -297,15 +298,18 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
             "camera_reachability": "active_stream" if self.is_streaming else "unknown",
             "snapshot_time_basis": (
                 "unknown" if not snapshot_updated_at else
-                "received" if "push_event" in str(getattr(self.product, "snapshot_source", "")) else
-                "capture" if "explicit_live_capture" in str(getattr(self.product, "snapshot_source", "")) else "event_record"
+                "received" if "push_event" in str(snapshot_source) else
+                "capture" if "explicit_live_capture" in str(snapshot_source) else "event_record"
             ),
             "snapshot_available": snapshot is not None,
-            "snapshot_refresh_needed": snapshot_needs_recovery(snapshot, snapshot_updated_at, datetime.now(timezone.utc)),
+            "snapshot_refresh_needed": snapshot_needs_recovery(
+                snapshot, snapshot_updated_at, datetime.now(timezone.utc),
+                source=snapshot_source,
+            ),
             "snapshot_updated_at": (
                 snapshot_updated_at.isoformat() if snapshot_updated_at else None
             ),
-            "snapshot_source": getattr(self.product, "snapshot_source", None),
+            "snapshot_source": snapshot_source,
             "capabilities": {
                 "streaming": bool(
                     {"start_livestream", "stop_livestream"} & commands

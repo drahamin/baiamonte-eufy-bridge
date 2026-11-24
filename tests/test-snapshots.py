@@ -187,5 +187,6 @@ def test_pro_offline_status_images_are_not_camera_snapshots() -> None:
         content = (fixture_dir / name).read_bytes()
         assert not snapshot.is_valid_snapshot(content)
         assert snapshot.product_snapshot_bytes(Product(content), good) == good
-        assert snapshot.snapshot_needs_recovery(content, datetime.now(timezone.utc), datetime.now(timezone.utc))
+        now = datetime.now(timezone.utc)
+        assert snapshot.snapshot_needs_recovery(content, now, now, source="explicit_live_capture")
     assert snapshot.is_valid_snapshot(good)  # Same size is insufficient to reject a scene.
