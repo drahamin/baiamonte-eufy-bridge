@@ -707,8 +707,10 @@ class EufySecurityDataUpdateCoordinator(DataUpdateCoordinator):
             if recover_missing
             if getattr(device, "is_camera", False)
             and snapshot_needs_recovery(
-                product_snapshot_bytes(device), getattr(device, "image_last_updated", None),
+                product_snapshot_bytes(device),
+                getattr(device, "image_last_updated", None),
                 datetime.now(timezone.utc),
+                source=getattr(device, "snapshot_source", None),
             )
             and device.serial_no not in latest_by_serial
             and (device.serial_no not in self._targeted_snapshot_refresh_at

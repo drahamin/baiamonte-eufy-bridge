@@ -218,9 +218,15 @@ def product_snapshot_bytes(product, fallback: bytes | None = None) -> bytes | No
     return bytes(fallback) if is_valid_snapshot(fallback) else None
 
 
-def snapshot_needs_recovery(content: bytes, updated_at: object, now: datetime) -> bool:
-    """Missing, undated and day-old images deserve a bounded stored-history read."""
-    if not is_valid_snapshot(content) or not isinstance(updated_at, datetime):
+def snapshot_needs_recovery(
+    content: bytes, updated_at: object, now: datetime, *, source: object
+) -> bool:
+    """Use dated image evidence to decide whether to skip stored-history recovery."""
+    if (
+        not is_valid_snapshot(content)
+        or not isinstance(updated_at, datetime)
+        or not snapshot_source_has_capture_time(source)
+    ):
         return True
     if updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=timezone.utc)
