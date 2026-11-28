@@ -1,3 +1,7 @@
+## 9.6.50 — 2026-11-28
+
+- Wait up to 25 seconds for stream startup to cover the bridge's bounded 20-second first-video window. Keep snapshot decode and cleanup timeouts unchanged.
+
 # Changelog
 
 ## 9.6.49 — 2026-11-24

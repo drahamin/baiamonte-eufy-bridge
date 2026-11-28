@@ -1,3 +1,9 @@
+## 1.6.77
+
+- Give P2P video an absolute 20-second first-frame startup window, matching the SDK warm-up budget, then retain the existing five-second data-stall timeout.
+- Partial traffic and command replies cannot extend startup indefinitely; recording-transfer timing is unchanged.
+- Pair with Security 9.6.50, whose 25-second startup wait covers the bridge budget. Capture cleanup, cache preservation and manual-only playback remain unchanged.
+
 ## 1.6.76
 
 - Keep standalone media start/stop on the app-derived level-1 key even after RSA negotiation supplies a separate key for ordinary control commands.

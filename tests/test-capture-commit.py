@@ -26,7 +26,7 @@ def test_capture_publishes_and_commits_after_cleanup_replays_old_picture():
         ffmpeg = SimpleNamespace(async_get_image=AsyncMock(return_value=FRESH))
         namespace = dict(asyncio=asyncio, contextlib=contextlib, datetime=datetime,
             timedelta=timedelta, timezone=timezone, ffmpeg=ffmpeg, StreamStatus=status,
-            STREAM_TIMEOUT_SECONDS=1, FailedCommandException=RuntimeError,
+            STREAM_START_TIMEOUT_SECONDS=1, STREAM_TIMEOUT_SECONDS=1, FailedCommandException=RuntimeError,
             WebSocketConnectionException=ConnectionError, is_valid_snapshot=lambda b: b == FRESH)
         capture = method("custom_components/eufy_security/camera.py", "async_refresh_stale_snapshot", namespace)
         product = SimpleNamespace(commands=["start_livestream", "stop_livestream"],
@@ -102,7 +102,7 @@ def test_failed_capture_retires_its_start_but_does_not_stop_borrowed_stream():
         namespace = dict(asyncio=asyncio, contextlib=contextlib, datetime=datetime,
             timedelta=timedelta, timezone=timezone,
             ffmpeg=SimpleNamespace(async_get_image=AsyncMock(return_value=b"invalid")),
-            StreamStatus=status, STREAM_TIMEOUT_SECONDS=0.01,
+            StreamStatus=status, STREAM_START_TIMEOUT_SECONDS=0.01, STREAM_TIMEOUT_SECONDS=0.01,
             FailedCommandException=RuntimeError, WebSocketConnectionException=ConnectionError,
             is_valid_snapshot=lambda _: False)
         capture = method("custom_components/eufy_security/camera.py", "async_refresh_stale_snapshot", namespace)
@@ -168,7 +168,7 @@ def test_stop_invalidates_pending_start_and_late_event_without_relay_restart():
 def test_old_relay_generation_cannot_feed_a_new_stream():
     async def exercise():
         from collections import deque
-        namespace = dict(asyncio=asyncio, STREAM_TIMEOUT_SECONDS=1)
+        namespace = dict(asyncio=asyncio, STREAM_START_TIMEOUT_SECONDS=1, STREAM_TIMEOUT_SECONDS=1)
         chunk = method("custom_components/eufy_security/eufy_security_api/p2p_streamer.py", "chunk_generator", namespace)
         relay = SimpleNamespace(retry=None, camera=SimpleNamespace(_stream_generation=2))
         queue = deque([b"old-frame"])

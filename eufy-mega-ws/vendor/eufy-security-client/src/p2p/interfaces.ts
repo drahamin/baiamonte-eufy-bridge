@@ -145,6 +145,7 @@ export interface P2PDataMessageState {
   p2pStreamFirstVideoDataReceived: boolean;
   p2pStreamMetadata: StreamMetadata;
   p2pStreamingTimeout?: NodeJS.Timeout;
+  p2pStreamStartupDeadline?: number;
   rtspStream: { [index: number]: boolean };
   rtspStreaming: { [index: number]: boolean };
   waitForSeqNoTimeout?: NodeJS.Timeout;
@@ -185,6 +186,8 @@ export interface StreamMetadata {
 export interface StreamTimeoutOptions {
   /** Max time to wait for stream data before auto-stopping. Default: 5000ms. */
   streamDataWait?: number;
+  /** Absolute first-video startup budget. Default: 20000ms. */
+  streamStartupWait?: number;
   /** Time to wait for first audio frame before declaring no audio. Default: 650ms. */
   audioCodecAnalyze?: number;
   /** Max time to wait for an expected sequence number. Default: 20000ms. */

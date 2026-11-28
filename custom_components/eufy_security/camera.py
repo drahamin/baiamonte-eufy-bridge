@@ -21,7 +21,7 @@ from .const import COORDINATOR, DOMAIN, Schema
 from .coordinator import EufySecurityDataUpdateCoordinator
 from .entity import EufySecurityEntity
 from .eufy_security_api.camera import StreamProvider, StreamStatus
-from .eufy_security_api.const import STREAM_TIMEOUT_SECONDS
+from .eufy_security_api.const import STREAM_START_TIMEOUT_SECONDS, STREAM_TIMEOUT_SECONDS
 from .eufy_security_api.exceptions import (
     FailedCommandException,
     WebSocketConnectionException,
@@ -395,7 +395,7 @@ class EufySecurityCamera(Camera, EufySecurityEntity):
                 if not self.is_streaming:
                     for attempt in range(2):
                         try:
-                            async with asyncio.timeout(STREAM_TIMEOUT_SECONDS):
+                            async with asyncio.timeout(STREAM_START_TIMEOUT_SECONDS):
                                 started = await self.product.start_livestream()
                         except (
                             asyncio.TimeoutError,
