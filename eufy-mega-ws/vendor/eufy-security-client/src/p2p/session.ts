@@ -2885,6 +2885,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
               }
             }
             this.currentMessageState[message.dataType].p2pStreamFirstVideoDataReceived = true;
+            if (message.dataType === P2PDataType.VIDEO) this.waitForStreamData(message.dataType, true);
             if (!this.currentMessageState[message.dataType].p2pStreamFirstAudioDataReceived) {
               this.currentMessageState[message.dataType].waitForAudioData = setTimeout(() => {
                 this.currentMessageState[message.dataType].waitForAudioData = undefined;
