@@ -10,7 +10,7 @@ RUN \
     set -eux \
     && node --version \
     && case "$(node --version)" in v24.*) ;; *) echo "Expected Node 24" >&2; exit 1 ;; esac \
-    && npm ci \
+    && npm ci --no-audit --no-fund \
     && npm run build \
     && npm pack --ignore-scripts --pack-destination /tmp \
     && test -s /tmp/eufy-security-client-4.1.1-mega.51.tgz
@@ -28,14 +28,14 @@ RUN \
     set -eux \
     && node --version \
     && case "$(node --version)" in v24.*) ;; *) echo "Expected Node 24" >&2; exit 1 ;; esac \
-    && npm ci \
+    && npm ci --no-audit --no-fund \
     && rm -rf node_modules/eufy-security-client \
     && mkdir -p node_modules/eufy-security-client \
     && tar -xzf /tmp/eufy-security-client-4.1.1-mega.51.tgz \
         --strip-components=1 \
         -C node_modules/eufy-security-client \
     && npm run build \
-    && npm prune --omit=dev \
+    && npm prune --omit=dev --no-audit --no-fund \
     && test "$(node -p "require('./package.json').version")" = "3.1.0" \
     && grep -q "maxSchemaVersion = 21" dist/lib/const.js
 

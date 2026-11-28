@@ -1,5 +1,7 @@
 ## 1.6.77
 
+- Keep locked dependency installation in host builds without repeating npm advisory requests there; explicit vulnerability audits remain required in CI.
+
 - Give P2P video an absolute 20-second first-frame startup window, matching the SDK warm-up budget, then retain the existing five-second data-stall timeout.
 - Partial traffic and command replies cannot extend startup indefinitely; recording-transfer timing is unchanged.
 - Pair with Security 9.6.50, whose 25-second startup wait covers the bridge budget. Capture cleanup, cache preservation and manual-only playback remain unchanged.
