@@ -1218,8 +1218,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
       const ageing = +new Date() - message.timestamp;
       if (ageing <= this.MAX_COMMAND_QUEUE_TIMEOUT) {
         const ownChannel = this.isOwnSessionChannel(message.p2pCommand.channel ?? 0);
-        const legacyOwnStart = ownChannel && (this.sessionGcmKey || this.gatewayRefusedLevel2 || this.gatewayCipherId === 0 ||
-            (this.encryption === EncryptionType.LEVEL_1 && this.p2pKey?.length === 16)) &&
+        const legacyOwnStart = ownChannel &&
           (message.p2pCommand.commandType === CommandType.CMD_START_REALTIME_MEDIA ||
             (message.p2pCommand.commandType === CommandType.CMD_SET_PAYLOAD && message.nestedCommandType === CommandType.CMD_START_REALTIME_MEDIA));
         if (legacyOwnStart) {
@@ -1254,8 +1253,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
         const encryptedOwnStart = this.isOwnSessionChannel(channel) &&
           message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
           message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM &&
-          (this.sessionGcmKey || (this.encryption === EncryptionType.LEVEL_1 &&
-            this.p2pKey?.length === 16 && this.gatewayCipherId !== 0 && !this.gatewayRefusedLevel2));
+          (this.sessionGcmKey || (this.gatewayCipherId !== 0 && !this.gatewayRefusedLevel2));
         // The app's full START_LIVE fields apply to both encrypted own-session modes.
         if (encryptedOwnStart) {
           const original = JSON.parse(stringPayload);
@@ -1277,6 +1275,15 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           (this.gatewayCipherId === 0 || (this.gatewayRefusedLevel2 && !this.sessionGcmKey)) &&
           this.isOwnSessionChannel(channel) &&
           message.p2pCommand.commandType === CommandType.CMD_STOP_REALTIME_MEDIA;
+
+        // The app uses the derived level-1 key for own-session media even when
+        // RSA negotiation installed a separate ECB key for ordinary set-payloads.
+        const level1OwnMedia = !this.sessionGcmKey && this.gatewayCipherId !== 0 &&
+          !this.gatewayRefusedLevel2 && this.isOwnSessionChannel(channel) &&
+          (encryptedOwnStart || message.p2pCommand.commandType === CommandType.CMD_STOP_REALTIME_MEDIA);
+        const commandEncryption = level1OwnMedia ? EncryptionType.LEVEL_1 : this.encryption;
+        const commandKey = level1OwnMedia ?
+          Buffer.from(getP2PCommandEncryptionKey(this.rawStation.station_sn, this.rawStation.p2p_did)) : this.p2pKey;
 
         const clearStoredRead =
           this.usesClearStoredReads(channel) &&
@@ -1318,8 +1325,8 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
         switch (message.p2pCommandType) {
           case InternalP2PCommandType.WithInt:
             payload = buildIntCommandPayload(
-              this.encryption,
-              this.p2pKey,
+              commandEncryption,
+              commandKey,
               this.rawStation.station_sn,
               this.rawStation.p2p_did,
               message.p2pCommand.commandType,
@@ -1331,8 +1338,8 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             break;
           case InternalP2PCommandType.WithIntString:
             payload = buildIntStringCommandPayload(
-              this.encryption,
-              this.p2pKey,
+              commandEncryption,
+              commandKey,
               this.rawStation.station_sn,
               this.rawStation.p2p_did,
               message.p2pCommand.commandType,
@@ -1350,8 +1357,8 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             break;
           case InternalP2PCommandType.WithString:
             payload = buildStringTypeCommandPayload(
-              this.encryption,
-              this.p2pKey,
+              commandEncryption,
+              commandKey,
               this.rawStation.station_sn,
               this.rawStation.p2p_did,
               message.p2pCommand.commandType,
@@ -1362,8 +1369,8 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             break;
           case InternalP2PCommandType.WithStringPayload:
             payload = buildCommandWithStringTypePayload(
-              this.encryption,
-              this.p2pKey,
+              commandEncryption,
+              commandKey,
               this.rawStation.station_sn,
               this.rawStation.p2p_did,
               message.p2pCommand.commandType,
