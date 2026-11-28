@@ -4520,7 +4520,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
           this.gatewayRefusedLevel2 = data.subarray(0, 4).equals(Buffer.from([0x99, 0xff, 0xff, 0xff]));
           this.gatewayNegotiations = (this.gatewayNegotiations ?? 0) + 1;
           const cipherRequest = this.gatewayRefusedLevel2 ? Promise.resolve(undefined) :
-            this.api.getCipher(cipherID, this.rawStation.member.admin_user_id);
+            this.api.getCipher(cipherID, this.rawStation.member.admin_user_id, this.rawStation.station_sn, ecc ? "ecc" : "rsa");
           cipherRequest.then((cipher) => {
               if (generation !== this.keyGeneration || !cipher) return;
               if (ecc) {

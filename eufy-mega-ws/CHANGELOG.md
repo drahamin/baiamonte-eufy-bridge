@@ -1,3 +1,10 @@
+## 1.6.78
+
+- Prefer the authenticated v3, station-scoped security cipher endpoint used by the current SDK, with its own regional gateway identity and bootstrap.
+- Preserve compatibility reads for empty or failed native responses. Coalesce matching lookups, cache successful results within account/station scope, and bound native reads to 15 seconds.
+- Isolate security identity recovery from the Mega login identity. Diagnostics report model/coverage counts only, never cipher IDs or key material.
+- Client 4.1.1-mega.52; Security remains 9.6.50. No automatic playback or camera configuration changes.
+
 ## 1.6.77
 
 - Keep locked dependency installation in host builds without repeating npm advisory requests there; explicit vulnerability audits remain required in CI.

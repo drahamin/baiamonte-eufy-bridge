@@ -164,6 +164,8 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
   private apiRegisterPushToken = "v1/apppush/register_push_token";
   private apiSetParameters = "v1/app/upload_devs_params";
   private apiGetCiphers = "v2/app/cipher/get_ciphers";
+  private nativeCipherRequests = new Map<string, Promise<Ciphers>>();
+  private nativeCipherProvider?: (ids: number[], userID: string, stationSN: string) => Promise<Ciphers>;
 
   private apiEventGetAllVideoRecord = "v2/event/app/get_all_video_record";
   private apiEventGetAllAlarmRecord = "v2/event/app/get_all_alarm_record";
@@ -1286,7 +1288,39 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
     return false;
   }
 
-  public async getCiphers(/*stationSN: string, */ cipherIDs: Array<number>, userID: string): Promise<Ciphers> {
+  public setNativeCipherProvider(provider: (ids: number[], userID: string, stationSN: string) => Promise<Ciphers>): void {
+    this.nativeCipherProvider = provider;
+  }
+
+  public async getCiphers(cipherIDs: number[], userID: string, stationSN?: string, requiredKey?: "ecc" | "rsa"): Promise<Ciphers> {
+    let native: Ciphers = {};
+    if (this.nativeCipherProvider && stationSN) {
+      const requestKey = JSON.stringify([stationSN, userID, [...cipherIDs].sort((a,b) => a-b)]);
+      const pending = this.nativeCipherRequests.get(requestKey) ?? (async () => this.nativeCipherProvider!(cipherIDs, userID, stationSN))();
+      this.nativeCipherRequests.set(requestKey, pending);
+      try {
+        const found = await pending;
+        for (const id of cipherIDs) if (found?.[id]?.private_key || found?.[id]?.ecc_private_key) native[id] = found[id];
+      }
+      catch { rootHTTPLogger.info("Native security cipher read unavailable; retaining compatibility lookup"); }
+      finally { if (this.nativeCipherRequests.get(requestKey) === pending) this.nativeCipherRequests.delete(requestKey); }
+    }
+    const missing = cipherIDs.filter(id => requiredKey === "rsa" ? !native[id]?.private_key :
+      requiredKey === "ecc" ? !native[id]?.ecc_private_key : !native[id]?.private_key && !native[id]?.ecc_private_key);
+    const legacy = missing.length ? await this.getLegacyCiphers(missing, userID) : {};
+    rootHTTPLogger.info("Station cipher lookup coverage", {
+      model: stationSN?.match(/^T[A-Z0-9]{4}/)?.[0], native: Object.keys(native).length, compatibility: Object.keys(legacy).length,
+    });
+    const combined: Ciphers = { ...legacy };
+    for (const id of cipherIDs) if (native[id]) combined[id] = {
+      ...legacy[id], ...native[id],
+      private_key: native[id].private_key || legacy[id]?.private_key || "",
+      ecc_private_key: native[id].ecc_private_key || legacy[id]?.ecc_private_key,
+    };
+    return combined;
+  }
+
+  private async getLegacyCiphers(cipherIDs: number[], userID: string): Promise<Ciphers> {
     const data = {
       cipher_ids: cipherIDs,
       user_id: userID,
@@ -1373,8 +1407,8 @@ export class HTTPApi extends TypedEmitter<HTTPApiEvents> {
     return {};
   }
 
-  public async getCipher(/*stationSN: string, */ cipherID: number, userID: string): Promise<Cipher> {
-    return (await this.getCiphers(/*stationSN, */ [cipherID], userID))[cipherID];
+  public async getCipher(cipherID: number, userID: string, stationSN?: string, requiredKey?: "ecc" | "rsa"): Promise<Cipher> {
+    return (await this.getCiphers([cipherID], userID, stationSN, requiredKey))[cipherID];
   }
 
   public getDevices(): FullDevices {

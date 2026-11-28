@@ -12,6 +12,8 @@ import { createCipheriv, createDecipheriv, createECDH, createHmac, randomBytes, 
 /** Static preset key for the `eufy_security` category (`*.eufy.com`). Extracted from the app's
  *  `ESIotAppConfig`, stored in `MegaAppDomain.presetKeyMap` (one key per product category). */
 export const MEGA_PRESET_KEY = "2500a7d5617812f9d52515b2c8f20a3d";
+/** Public app bootstrap constant for the separate security-app gateway (SDK 0.6.0). */
+export const SECURITY_PRESET_KEY = "118c12c81e211149304bd70a0c071d01";
 
 /** NIST P-256 (prime256v1) — same curve the lib already uses for login. */
 const CURVE = "prime256v1";
@@ -72,7 +74,7 @@ export interface MegaIdentity {
  * @returns the ECDH object (holds the client private key), the wrapped client_public_key
  *          body value, the client public key hex, and a fresh client-generated keyIdent.
  */
-export const buildKeyExchange = (): {
+export const buildKeyExchange = (presetKey = MEGA_PRESET_KEY): {
   ecdh: ECDH;
   clientPublicKeyBody: string;
   clientPublicKey: string;
@@ -81,7 +83,7 @@ export const buildKeyExchange = (): {
   const ecdh = createECDH(CURVE);
   ecdh.generateKeys();
   const clientPubHex = ecdh.getPublicKey("hex");
-  const clientPublicKeyBody = presetEncrypt(clientPubHex);
+  const clientPublicKeyBody = presetEncrypt(clientPubHex, presetKey);
   return { ecdh, clientPublicKeyBody, clientPublicKey: clientPubHex, keyIdent: generateKeyIdent() };
 };
 
@@ -98,9 +100,10 @@ export const finalizeKeyExchange = (
   ecdh: ECDH,
   serverPublicKeyEnc: string,
   keyIdent: string,
-  clientPublicKey: string
+  clientPublicKey: string,
+  presetKey = MEGA_PRESET_KEY
 ): MegaIdentity => {
-  const serverPubHex = presetDecrypt(serverPublicKeyEnc);
+  const serverPubHex = presetDecrypt(serverPublicKeyEnc, presetKey);
   if (!/^04[0-9a-f]{128}$/i.test(serverPubHex)) {
     throw new Error("key/exchange: unexpected server public key format");
   }
