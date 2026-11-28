@@ -1,5 +1,5 @@
 import { createECDH, createCipheriv, createHmac, generateKeyPairSync, publicEncrypt, constants } from "crypto";
-import { eufyKDF, buildCommandHeader, decryptP2PData } from "../utils";
+import { eufyKDF, buildCommandHeader, decryptP2PData, getP2PCommandEncryptionKey } from "../utils";
 import { unwrapGatewaySessionKey, unwrapRsaGatewaySessionKey, openSessionControl, sealSessionControl } from "../sessionCrypto";
 import { P2PClientProtocol } from "../session";
 import { CommandType, EncryptionType, InternalP2PCommandType, P2PDataType } from "../types";
@@ -19,7 +19,7 @@ const gateway = (): Buffer => {
 const protocol = (): any => {
   const p = Object.create(P2PClientProtocol.prototype) as any;
   Object.assign(p, {
-    rawStation: { station_sn: "T8171TEST", p2p_did: "p2p", member: { admin_user_id: "account" } },
+    rawStation: { station_sn: "T8171TEST", p2p_did: "TEST-12345678-ABC", member: { admin_user_id: "account" } },
     deviceSNs: { 0: { sn: "T8171TEST" } }, encryption: EncryptionType.LEVEL_1,
     p2pKey: Buffer.alloc(16, 7), sessionGcmSequence: 0, keyGeneration: 1, gatewayNegotiations: 0,
     messageStates: new Map(), p2pSeqMapping: new Map(), emit: jest.fn(),
@@ -97,7 +97,8 @@ describe("authenticated version-8 session control", () => {
     expect(p.sendQueuedMessage).not.toHaveBeenCalled();
   });
   it("seals outgoing database reads using the negotiated key", async () => {
-    const p=protocol(); Object.assign(p,{sessionGcmKey:key,seqNumber:0,p2pDataSeqNumber:0,MAX_COMMAND_QUEUE_TIMEOUT:10000,MAX_SEQUENCE_NUMBER:65535,MAX_AKNOWLEDGE_TIMEOUT:10000,RESEND_NOT_ACKNOWLEDGED_COMMAND:10000,sendMessage:jest.fn().mockResolvedValue(undefined)});
+    const p=protocol(); Object.assign(p,{sessionGcmKey:key,seqNumber:0,p2pDataSeqNumber:0,MAX_COMMAND_QUEUE_TIMEOUT:10000,MAX_SEQUENCE_NUMBER:65535,MAX_AKNOWLEDGE_TIMEOUT:10000,RESEND_NOT_ACKNOWLEDGED_COMMAND:10000,sendMessage:jest.fn().mockResolvedValue(undefined),
+      currentMessageState:{[P2PDataType.VIDEO]:{p2pStreaming:false}},waitForStreamData:jest.fn(),endStream:jest.fn()});
     jest.useFakeTimers();
     try {
       const json=JSON.stringify({cmd:CommandType.CMD_DATABASE,payload:{}});
@@ -135,8 +136,8 @@ describe("authenticated version-8 session control", () => {
     } finally {jest.clearAllTimers();jest.useRealTimers();}
   });
 
-  it("uses full app fields and frame 11 for level-1 own-session start", async () => {
-    const p=protocol();Object.assign(p,{gatewayCipherId:7,seqNumber:0,p2pDataSeqNumber:0,
+  it.each([EncryptionType.LEVEL_1, EncryptionType.LEVEL_2])("uses the derived level-1 media key after session encryption %s negotiation", async (encryption) => {
+    const p=protocol();Object.assign(p,{encryption,gatewayCipherId:7,seqNumber:0,p2pDataSeqNumber:0,
       MAX_COMMAND_QUEUE_TIMEOUT:10000,MAX_SEQUENCE_NUMBER:65535,MAX_AKNOWLEDGE_TIMEOUT:10000,
       RESEND_NOT_ACKNOWLEDGED_COMMAND:10000,sendMessage:jest.fn().mockResolvedValue(undefined),
       currentMessageState:{[P2PDataType.VIDEO]:{p2pStreaming:false}},waitForStreamData:jest.fn(),endStream:jest.fn()});
@@ -146,10 +147,34 @@ describe("authenticated version-8 session control", () => {
         p2pCommand:{commandType:CommandType.CMD_DOORBELL_SET_PAYLOAD,channel:0,value:JSON.stringify({commandType:1000,data:{encryptkey:"modulus"}})},nestedCommandType:1000});
       const packet=p.sendMessage.mock.calls[0][3] as Buffer,h=buildCommandHeader(0,CommandType.CMD_DOORBELL_SET_PAYLOAD).length;
       expect(packet[h+7]).toBe(EncryptionType.LEVEL_1);expect(packet[h+8]).toBe(11);
-      const body=JSON.parse(decryptP2PData(packet.subarray(h+10),p.p2pKey).toString().replace(/\0+$/, ""));
+      const body=JSON.parse(decryptP2PData(packet.subarray(h+10),Buffer.from(getP2PCommandEncryptionKey(p.rawStation.station_sn,p.rawStation.p2p_did))).toString().replace(/\0+$/, ""));
       expect(body.commandType).toBe(1000);expect(body.data.encryptkey).toBe("modulus");
       expect(body.data.video_type).toBe(12);expect(body.data.streamtype).toBe(2);
       expect(body.data.accountId).toBe("account");expect(body.data.msg_id).toBe(1);
+      await p._sendCommand({timestamp:Date.now(),p2pCommandType:InternalP2PCommandType.WithInt,
+        p2pCommand:{commandType:CommandType.CMD_STOP_REALTIME_MEDIA,channel:0,value:0}});
+      const stop=p.sendMessage.mock.calls[1][3] as Buffer;
+      expect(stop[h+7]).toBe(EncryptionType.LEVEL_1);
+      expect(decryptP2PData(stop.subarray(h+10),Buffer.from(getP2PCommandEncryptionKey(p.rawStation.station_sn,p.rawStation.p2p_did))).subarray(0,4)).toEqual(Buffer.alloc(4));
+      expect(p.p2pKey).toEqual(Buffer.alloc(16,7)); // ordinary commands retain their negotiated key
+
+    } finally {jest.clearAllTimers();jest.useRealTimers();}
+  });
+
+  it.each([true,false])("preserves the negotiated key for non-media or attached commands (own=%s)", async (own) => {
+    const p=protocol();if(!own)p.deviceSNs[0].sn="ATTACHED-CAMERA";
+    Object.assign(p,{encryption:EncryptionType.LEVEL_2,gatewayCipherId:7,seqNumber:0,p2pDataSeqNumber:0,
+      MAX_COMMAND_QUEUE_TIMEOUT:10000,MAX_SEQUENCE_NUMBER:65535,MAX_AKNOWLEDGE_TIMEOUT:10000,
+      RESEND_NOT_ACKNOWLEDGED_COMMAND:10000,sendMessage:jest.fn().mockResolvedValue(undefined),
+      currentMessageState:{[P2PDataType.VIDEO]:{p2pStreaming:false}},waitForStreamData:jest.fn(),endStream:jest.fn()});
+    const nested=own?1306:1003,json=JSON.stringify({cmd:nested,payload:{key:"modulus"}});
+    jest.useFakeTimers();
+    try {
+      await p._sendCommand({timestamp:Date.now(),p2pCommandType:InternalP2PCommandType.WithStringPayload,
+        p2pCommand:{commandType:CommandType.CMD_SET_PAYLOAD,channel:0,value:json},nestedCommandType:nested});
+      const packet=p.sendMessage.mock.calls[0][3] as Buffer,h=buildCommandHeader(0,CommandType.CMD_SET_PAYLOAD).length;
+      expect(packet[h+7]).toBe(EncryptionType.LEVEL_2);expect(packet[h+8]).toBe(0);
+      expect(decryptP2PData(packet.subarray(h+10),p.p2pKey).toString().replace(/\0+$/,"" )).toBe(json);
     } finally {jest.clearAllTimers();jest.useRealTimers();}
   });
 

@@ -1,3 +1,9 @@
+## 1.6.76
+
+- Keep standalone media start/stop on the app-derived level-1 key even after RSA negotiation supplies a separate key for ordinary control commands.
+- Normalize legacy standalone starts on this negotiated path, preserving HomeBase-attached, GCM, cipher-0 and refusal routes.
+- Verify packet encryption and matching stop keys in regression tests. No automatic live playback or camera resets.
+
 ## 1.6.75
 
 - Use the app's full standalone-camera live-start fields and frame type 11 with encrypted level-1 sessions, matching the current upstream SDK wire contract.
