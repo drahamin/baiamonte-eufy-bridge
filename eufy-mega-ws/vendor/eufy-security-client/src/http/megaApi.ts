@@ -835,6 +835,7 @@ export class MegaHTTPApi {
 
   /** One identity per cluster host (e.g. app-openapi-eu-pr.eufy.com). */
   private identities = new Map<string, MegaIdentity>();
+  private securityIdentities = new Map<string, MegaIdentity>();
   private securityIdentityTokens = new Map<string, string | undefined>();
   private securityKeyExchanges = new Map<string, Promise<MegaIdentity>>();
 
@@ -987,8 +988,8 @@ export class MegaHTTPApi {
         code: parsed.code,
       });
       if (this.isSecurityAppHost(host)) {
-        if (!identity || this.identities.get(host) === identity) {
-          this.identities.delete(host);
+        if (!identity || this.securityIdentities.get(host) === identity) {
+          this.securityIdentities.delete(host);
           this.securityIdentityTokens.delete(host);
         }
       } else {
@@ -1038,31 +1039,33 @@ export class MegaHTTPApi {
     return /^security-app(?:-(?:eu|ie))?\.eufylife\.com$/.test(host);
   }
 
-  public async keyExchange(openapiHost: string): Promise<MegaIdentity> {
+  public async keyExchange(openapiHost: string, signal?: AbortSignal): Promise<MegaIdentity> {
+    signal?.throwIfAborted();
     const security = this.isSecurityAppHost(openapiHost), token = this.authToken;
-    const cached = this.identities.get(openapiHost);
+    const cached = (security ? this.securityIdentities : this.identities).get(openapiHost);
     if (cached && (!security || this.securityIdentityTokens.get(openapiHost) === token)) return cached;
     const flightKey = `${openapiHost}\n${token ?? ""}`;
     const joining = security ? this.securityKeyExchanges.get(flightKey) : undefined;
     if (joining) return joining;
-    const exchange = this.exchangeIdentity(openapiHost, security, token);
+    const exchange = this.exchangeIdentity(openapiHost, security, token, signal);
     if (!security) return exchange;
     this.securityKeyExchanges.set(flightKey, exchange);
     try { return await exchange; }
     finally { if (this.securityKeyExchanges.get(flightKey) === exchange) this.securityKeyExchanges.delete(flightKey); }
   }
 
-  private async exchangeIdentity(host: string, security: boolean, token: string | undefined): Promise<MegaIdentity> {
+  private async exchangeIdentity(host: string, security: boolean, token: string | undefined, signal?: AbortSignal): Promise<MegaIdentity> {
     const preset = security ? SECURITY_PRESET_KEY : MEGA_PRESET_KEY;
     const { ecdh, clientPublicKeyBody, clientPublicKey, keyIdent } = buildKeyExchange(preset);
     const result = await this.signedPost(host, security ? "/v3/openapi/oauth/key/exchange" : "/openapi/oauth/key/exchange", undefined, undefined, {
       keyIdent, encryptedValue: clientPublicKeyBody, presetKey: preset,
-    }, undefined, security ? token : undefined);
+    }, signal, security ? token : undefined);
+    signal?.throwIfAborted();
     if (result.code !== 0) throw new Error(`key/exchange failed on ${host}: ${result.code}`);
     if (security && token !== this.authToken) throw new Error("Security identity authentication changed during exchange");
     const serverPubEnc = (result.data as { server_public_key: string }).server_public_key;
     const identity = finalizeKeyExchange(ecdh, serverPubEnc, keyIdent, clientPublicKey, preset);
-    this.identities.set(host, identity);
+    (security ? this.securityIdentities : this.identities).set(host, identity);
     if (security) this.securityIdentityTokens.set(host, token);
     rootHTTPLogger.info("MegaApi key/exchange ok", { openapiHost: host });
     return identity;
@@ -1088,7 +1091,7 @@ export class MegaHTTPApi {
     return this.domains;
   }
   public getIdentity(host: string): MegaIdentity | undefined {
-    return this.identities.get(host);
+    return (this.isSecurityAppHost(host) ? this.securityIdentities : this.identities).get(host);
   }
   public setAuth(authToken: string, userId: string): void {
     this.authToken = authToken;
@@ -1125,7 +1128,10 @@ export class MegaHTTPApi {
     this.tokenExpiresAt = s.cloud_token_expiration;
     this.domains = s.domains ?? {};
     this.megaDomain = s.megaDomain ?? "";
-    this.identities = new Map(Object.entries(s.identities ?? {}));
+    this.identities = new Map(Object.entries(s.identities ?? {}).filter(([host]) => !this.isSecurityAppHost(host)));
+    this.securityIdentities.clear();
+    this.securityIdentityTokens.clear();
+    this.nativeCipherCache.clear();
   }
 
   /**
@@ -1165,7 +1171,7 @@ export class MegaHTTPApi {
     for (let attempt = 0; attempt < 2; attempt++) {
       signal?.throwIfAborted();
       if (expectedAuthToken !== undefined && expectedAuthToken !== this.authToken) throw new Error("Security request authentication changed");
-      const identity = await this.keyExchange(openapiHost);
+      const identity = await this.keyExchange(openapiHost, signal);
       signal?.throwIfAborted();
       if (expectedAuthToken !== undefined && expectedAuthToken !== this.authToken) throw new Error("Security request authentication changed");
       const result = await this.signedPost(host, path, payload, identity, undefined, signal, expectedAuthToken);

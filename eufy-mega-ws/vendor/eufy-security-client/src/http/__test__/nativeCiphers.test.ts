@@ -93,6 +93,38 @@ describe("native security cipher transport", () => {
     } catch {}
     expect(wrong).not.toBe(presetDecrypt(JSON.parse(seen[0].opts.body).client_public_key, SECURITY_PRESET_KEY));
   });
+  it("never exports or restores security-host identities", async () => {
+    const api = apiWith(handshakeServer([]));
+    await api.getSecurityCiphers([7], "owner", "T84A1TEST");
+    expect(api.getIdentity("security-app.eufylife.com")).toBeDefined();
+    expect(api.exportSession().identities).not.toHaveProperty("security-app.eufylife.com");
+    const session = api.exportSession();
+    session.identities["security-app.eufylife.com"] = api.getIdentity("security-app.eufylife.com");
+    api.restoreSession(session);
+    expect(api.getIdentity("security-app.eufylife.com")).toBeUndefined();
+    expect(api.exportSession().identities).not.toHaveProperty("security-app.eufylife.com");
+  });
+  it("cancels a queued handshake before dispatch when the lookup expires", async () => {
+    jest.useFakeTimers();
+    const api = apiWith(handshakeServer([]));
+    let dispatch!: () => Promise<any>;
+    api.securityThrottle = (fn: any) => () => new Promise((resolve, reject) => {
+      dispatch = async () => { try { resolve(await fn()); } catch (error) { reject(error); } };
+    });
+    try {
+      const pending = api.getSecurityCiphers([7], "owner", "T84A1TEST");
+      const check = expect(pending).rejects.toThrow("timed out");
+      await jest.advanceTimersByTimeAsync(15000);
+      await check;
+      await dispatch();
+      await Promise.resolve();
+      expect(api.got).not.toHaveBeenCalled();
+      expect(api.getIdentity("security-app.eufylife.com")).toBeUndefined();
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
+  });
   it("joins concurrent security handshakes while preserving independent data requests", async () => {
     const seen: any[] = [],
       api = apiWith(handshakeServer(seen));
