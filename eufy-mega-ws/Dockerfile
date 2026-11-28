@@ -10,10 +10,10 @@ RUN \
     set -eux \
     && node --version \
     && case "$(node --version)" in v24.*) ;; *) echo "Expected Node 24" >&2; exit 1 ;; esac \
-    && npm ci \
+    && npm ci --no-audit --no-fund \
     && npm run build \
     && npm pack --ignore-scripts --pack-destination /tmp \
-    && test -s /tmp/eufy-security-client-4.1.1-mega.50.tgz
+    && test -s /tmp/eufy-security-client-4.1.1-mega.51.tgz
 
 FROM ghcr.io/home-assistant/base:3.23 AS server-builder
 
@@ -21,21 +21,21 @@ RUN apk add --no-cache nodejs npm
 
 WORKDIR /build/eufy-security-ws
 COPY vendor/eufy-security-ws/ ./
-COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.50.tgz /tmp/eufy-security-client-4.1.1-mega.50.tgz
+COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.51.tgz /tmp/eufy-security-client-4.1.1-mega.51.tgz
 
 # Compile the exact schema-21 server source and retain only its locked runtime dependencies.
 RUN \
     set -eux \
     && node --version \
     && case "$(node --version)" in v24.*) ;; *) echo "Expected Node 24" >&2; exit 1 ;; esac \
-    && npm ci \
+    && npm ci --no-audit --no-fund \
     && rm -rf node_modules/eufy-security-client \
     && mkdir -p node_modules/eufy-security-client \
-    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.50.tgz \
+    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.51.tgz \
         --strip-components=1 \
         -C node_modules/eufy-security-client \
     && npm run build \
-    && npm prune --omit=dev \
+    && npm prune --omit=dev --no-audit --no-fund \
     && test "$(node -p "require('./package.json').version")" = "3.1.0" \
     && grep -q "maxSchemaVersion = 21" dist/lib/const.js
 
@@ -68,10 +68,10 @@ COPY --from=server-builder /build/eufy-security-ws/node_modules ./node_modules
 COPY --from=server-builder /build/eufy-security-ws/package.json ./package.json
 COPY --from=server-builder /build/eufy-security-ws/LICENSE ./LICENSE
 
-COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.50.tgz /tmp/eufy-security-client-4.1.1-mega.50.tgz
+COPY --from=client-builder /tmp/eufy-security-client-4.1.1-mega.51.tgz /tmp/eufy-security-client-4.1.1-mega.51.tgz
 
 # eufy-security-ws 3.1.0 pins client 4.1.0 exactly. Replace that package with the compatible
-# 4.1.1-mega.50 source build carrying authenticated HomeBase 3 media decode
+# 4.1.1-mega.51 source build carrying authenticated HomeBase 3 media decode
 # and cipher-0 standalone-camera live-view support,
 # evidence-ranked native catalogs, safe value profiles, T9000, and snapshot fixes.
 RUN \
@@ -80,19 +80,19 @@ RUN \
     && case "$(node --version)" in v24.*) ;; *) echo "Expected Node 24" >&2; exit 1 ;; esac \
     && rm -rf node_modules/eufy-security-client \
     && mkdir -p node_modules/eufy-security-client \
-    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.50.tgz \
+    && tar -xzf /tmp/eufy-security-client-4.1.1-mega.51.tgz \
         --strip-components=1 \
         -C node_modules/eufy-security-client \
     && package_tmp="$(mktemp)" \
-    && jq '.dependencies["eufy-security-client"] = "4.1.1-mega.50"' \
+    && jq '.dependencies["eufy-security-client"] = "4.1.1-mega.51"' \
         package.json > "${package_tmp}" \
     && mv "${package_tmp}" package.json \
-    && test "$(node -p "require('./node_modules/eufy-security-client/package.json').version")" = "4.1.1-mega.50" \
+    && test "$(node -p "require('./node_modules/eufy-security-client/package.json').version")" = "4.1.1-mega.51" \
     && grep -q "retrying request after fresh key exchange" \
         node_modules/eufy-security-client/build/http/megaApi.js \
     && grep -q "snapshotCache" node_modules/eufy-security-client/build/eufysecurity.js \
     && grep -q "or_and" node_modules/eufy-security-client/build/http/station.js \
-    && rm /tmp/eufy-security-client-4.1.1-mega.50.tgz
+    && rm /tmp/eufy-security-client-4.1.1-mega.51.tgz
 
 COPY dashboard/ /opt/baiamonte-eufy-dashboard/
 COPY pro-events/ /opt/baiamonte-pro-events/

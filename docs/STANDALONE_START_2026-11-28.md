@@ -17,3 +17,14 @@ Regression packets are decrypted with the app-derived key after both
 level-1 and RSA level-2 negotiation; matching stops use that same key.
 This protocol repair still requires field validation and does not establish
 that every affected camera has recovered.
+
+## Bounded startup follow-up
+
+Field captures on 1.6.76 still failed on all four cameras. The logs showed
+five-second no-data termination. Upstream `shared-live-source.ts` uses a
+20,000ms warm-up deadline (and a separate retry interval). The adapter now
+allows an absolute 20-second first-video budget, without extending it on
+partial traffic or command responses. Established streams and recording
+transfers retain their five-second stall behavior. Security waits 45 seconds
+for startup; decoding, owned cleanup and cache commit behavior are unchanged.
+This addresses a measured timing mismatch, not proof of field recovery.

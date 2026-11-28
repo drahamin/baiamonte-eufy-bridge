@@ -4,7 +4,7 @@ import logging
 from collections import deque
 from enum import Enum
 
-from .const import GO2RTC_RTSP_PORT, STREAM_TIMEOUT_SECONDS, MessageField
+from .const import GO2RTC_RTSP_PORT, STREAM_START_TIMEOUT_SECONDS, MessageField
 from .event import Event
 from .exceptions import (
     CameraRTSPStreamNotEnabled,
@@ -220,7 +220,7 @@ class Camera(Device):
                 return False
 
         try:
-            await asyncio.wait_for(event.wait(), STREAM_TIMEOUT_SECONDS)
+            await asyncio.wait_for(event.wait(), STREAM_START_TIMEOUT_SECONDS)
             self.stream_debug = "info - command was done"
             _LOGGER.debug(f"_initiate_start_stream - {self.stream_debug}")
             return True

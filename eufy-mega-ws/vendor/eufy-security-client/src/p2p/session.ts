@@ -396,6 +396,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
 
   private streamTimeouts = {
     streamDataWait: this.MAX_STREAM_DATA_WAIT,
+    streamStartupWait: 20 * 1000,
     audioCodecAnalyze: this.AUDIO_CODEC_ANALYZE_TIMEOUT,
     expectedSeqNoWait: this.MAX_EXPECTED_SEQNO_WAIT,
   };
@@ -2652,15 +2653,20 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
   }
 
   private waitForStreamData(dataType: P2PDataType, sendStopCommand = false): void {
-    if (this.currentMessageState[dataType].p2pStreamingTimeout) {
-      clearTimeout(this.currentMessageState[dataType].p2pStreamingTimeout!);
+    const state = this.currentMessageState[dataType];
+    if (state.p2pStreamingTimeout) clearTimeout(state.p2pStreamingTimeout);
+    const starting = dataType === P2PDataType.VIDEO && !state.p2pStreamFirstVideoDataReceived;
+    if (starting && state.p2pStreamStartupDeadline === undefined) {
+      state.p2pStreamStartupDeadline = Date.now() + this.streamTimeouts.streamStartupWait;
     }
-    this.currentMessageState[dataType].p2pStreamingTimeout = setTimeout(() => {
-      rootP2PLogger.info(
-        `Stopping the station stream for the device ${this.deviceSNs[this.currentMessageState[dataType].p2pStreamChannel]?.sn}, because we haven't received any data for ${this.streamTimeouts.streamDataWait / 1000} seconds`
-      );
-      this.endStream(dataType, sendStopCommand);
-    }, this.streamTimeouts.streamDataWait);
+    // Repeated partial data or command replies cannot extend the startup budget.
+    const timeout = starting ? Math.max(1, state.p2pStreamStartupDeadline! - Date.now()) : this.streamTimeouts.streamDataWait;
+    state.p2pStreamingTimeout = setTimeout(() => {
+      rootP2PLogger.info("Stopping station stream after bounded media wait", {
+        phase: starting ? "first-video" : "stream-data", timeoutMs: timeout,
+      });
+      this.endStream(dataType, sendStopCommand || starting);
+    }, timeout);
   }
 
   private handleDataBinaryAndVideo(message: P2PDataMessage): void {
@@ -2879,6 +2885,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
               }
             }
             this.currentMessageState[message.dataType].p2pStreamFirstVideoDataReceived = true;
+            if (message.dataType === P2PDataType.VIDEO) this.waitForStreamData(message.dataType, true);
             if (!this.currentMessageState[message.dataType].p2pStreamFirstAudioDataReceived) {
               this.currentMessageState[message.dataType].waitForAudioData = setTimeout(() => {
                 this.currentMessageState[message.dataType].waitForAudioData = undefined;

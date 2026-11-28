@@ -8235,7 +8235,7 @@ export class Station extends TypedEmitter<StationEvents> {
     media.on("talkback error", (_station, receivedChannel, error) => this.onTalkbackError(receivedChannel, error));
     this.mediaStartupTimers.set(
       channel,
-      setTimeout(() => fail(new Error("Camera media start timed out")), 30_000)
+      setTimeout(() => fail(new Error("Camera media start timed out")), 45_000)
     );
     try {
       media.startLivestream(device, videoCodec);
