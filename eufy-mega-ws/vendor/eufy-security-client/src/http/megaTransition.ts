@@ -398,12 +398,18 @@ export class MegaTransition {
    * factory so the transport can be swapped here if v6 ever needs to drive data requests too.
    */
   public async createTransport(persistentHttpApi: HTTPApiPersistentData | undefined): Promise<HTTPApi> {
-    return HTTPApi.initialize(
+    const transport = await HTTPApi.initialize(
       this.host.config.country!,
       this.host.config.username!,
       this.host.config.password!,
       persistentHttpApi
     );
+    transport.setNativeCipherProvider(async (ids, userID, stationSN) => {
+      const mega = await this.getMegaApi();
+      if (!mega.hasValidSession()) return {};
+      return mega.getSecurityCiphers(ids, userID, stationSN);
+    });
+    return transport;
   }
 
   private async runInventoryDiagnostic(): Promise<void> {
