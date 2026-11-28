@@ -25,6 +25,6 @@ five-second no-data termination. Upstream `shared-live-source.ts` uses a
 20,000ms warm-up deadline (and a separate retry interval). The adapter now
 allows an absolute 20-second first-video budget, without extending it on
 partial traffic or command responses. Established streams and recording
-transfers retain their five-second stall behavior. Security waits 25 seconds
+transfers retain their five-second stall behavior. Security waits 45 seconds
 for startup; decoding, owned cleanup and cache commit behavior are unchanged.
 This addresses a measured timing mismatch, not proof of field recovery.

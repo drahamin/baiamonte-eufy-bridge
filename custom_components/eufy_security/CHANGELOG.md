@@ -1,6 +1,6 @@
 ## 9.6.50 — 2026-11-28
 
-- Wait up to 25 seconds for stream startup to cover the bridge's bounded 20-second first-video window. Keep snapshot decode and cleanup timeouts unchanged.
+- Wait up to 45 seconds for stream startup to cover the bridge's bounded 20-second first-video window. Keep snapshot decode and cleanup timeouts unchanged.
 
 # Changelog
 
@@ -32,7 +32,7 @@
 ## 9.6.39 — 2026-11-04
 
 - Align Pro evidence waits with the bridge's bounded 60-second helper; the Security page no longer
-  abandons a valid Pro roster/thumbnail query after 25 seconds.
+  abandons a valid Pro roster/thumbnail query after 45 seconds.
 - Bound Pro and other HomeBase queries independently, and avoid retrying the Pro through an
   unsupported direct P2P recording index after its supported helper fallback has completed.
 

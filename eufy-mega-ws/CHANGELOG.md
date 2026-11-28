@@ -4,7 +4,7 @@
 
 - Give P2P video an absolute 20-second first-frame startup window, matching the SDK warm-up budget, then retain the existing five-second data-stall timeout.
 - Partial traffic and command replies cannot extend startup indefinitely; recording-transfer timing is unchanged.
-- Pair with Security 9.6.50, whose 25-second startup wait covers the bridge budget. Capture cleanup, cache preservation and manual-only playback remain unchanged.
+- Pair with Security 9.6.50, whose 45-second startup wait covers the bridge budget. Capture cleanup, cache preservation and manual-only playback remain unchanged.
 
 ## 1.6.76
 
@@ -505,7 +505,7 @@
   prior handler saw only later property changes and missed the official app's
   already-present startup cards.
 - Delay cover retrieval ten seconds for station readiness and issue strictly one
-  image request every 1.25 seconds. This path uses HomeBase thumbnail download,
+  image request every 1.45 seconds. This path uses HomeBase thumbnail download,
   never livestream or FFmpeg.
 
 ## 1.6.2 — 2026-08-26
