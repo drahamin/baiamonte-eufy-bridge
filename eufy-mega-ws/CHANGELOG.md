@@ -3,7 +3,7 @@
 - Keep locked dependency installation in host builds without repeating npm advisory requests there; explicit vulnerability audits remain required in CI.
 
 - Give P2P video an absolute 20-second first-frame startup window, matching the SDK warm-up budget, then retain the existing five-second data-stall timeout.
-- Partial traffic and command replies cannot extend startup indefinitely; recording-transfer timing is unchanged.
+- Partial traffic and command replies cannot extend startup indefinitely; recording-transfer timing is unchanged. S380 dedicated media admission uses the same 45-second total startup budget.
 - Pair with Security 9.6.50, whose 45-second startup wait covers the bridge budget. Capture cleanup, cache preservation and manual-only playback remain unchanged.
 
 ## 1.6.76

@@ -74,7 +74,7 @@ describe("S380 independent camera sessions", () => {
     station.on("livestream error", errors);
     station.on("livestream start", started);
     station.startLivestream(camera(0) as never);
-    jest.advanceTimersByTime(30_000);
+    jest.advanceTimersByTime(45_000);
     expect(errors).toHaveBeenCalledTimes(1);
     expect(station.isLiveStreaming(camera(0) as never)).toBe(false);
     expect(sessions()[1].dispose).toHaveBeenCalledTimes(1);
@@ -86,6 +86,16 @@ describe("S380 independent camera sessions", () => {
     expect(started).toHaveBeenCalledWith(station, 0, {}, video, audio);
     expect(jest.getTimerCount()).toBe(0);
     station.close();
+  });
+
+  it("accepts a delayed first stream after the former dedicated thirty-second cutoff", async () => {
+    const station = await Station.getInstance({} as never, raw as never);
+    const errors=jest.fn(),started=jest.fn();station.on("livestream error",errors);station.on("livestream start",started);
+    station.startLivestream(camera(0) as never);const p=sessions()[1];
+    jest.advanceTimersByTime(35_000);expect(p.dispose).not.toHaveBeenCalled();expect(errors).not.toHaveBeenCalled();
+    p.emit("livestream started",0,{},new Readable({read(){}}),new Readable({read(){}}));
+    expect(started).toHaveBeenCalledTimes(1);jest.advanceTimersByTime(20_000);expect(errors).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);station.close();
   });
 
   it("keeps standalone/non-S380 cameras on their existing session", async () => {
