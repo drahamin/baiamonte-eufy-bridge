@@ -2665,7 +2665,7 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
       rootP2PLogger.info("Stopping station stream after bounded media wait", {
         phase: starting ? "first-video" : "stream-data", timeoutMs: timeout,
       });
-      this.endStream(dataType, sendStopCommand);
+      this.endStream(dataType, sendStopCommand || starting);
     }, timeout);
   }
 

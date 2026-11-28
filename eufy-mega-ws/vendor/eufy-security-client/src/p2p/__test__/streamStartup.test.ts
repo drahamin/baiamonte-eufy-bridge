@@ -10,7 +10,7 @@ describe("bounded first-video startup",()=>{
  beforeEach(()=>{jest.useFakeTimers();jest.setSystemTime(0)});
  afterEach(()=>{jest.clearAllTimers();jest.useRealTimers()});
  it("survives the old five-second cutoff but stops at twenty seconds",()=>{
-  const p=protocol();p.waitForStreamData(P2PDataType.VIDEO,true);
+  const p=protocol();p.waitForStreamData(P2PDataType.VIDEO);
   jest.advanceTimersByTime(5000);expect(p.endStream).not.toHaveBeenCalled();
   jest.advanceTimersByTime(14999);expect(p.endStream).not.toHaveBeenCalled();
   jest.advanceTimersByTime(1);expect(p.endStream).toHaveBeenCalledWith(P2PDataType.VIDEO,true);
