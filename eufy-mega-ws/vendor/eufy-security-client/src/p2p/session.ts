@@ -1218,7 +1218,8 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
       const ageing = +new Date() - message.timestamp;
       if (ageing <= this.MAX_COMMAND_QUEUE_TIMEOUT) {
         const ownChannel = this.isOwnSessionChannel(message.p2pCommand.channel ?? 0);
-        const legacyOwnStart = ownChannel && (this.sessionGcmKey || this.gatewayRefusedLevel2 || this.gatewayCipherId === 0) &&
+        const legacyOwnStart = ownChannel && (this.sessionGcmKey || this.gatewayRefusedLevel2 || this.gatewayCipherId === 0 ||
+            (this.encryption === EncryptionType.LEVEL_1 && this.p2pKey?.length === 16)) &&
           (message.p2pCommand.commandType === CommandType.CMD_START_REALTIME_MEDIA ||
             (message.p2pCommand.commandType === CommandType.CMD_SET_PAYLOAD && message.nestedCommandType === CommandType.CMD_START_REALTIME_MEDIA));
         if (legacyOwnStart) {
@@ -1250,9 +1251,13 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
         const channel = message.p2pCommand.channel !== undefined ? message.p2pCommand.channel : 0;
         let clearCommandNumber: number | undefined;
         let stringPayload = message.p2pCommand.value as string;
-        if (this.sessionGcmKey && this.isOwnSessionChannel(channel) &&
-            message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
-            message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM) {
+        const encryptedOwnStart = this.isOwnSessionChannel(channel) &&
+          message.p2pCommand.commandType === CommandType.CMD_DOORBELL_SET_PAYLOAD &&
+          message.nestedCommandType === ParamType.COMMAND_START_LIVESTREAM &&
+          (this.sessionGcmKey || (this.encryption === EncryptionType.LEVEL_1 &&
+            this.p2pKey?.length === 16 && this.gatewayCipherId !== 0 && !this.gatewayRefusedLevel2));
+        // The app's full START_LIVE fields apply to both encrypted own-session modes.
+        if (encryptedOwnStart) {
           const original = JSON.parse(stringPayload);
           const now = Date.now();
           const account = this.rawStation.member.admin_user_id;
@@ -1379,8 +1384,9 @@ export class P2PClientProtocol extends TypedEmitter<P2PClientProtocolEvents> {
             message.p2pCommand.commandType === CommandType.CMD_STOP_REALTIME_MEDIA) {
           const stop = Buffer.alloc(4); stop.writeUInt32LE(channel);
           payload = sealSessionControl(stop, this.sessionGcmKey, this.sessionGcmSequence++, channel);
-        } else if (refusedOwnStart) {
+        } else if (refusedOwnStart || encryptedOwnStart) {
           payload[8] = 11;
+          if (encryptedOwnStart) rootP2PLogger.info("Standalone live start uses level-1 app frame", {channel});
         }
         const data = Buffer.concat([commandHeader, payload]);
         const messageState: P2PMessageState = {
