@@ -1,5 +1,5 @@
 import { createECDH, createCipheriv, createHmac, generateKeyPairSync, publicEncrypt, constants } from "crypto";
-import { eufyKDF, buildCommandHeader } from "../utils";
+import { eufyKDF, buildCommandHeader, decryptP2PData } from "../utils";
 import { unwrapGatewaySessionKey, unwrapRsaGatewaySessionKey, openSessionControl, sealSessionControl } from "../sessionCrypto";
 import { P2PClientProtocol } from "../session";
 import { CommandType, EncryptionType, InternalP2PCommandType, P2PDataType } from "../types";
@@ -132,6 +132,24 @@ describe("authenticated version-8 session control", () => {
         p2pCommand:{commandType:CommandType.CMD_STOP_REALTIME_MEDIA,channel:0,value:0}});
       const stop=p.sendMessage.mock.calls[1][3] as Buffer;
       expect(refused?stop.subarray(h+10):openSessionControl(stop.subarray(h+10),key,8)).toEqual(Buffer.alloc(4));
+    } finally {jest.clearAllTimers();jest.useRealTimers();}
+  });
+
+  it("uses full app fields and frame 11 for level-1 own-session start", async () => {
+    const p=protocol();Object.assign(p,{gatewayCipherId:7,seqNumber:0,p2pDataSeqNumber:0,
+      MAX_COMMAND_QUEUE_TIMEOUT:10000,MAX_SEQUENCE_NUMBER:65535,MAX_AKNOWLEDGE_TIMEOUT:10000,
+      RESEND_NOT_ACKNOWLEDGED_COMMAND:10000,sendMessage:jest.fn().mockResolvedValue(undefined),
+      currentMessageState:{[P2PDataType.VIDEO]:{p2pStreaming:false}},waitForStreamData:jest.fn(),endStream:jest.fn()});
+    jest.useFakeTimers();
+    try {
+      await p._sendCommand({timestamp:Date.now(),p2pCommandType:InternalP2PCommandType.WithStringPayload,
+        p2pCommand:{commandType:CommandType.CMD_DOORBELL_SET_PAYLOAD,channel:0,value:JSON.stringify({commandType:1000,data:{encryptkey:"modulus"}})},nestedCommandType:1000});
+      const packet=p.sendMessage.mock.calls[0][3] as Buffer,h=buildCommandHeader(0,CommandType.CMD_DOORBELL_SET_PAYLOAD).length;
+      expect(packet[h+7]).toBe(EncryptionType.LEVEL_1);expect(packet[h+8]).toBe(11);
+      const body=JSON.parse(decryptP2PData(packet.subarray(h+10),p.p2pKey).toString().replace(/\0+$/, ""));
+      expect(body.commandType).toBe(1000);expect(body.data.encryptkey).toBe("modulus");
+      expect(body.data.video_type).toBe(12);expect(body.data.streamtype).toBe(2);
+      expect(body.data.accountId).toBe("account");expect(body.data.msg_id).toBe(1);
     } finally {jest.clearAllTimers();jest.useRealTimers();}
   });
 

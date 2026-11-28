@@ -1,3 +1,9 @@
+## 1.6.75
+
+- Use the app's full standalone-camera live-start fields and frame type 11 with encrypted level-1 sessions, matching the current upstream SDK wire contract.
+- Convert legacy own-session start commands consistently without changing HomeBase-attached, clear or GCM media paths.
+- Add packet decryption regression coverage. Existing capture limits and cleanup remain in force; no resets or automatic live playback are added.
+
 # Changelog
 
 ## 1.6.74 — 2026-11-21
